@@ -3,6 +3,7 @@
 
 from service.ServiceInstance import *
 from master.ServiceCapabilityManager import *
+import master.ClusterManager as ClusterManager
 import master.ResourceSelector as ResourceSelector
 import master.RequirementInterpreter as RequirementInterpreter
 import paho.mqtt.client as mqtt
@@ -55,18 +56,23 @@ class ServiceManager(object):
             let clusterManager make selected nodes start service
     '''
     def publishService(self, serviceInstance):
-        print("PublishService starts!")
-        requirement = serviceInstance.getRequirement
+        self.logger.debug("PublishService starts!")
 
         # INTERPRET
-        requirements = RequirementInterpreter.interpret()
+        interpretedRequirement = RequirementInterpreter.interpret(serviceInstance)
 
         # SELECT
+        serviceInstance.setInterpretedRequirement(interpretedRequirement)
         serviceCapabilityManager = ServiceCapabilityManager(self.ip, self.port, serviceInstance)
-        selectedNodes = ResourceSelector.selectNodes(serviceInstance, requirements)
+        serviceCapabilityManager.start()
+        selectedNodes = ResourceSelector.selectNodes(serviceInstance, serviceCapabilityManager)
+
         print("selected nodes: "+", ".join(selectedNodes))
+        self.logger.debug("selected nodes: "+", ".join(selectedNodes))
 
         # START
+        serviceInstance.setSeledtedNodes(selectedNodes)
+        ClusterManager.startService(self.ip, self.port, serviceInstance)
 
 
 

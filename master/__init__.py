@@ -5,4 +5,4 @@ from master.ServiceManager import *
 
 __all__ = ['ServiceManager', 'ServiceCapabilityManager']
 
-serviceManager = ServiceManager('143.248.53.238', 18830)
+serviceManager = ServiceManager('143.248.56.213', 18830)

@@ -11,9 +11,9 @@ action:
         -->
         let clusterManager make selected nodes start service
 '''
-def selectNodes(serviceInstance):
+def selectNodes(serviceInstance, serviceCapabilityManager):
     print("SelectNodes start!")
-    requirement = serviceInstance.getRequirement
+    requirement = serviceInstance.getInterpretedRequirement
 
     return ['node01', 'node02']
 

@@ -2,6 +2,4 @@
 # -*- coding: utf-8 -*-
 from device.Device import *
 
-__all__ = ['DeviceAbstractor', 'DeviceManager', 'Executor']
-
-device = Device('config/camera.ini')
+device = Device('143.248.56.213', 18830, '../config/camera.ini')

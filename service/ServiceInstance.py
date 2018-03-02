@@ -11,6 +11,8 @@ class ServiceInstance(object):
         self.requestTime = jsonObject['requestTime']
         self.parameter = jsonObject['parameter']
         self.requirement = jsonObject['requirement']
+        self.interpretedRequirement = {}
+        self.selectedNodes = []
 
         print("--------------Service---------------")
         print("Name: "+self.name)
@@ -34,4 +36,30 @@ class ServiceInstance(object):
 
     def getRequestTime(self):
         return self.requestTime
+
+    def getInterpretedRequirement(self):
+        return self.interpretedRequirement
+
+    def setInterpretedRequirement(self, ir):
+        self.interpretedRequirement = ir
+
+    def getSelectedNodes(self):
+        return self.selectedNodes
+
+    def setSeledtedNodes(self, nodes):
+        self.selectedNodes = nodes
+
+    def makePayload(self):
+        msg = {}
+        msg["name"] = self.name
+        msg["type"] = self.type
+        msg["requestTime"] = self.requestTime
+        msg["parameter"] = self.parameter
+        msg["requirement"] = self.requirement
+        msg["interpretedRequirement"] = self.interpretedRequirement
+        msg["selectedNodes"] = self.selectedNodes
+
+        jsonString = json.dumps(msg)
+
+        return jsonString
 
