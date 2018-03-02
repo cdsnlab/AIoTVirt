@@ -12,7 +12,7 @@ agents and contributions to the middleware.
 ### Python
 Version: 3.5.3
 
-Library: paho-mqtt, pymongo
+Library: paho-mqtt, pymongo, docker
 
 ## MQTT Message Format
 
