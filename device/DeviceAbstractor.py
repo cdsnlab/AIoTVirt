@@ -14,6 +14,7 @@ class DeviceAbstractor(object):
 
     def __init__(self, ip, port):
         self.logger = Logger()
+        self.logger.debug("INTO DeviceAbstractor!")
         self.capabilityList = []
 
         self.ip = ip

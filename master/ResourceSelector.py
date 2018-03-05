@@ -13,7 +13,7 @@ action:
 '''
 def selectNodes(serviceInstance, serviceCapabilityManager):
     print("SelectNodes start!")
-    requirement = serviceInstance.getInterpretedRequirement
+    requirement = serviceInstance.getInterpretedRequirement()
 
     return ['node01', 'node02']
 

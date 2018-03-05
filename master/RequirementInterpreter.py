@@ -3,6 +3,6 @@
 
 
 def interpret(serviceInstance):
-    requirement = serviceInstance.getInterpretedRequirement
+    requirement = serviceInstance.getInterpretedRequirement()
     result = {"req1": "val1", "req2": "val2"}
     return result
