@@ -1,11 +1,13 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-from flask_restful import Resource
+import xmltodict
 from flask import request
-from util.Logger import Logger
+from flask_restful import Resource
+
 from service.ServiceInstance import *
-import xmltodict, json
+from util.Logger import Logger
+
 
 class ServiceResource(Resource):
     def __init__(self, serviceManager):

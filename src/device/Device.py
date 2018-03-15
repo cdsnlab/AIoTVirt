@@ -2,8 +2,10 @@
 # -*- coding: utf-8 -*-
 
 import configparser
-from device.DeviceManager import DeviceManager
+
+from device import DeviceManager
 from util.Logger import Logger
+
 
 class Device(object):
     def __init__(self, configFile):

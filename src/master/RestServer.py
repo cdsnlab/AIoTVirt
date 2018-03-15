@@ -1,11 +1,10 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-import threading
 from flask import Flask
 from flask_restful import Api
+
 from service.ServiceResource import *
-from util.Logger import Logger
 
 
 class RestServer():

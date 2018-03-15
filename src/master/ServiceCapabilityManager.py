@@ -1,11 +1,12 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-from service.CapabilityInstance import *
-from master.DBManager import *
-import paho.mqtt.client as mqtt
 import threading
+
+import paho.mqtt.client as mqtt
 from pymongo import ReturnDocument
+
+from service.CapabilityInstance import *
 
 
 class ServiceCapabilityManager(threading.Thread):

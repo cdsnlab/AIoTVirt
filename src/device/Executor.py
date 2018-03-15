@@ -2,7 +2,9 @@
 # -*- coding: utf-8 -*-
 
 import docker
+
 from util.Logger import Logger
+
 
 def startService(name):
     logger = Logger()

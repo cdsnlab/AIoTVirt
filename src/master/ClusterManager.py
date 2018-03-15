@@ -2,7 +2,9 @@
 # -*- coding: utf-8 -*-
 
 import paho.mqtt.client as mqtt
+
 from util.Logger import Logger
+
 
 def startService(config, serviceInstance):
     # The callback for when the client receives a CONNACK response from the server.

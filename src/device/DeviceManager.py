@@ -1,11 +1,14 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-from service.ServiceInstance import *
-import device.Executor as Executor
-import paho.mqtt.client as mqtt
 import threading
+
+import paho.mqtt.client as mqtt
+
+from device.Executor import *
+from service.ServiceInstance import *
 from util.Logger import Logger
+
 
 class DeviceManager(object):
     # The callback for when the client receives a CONNACK response from the server.

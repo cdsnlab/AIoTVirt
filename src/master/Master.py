@@ -1,9 +1,11 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-from master.ServiceManager import *
-from master.RestServer import *
 import configparser
+
+from master.ServiceManager import *
+
+from master.RestServer import *
 
 
 class Master(object):

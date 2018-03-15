@@ -2,8 +2,9 @@
 # -*- coding: utf-8 -*-
 
 from pymongo import MongoClient
-import paho.mqtt.client as mqtt
+
 from util.Logger import Logger
+
 
 class DBManager(object):
     def __init__(self, mongo, collection):
