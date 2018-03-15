@@ -6,32 +6,27 @@ import json
 class CapabilityInstance(object):
     def __init__(self, payload):
         jsonObject = json.loads(payload)
+        self.node = jsonObject['node']
         self.name = jsonObject['name']
-        self.type = jsonObject['type']
-        self.requestTime = jsonObject['requestTime']
-        self.parameter = jsonObject['parameter']
-        self.requirement = jsonObject['requirement']
+        self.updateTime = jsonObject['updateTime']
+        self.value = jsonObject['value']
 
         print("------------Capability--------------")
-        print("Name: "+self.name)
-        print("Type: "+self.type)
-        print("RequestTime: "+str(self.requestTime))
-        print("Parameter: "+str(self.parameter))
-        print("Requirement: "+str(self.requirement))
+        print("Node: " + self.node)
+        print("Name: " + self.name)
+        print("UpdateTime: " + str(self.updateTime))
+        print("Value: " + str(self.value))
         print("-----------------------------------")
 
-    def getRequirement(self):
-        return self.requirement
 
-    def getParameter(self):
-        return self.parameter
+    def getNode(self):
+        return self.node
 
     def getName(self):
         return self.name
 
-    def getType(self):
-        return self.type
+    def getUpdateTime(self):
+        return self.updateTime
 
-    def getRequestTime(self):
-        return self.requestTime
-
+    def getValue(self):
+        return self.value

@@ -6,14 +6,18 @@ from device.DeviceManager import DeviceManager
 from util.Logger import Logger
 
 class Device(object):
-    def __init__(self, ip, port, configFile):
+    def __init__(self, configFile):
         logger = Logger()
-        config = configparser.ConfigParser()
-        config.read(configFile)
+        self.config = configparser.ConfigParser()
+        self.config.read(configFile)
 
-        self.name = config['Information']['name']
-        self.location = float(config['Parameter']['location'])
-        self.resolution = float(config['Parameter']['resolution'])
+        self.name = self.config['Information']['name']
+
+        ip = self.config['MQTT']['ip']
+        port = int(self.config['MQTT']['port'])
+
+        self.location = float(self.config['Parameter']['location'])
+        self.resolution = float(self.config['Parameter']['resolution'])
         logger.debug("Start Device!")
         deviceManager = DeviceManager(ip, port, self.name)
 

@@ -2,8 +2,10 @@
 # -*- coding: utf-8 -*-
 
 from service.CapabilityInstance import *
+from master.DBManager import *
 import paho.mqtt.client as mqtt
 import threading
+from pymongo import ReturnDocument
 
 
 class ServiceCapabilityManager(threading.Thread):
@@ -21,11 +23,13 @@ class ServiceCapabilityManager(threading.Thread):
         t = threading.Thread(target=self.updateCapability(capabilityInstance))
         t.start()
 
-    def __init__(self, ip, port, serviceInstance):
+    def __init__(self, config, serviceInstance):
         threading.Thread.__init__(self)
+        self.nodes = []
         self.serviceInstance = serviceInstance
-        self.ip = ip
-        self.port = port
+        self.ip = config["MQTT"]["ip"]
+        self.port = int(config["MQTT"]["port"])
+        self.resourceDB = DBManager(config["Mongo"], "resource")
 
     def run(self):
         client = mqtt.Client()
@@ -35,4 +39,31 @@ class ServiceCapabilityManager(threading.Thread):
         client.loop_forever()
 
     def updateCapability(self, capabilityInstance):
-        pass
+        self.resourceDB.getCollection().find_one_and_update(
+            {
+                'node': capabilityInstance.getNode(),
+                'name': capabilityInstance.getName()
+            },
+            {'$set': {
+                'value': capabilityInstance.getValue()
+            }}, return_document=ReturnDocument.AFTER
+        )
+
+    def availableNodes(self):
+        self.nodes = [
+            {
+                'name': 'node01',
+                'DetectionAccuracy': 100,
+                'VideoComposition': 80,
+                'VideoContinuity': 70,
+                'DetectionSpeed': 90
+            },
+            {
+                'name': 'node02',
+                'DetectionAccuracy': 90,
+                'VideoComposition': 40,
+                'VideoContinuity': 70,
+                'DetectionSpeed': 90
+            }
+        ]
+        return self.nodes
