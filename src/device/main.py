@@ -2,4 +2,4 @@
 # -*- coding: utf-8 -*-
 from device.Device import Device
 
-device = Device('../../resource/config/camera.ini')
+device = Device('resource/config/camera.ini')

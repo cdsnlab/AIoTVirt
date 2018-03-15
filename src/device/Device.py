@@ -3,7 +3,7 @@
 
 import configparser
 
-from device import DeviceManager
+from device.DeviceManager import DeviceManager
 from util.Logger import Logger
 
 
@@ -14,6 +14,8 @@ class Device(object):
         self.config.read(configFile)
 
         self.name = self.config['Information']['name']
+
+        print(self.name)
 
         ip = self.config['MQTT']['ip']
         port = int(self.config['MQTT']['port'])
