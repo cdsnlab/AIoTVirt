@@ -5,7 +5,7 @@ import threading
 
 import paho.mqtt.client as mqtt
 
-from device.Executor import *
+import device.Executor as Executor
 from service.ServiceInstance import *
 from util.Logger import Logger
 
