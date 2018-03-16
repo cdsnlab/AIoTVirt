@@ -30,6 +30,7 @@ class DeviceManager(object):
             pass
 
     def __init__(self, ip, port, dev):
+        self.containers = []
         self.logger = Logger()
         self.serviceList = []
 
@@ -48,4 +49,14 @@ class DeviceManager(object):
 
     def startService(self, serviceInstance):
         serviceName = serviceInstance.getName()
-        Executor.startService(serviceName)
+        self.containers.append({
+            'serviceName': serviceInstance.getName(),
+            'container': Executor.startService(serviceName)
+        })
+
+    def stopService(self, serviceInstance):
+        serviceName = serviceInstance.getName()
+        self.containers.append({
+            'serviceName': serviceInstance.getName(),
+            'container': Executor.startService(serviceName)
+        })
