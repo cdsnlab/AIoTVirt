@@ -6,6 +6,7 @@ import threading
 import paho.mqtt.client as mqtt
 from pymongo import ReturnDocument
 
+from master.DBManager import *
 from service.CapabilityInstance import *
 
 
