@@ -49,9 +49,11 @@ class DeviceManager(object):
 
     def startService(self, serviceInstance):
         serviceName = serviceInstance.getName()
+        container = Executor.startService(serviceName)
+        self.logger.debug(container.logs())
         self.containers.append({
             'serviceName': serviceInstance.getName(),
-            'container': Executor.startService(serviceName)
+            'container': container
         })
 
     def stopService(self, serviceInstance):
