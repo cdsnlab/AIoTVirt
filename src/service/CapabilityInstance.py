@@ -6,6 +6,7 @@ import json
 class CapabilityInstance(object):
     def __init__(self, payload):
         jsonObject = json.loads(payload)
+        print(jsonObject)
         self.node = jsonObject['node']
         self.name = jsonObject['name']
         self.updateTime = jsonObject['updateTime']

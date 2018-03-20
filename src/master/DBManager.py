@@ -10,7 +10,7 @@ class DBManager(object):
     def __init__(self, mongo, collection):
         self.logger = Logger()
         self.logger.debug("INTO DBManager!")
-        client = MongoClient("mongodb://"+mongo["username"]+":"+mongo["password"]+"@"+mongo["ip"]+":"+mongo["port"])
+        client = MongoClient(mongo["ip"], username=mongo["username"], password=mongo["password"], authSource=mongo["database"], authMechanism='SCRAM-SHA-1')
         database = client.get_database(mongo["database"])
         self.collection = database.get_collection(collection)
 

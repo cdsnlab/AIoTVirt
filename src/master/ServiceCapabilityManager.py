@@ -16,7 +16,7 @@ class ServiceCapabilityManager(threading.Thread):
         print("Connected with result code " + str(rc))
         # Subscribing in on_connect() means that if we lose the connection and
         # reconnect then subscriptions will be renewed.
-        client.subscribe("capability/"+self.serviceInstance.getName()+"/")
+        client.subscribe("capability/"+self.serviceInstance.getName()+"/#")
 
     # The callback for when a PUBLISH message is received from the server.
     def on_message(self, client, userdata, msg):
@@ -41,14 +41,15 @@ class ServiceCapabilityManager(threading.Thread):
         client.loop_forever()
 
     def updateCapability(self, capabilityInstance):
-        self.resourceDB.getCollection().find_one_and_update(
-            {
-                'node': capabilityInstance.getNode(),
-                'name': capabilityInstance.getName()
-            },
-            {'$set': {
-                'value': capabilityInstance.getValue()
-            }}, return_document=ReturnDocument.AFTER
+        self.resourceDB.getCollection().update({
+            "node": capabilityInstance.getNode(),
+            "name": capabilityInstance.getName()
+            },{
+            "$set": {
+                "value": capabilityInstance.getValue(),
+                "updateTime": capabilityInstance.getUpdateTime()
+            }},
+            upsert=True
         )
 
     def availableNodes(self):
