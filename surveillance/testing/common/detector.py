@@ -92,13 +92,17 @@ class HOGDetector(BaseDetector):
 
 	def detect(self):
 		(rects, weights) = self.det(self.frame)
+		# print(len(rects))
 		rects = np.array([[x, y, x + w, y + h] for (x, y, w, h) in rects])
 		pick = non_max_suppression(rects, probs=None, overlapThresh=0.65)
-		self.objRects = pick
+		# if not pick:
+		# 	pick = []
+		return pick
 
 	def display_frame(self, objRects):
 		# Clone the frame so that we can draw on it
 		frameClone = self.frame.copy()
+		# print(len(frameClone))
 		# Loop over the object bounding boxes and draw them
 		for (xA, yA, xB, yB) in objRects:
 			cv2.rectangle(frameClone, (xA, yA), (xB, yB), (0, 255, 0), 2)
