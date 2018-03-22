@@ -1,0 +1,6 @@
+pip install paho-mqtt
+pip install pymongo
+pip install docker
+pip install Flask
+pip install flask-restful
+pip install xmltodict

@@ -1,17 +1,17 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-from service.ServiceInstance import *
-from master.ServiceCapabilityManager import *
 import master.ClusterManager as ClusterManager
-import master.ResourceSelector as ResourceSelector
 import master.RequirementInterpreter as RequirementInterpreter
+import master.ResourceSelector as ResourceSelector
 import paho.mqtt.client as mqtt
-from pymongo import MongoClient
-import threading
+
+from master.ServiceCapabilityManager import *
+from service.ServiceInstance import *
 from util.Logger import Logger
 
-class ServiceManager(object):
+
+class ServiceManager(threading.Thread):
     # The callback for when the client receives a CONNACK response from the server.
     def on_connect(self, client, mosq, userdata, rc):
         print("Connected with result code " + str(rc))
@@ -27,18 +27,22 @@ class ServiceManager(object):
         self.serviceList.append([t, serviceInstance])
         t.start()
 
-    def __init__(self, ip, port):
+    def __init__(self, config):
+        threading.Thread.__init__(self)
         self.logger = Logger()
         self.serviceList = []
 
-        self.ip = ip
-        self.port = port
+        self.config = config
 
+        self.ip = config['MQTT']['ip']
+        self.port = int(config['MQTT']['port'])
+
+    def run(self):
         client = mqtt.Client()
         client.on_connect = self.on_connect
         client.on_message = self.on_message
 
-        client.connect(ip, port, 60)
+        client.connect(self.ip, self.port, 60)
         client.loop_forever()
 
     #
@@ -63,7 +67,7 @@ class ServiceManager(object):
 
         # SELECT
         serviceInstance.setInterpretedRequirement(interpretedRequirement)
-        serviceCapabilityManager = ServiceCapabilityManager(self.ip, self.port, serviceInstance)
+        serviceCapabilityManager = ServiceCapabilityManager(self.config, serviceInstance)
         serviceCapabilityManager.start()
         selectedNodes = ResourceSelector.selectNodes(serviceInstance, serviceCapabilityManager)
 
@@ -72,7 +76,7 @@ class ServiceManager(object):
 
         # START
         serviceInstance.setSeledtedNodes(selectedNodes)
-        ClusterManager.startService(self.ip, self.port, serviceInstance)
+        ClusterManager.startService(self.config, serviceInstance)
 
 
 

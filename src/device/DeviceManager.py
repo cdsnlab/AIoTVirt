@@ -1,11 +1,14 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-from service.ServiceInstance import *
-import device.Executor as Executor
-import paho.mqtt.client as mqtt
 import threading
+
+import paho.mqtt.client as mqtt
+
+import device.Executor as Executor
+from service.ServiceInstance import *
 from util.Logger import Logger
+
 
 class DeviceManager(object):
     # The callback for when the client receives a CONNACK response from the server.
@@ -27,6 +30,7 @@ class DeviceManager(object):
             pass
 
     def __init__(self, ip, port, dev):
+        self.containers = []
         self.logger = Logger()
         self.serviceList = []
 
@@ -45,4 +49,16 @@ class DeviceManager(object):
 
     def startService(self, serviceInstance):
         serviceName = serviceInstance.getName()
-        Executor.startService(serviceName)
+        container = Executor.startService(serviceName)
+        self.logger.debug(container.logs())
+        self.containers.append({
+            'serviceName': serviceInstance.getName(),
+            'container': container
+        })
+
+    def stopService(self, serviceInstance):
+        serviceName = serviceInstance.getName()
+        self.containers.append({
+            'serviceName': serviceInstance.getName(),
+            'container': Executor.startService(serviceName)
+        })
