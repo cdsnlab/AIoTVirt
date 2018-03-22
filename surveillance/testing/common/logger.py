@@ -5,22 +5,23 @@ import subprocess
 class Logger(object):
 	"""docstring for Logger"""
 
-	def __init__(self, width, log=False, **kw):
+	def __init__(self, log=False, **kw):
 		super().__init__(**kw)
 		self.log = log
-		self.width = width
+		# self.width = width
 
 		# Open the log file for this process
 		if log:
 			logName = self.name + "Det_stats"
 			self.f = open(logName, "a+")
 
-	def start(self):
+	# def start(self):
+	def preprocessing(self):
 		self.frame_count = 0
 		self.start = datetime.now()
 
-	# def postprocessing(self):
-	def approx_fps(self):
+	# def approx_fps(self):
+	def postprocessing(self):
 		"""Approximate fps and optionaly write ps output to log"""
 		self.frame_count += 1
 		time_elapsed = (datetime.now() - self.start).total_seconds()

@@ -16,7 +16,7 @@ class NetClient(TCPReq, CascadeDetector, Logger):
 
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--method", "-m", default="np_compress",
+parser.add_argument("--method", "-m", default="jpg_compress",
 					choices=["np_compress", "jpg_compress", "png_compress", "pickle"],
 					help="method to send the objects")
 parser.add_argument("--display", "-s", action="store_true", help="set this flag to display the video")

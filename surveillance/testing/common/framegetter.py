@@ -10,7 +10,7 @@ import io
 class LocalReq(object):
 	"""docstring for LocalReq"""
 
-	def __init__(self, videostream, width=300, **kw):
+	def __init__(self, width=300, **kw):
 		super().__init__(**kw)
 		# Initialize the camera and grab a reference to the raw camera capture
 		# WARNING: VideoStream doesn't originally accept a "name" parameter. See
@@ -46,7 +46,7 @@ class PipeReq(object):
 class TCPReq(object):
 	"""Get frames from camera node"""
 
-	def __init__(self, method, hostname="raspberrypi", port=5666, width=300, **kw):
+	def __init__(self, method, hostname="raspberrypi", port=5000, width=300, **kw):
 		super().__init__(**kw)
 		# Get server addr through dns (I am assuming they are in the same network). If
 		# we know the nodes' addr ahead we can also harcode them...
@@ -54,7 +54,7 @@ class TCPReq(object):
 		addr = socket.gethostbyname(hostname)
 		soc = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 		soc.connect((addr, port))
-		self.soc = soc
+		self.conn = soc
 		self.method = method
 		self.width = width
 
@@ -91,4 +91,4 @@ class TCPReq(object):
 			raise Exception("Method not implemented yet!")
 
 	def close(self):
-		self.soc.close()
+		self.conn.close()

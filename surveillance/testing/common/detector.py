@@ -11,13 +11,15 @@ class BaseDetector(object):
 	def __init__(self, name, display, **kw):
 		super().__init__(**kw)
 		self.display = display
+		self.run_loop = True
+		self.name = name
 		prctl.set_name("cdsn_" + name + "Det")
 
-	def preprocessing(self):
-		pass
+	# def preprocessing(self):
+	# 	pass
 
-	def postprocessing(self):
-		pass
+	# def postprocessing(self):
+	# 	pass
 
 	def run(self):
 		# Start the timer and frame count for FPS approximation
