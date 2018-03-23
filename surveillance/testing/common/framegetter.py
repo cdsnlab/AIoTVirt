@@ -7,7 +7,22 @@ import cv2
 import io
 
 
-class LocalReq(object):
+class VideoReq(object):
+	"""docstring for VideoReq"""
+
+	def __init__(self, video, width=300, **kw):
+		super().__init__(**kw)
+		self.camera = cv2.VideoCapture(video)
+
+	def request_frame(self):
+		res, frame = self.camera.read()
+		if res:
+			frame = imutils.resize(frame, width=300)
+			self.frame = frame
+		return res
+
+
+class StreamReq(object):
 	"""docstring for LocalReq"""
 
 	def __init__(self, width=300, **kw):
@@ -24,6 +39,7 @@ class LocalReq(object):
 	def request_frame(self):
 		frame = self.videostream.read()
 		self.frame = imutils.resize(frame, width=300)
+		return True
 
 
 class PipeReq(object):
@@ -38,6 +54,7 @@ class PipeReq(object):
 		# Request the frame to the main process and wait for it
 		self.conn.send(("get", self.width.value))
 		self.frame = self.conn.recv()
+		return True
 
 	def close(self):
 		self.conn.close()
@@ -89,6 +106,7 @@ class TCPReq(object):
 		else:
 			print("Method not implemented yet!")
 			raise Exception("Method not implemented yet!")
+		return True
 
 	def close(self):
 		self.conn.close()

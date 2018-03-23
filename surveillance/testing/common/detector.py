@@ -29,7 +29,10 @@ class BaseDetector(object):
 		try:
 			while self.run_loop:
 				# Get a frame from camera thread
-				self.request_frame()
+				res = self.request_frame()
+				# Break if frammed couldn'tbe grabbed
+				if not res:
+					break
 				# Get the box corners for the detected objects
 				objRects = self.detect()
 				# If desired, display the frame
