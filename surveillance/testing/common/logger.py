@@ -10,13 +10,13 @@ class Logger(object):
 		self.log = log
 		# self.width = width
 
-		# Open the log file for this process
-		if log:
-			logName = self.name + "Det_stats"
-			self.f = open(logName, "a+")
 
 	# def start(self):
 	def preprocessing(self):
+		# Open the log file for this process
+		if self.log:
+			logName = self.name + "Det_stats"
+			self.f = open(logName, "a+")
 		self.frame_count = 0
 		self.start = datetime.now()
 
@@ -37,7 +37,7 @@ class Logger(object):
 
 	def write_log(self, fps):
 		# We need to manually write linebreaks
-		self.f.write(str(self.width.value) + "\n")
+		self.f.write(str(self.width) + "\n")
 		self.f.write(str(fps) + "\n")
 		# cmd = "ps -eL -o comm,cmd,psr,pcpu | grep py >> " + logName
 

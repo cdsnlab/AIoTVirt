@@ -13,6 +13,7 @@ class VideoReq(object):
 	def __init__(self, video, width=300, **kw):
 		super().__init__(**kw)
 		self.camera = cv2.VideoCapture(video)
+		self.width = width
 
 	def request_frame(self):
 		res, frame = self.camera.read()

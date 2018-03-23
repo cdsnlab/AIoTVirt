@@ -26,6 +26,6 @@ print("Frame-transmission compression method: {0}".format(args.method))
 print("Display: {0}".format(args.display))
 print("Starting detection algorithm")
 faceDetector = NetClient(width=FRAME_WIDTH, method=args.method, port=SERVER_PORT,
-						name="Face", log=args.log, display=args.display)
+						name="Pedestrian", log=args.log, display=args.display)
 
 faceDetector.run()
