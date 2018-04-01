@@ -10,5 +10,8 @@ def startService(name):
     logger = Logger()
     logger.debug("Start Service!")
     client = docker.from_env()
-    container = client.containers.run("face_detection:latest", detach=True)
-    return container
+    service = client.services.create("face_detection", name=name, networks=["swarm_net"],
+                           mounts=["/home/pi/video/face_detection/container:/data:rw"], mode="replicated",
+                           constraints=["node.labels.name==node03"])
+    #container = client.containers.run("face_detection:latest", detach=True)
+    return service

@@ -22,18 +22,18 @@ def selectNodes(serviceInstance, serviceCapabilityManager):
 
     nodes = serviceCapabilityManager.availableNodes()
 
-    result = []
+    result = {}
 
-    for node in nodes:
-        result.append({'name': node['name'], 'utility': 0})
+    for node, cap in nodes.items():
+        result[node] = 0
         for attr, req in requirements.items():
-            resource = node[attr]
+            resource = cap[attr]
             if( resource < req["required"] ):
                 logger.debug("Lack of resource ["+attr+"], required: ["+str(req["required"])+"], available: ["+str(resource)+"]")
-                result.pop()
+                result.pop(node)
                 break
             else:
-                result[-1]['utility'] += resource * req['weight']
+                result[node] += resource * req['weight']
 
     logger.debug(result)
 

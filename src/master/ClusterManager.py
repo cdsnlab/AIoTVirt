@@ -1,16 +1,37 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-import paho.mqtt.client as mqtt
-
+import docker
 from util.Logger import Logger
 
 
-def startService(config, serviceInstance):
+def startService(serviceInstance):
     # The callback for when the client receives a CONNACK response from the server.
     logger = Logger()
-    client = mqtt.Client()
-    client.connect(config["MQTT"]["ip"], int(config["MQTT"]["port"]), 60)
-    msg = serviceInstance.makePayload()
-    logger.debug(msg)
-    client.publish("device/start", msg)
+    service = serviceInstance.getName()
+    nodes = serviceInstance.getSelectedNodes()
+    client = docker.from_env()
+
+    for node in nodes:
+        n = client.nodes.list(filters={'name': node})[0]
+        config = {'Availability': 'active',
+                 'Name': node,
+                 'Labels': {service: 'true'}
+                }
+        if node == 'node01':
+            config['Role'] = 'manager'
+        else:
+            config['Role'] = 'worker'
+        n.update()
+        n.reload()
+
+    client.services.create("face_detection", name=service, networks=["swarm_net"],
+                                     mounts=["/home/pi/video/face_detection/container:/data:rw"], mode="global",
+                                     constraints=["node.labels."+service+"==true"])
+
+def stopService(serviceInstance):
+    # The callback for when the client receives a CONNACK response from the server.
+    logger = Logger()
+    service = serviceInstance.getName()
+    client = docker.from_env()
+    client.services.get(service).remove()

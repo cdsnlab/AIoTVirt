@@ -47,6 +47,7 @@ class DeviceManager(object):
         client.connect(ip, port, 60)
         client.loop_forever()
 
+    '''
     def startService(self, serviceInstance):
         serviceName = serviceInstance.getName()
         container = Executor.startService(serviceName)
@@ -62,3 +63,5 @@ class DeviceManager(object):
             'serviceName': serviceInstance.getName(),
             'container': Executor.startService(serviceName)
         })
+    '''
+

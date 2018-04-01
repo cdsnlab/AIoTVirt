@@ -21,6 +21,9 @@ class ServiceManager(object):
         self.serviceList.append([t, serviceInstance])
         t.start()
 
+    def stopService(self, serviceInstance):
+        ClusterManager.stopService(serviceInstance)
+
     #
     # Service Management
     #
@@ -52,7 +55,7 @@ class ServiceManager(object):
 
         # START
         serviceInstance.setSeledtedNodes(selectedNodes)
-        ClusterManager.startService(self.config, serviceInstance)
+        ClusterManager.startService(serviceInstance)
 
 
 

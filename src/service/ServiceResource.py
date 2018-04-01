@@ -13,9 +13,15 @@ class ServiceResource(Resource):
     def __init__(self, serviceManager):
         self.serviceManager = serviceManager
 
-    def post(self):
+    def post(self, command):
         xml = request.data
         Logger().debug(xml)
         result = json.dumps(xmltodict.parse(xml)['service'])
         Logger().debug(result)
-        self.serviceManager.receiveService(ServiceInstance(result))
+
+        if command == "start":
+            self.serviceManager.receiveService(ServiceInstance(result))
+        elif command == "stop":
+            self.serviceManager.stopService(ServiceInstance(result))
+        else:
+            pass

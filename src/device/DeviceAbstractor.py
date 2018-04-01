@@ -1,31 +1,41 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-import paho.mqtt.client as mqtt
+import time
+import json
+import paho.mqtt.publish as publish
 
 from util.Logger import Logger
 
+from device.Profiler import Profiler
+
 
 class DeviceAbstractor(object):
-
-    # The callback for when the client receives a CONNACK response from the server.
-    def on_connect(self, client, mosq, userdata, rc):
-        print("Connected with result code " + str(rc))
-        # Subscribing in on_connect() means that if we lose the connection and
-        # reconnect then subscriptions will be renewed.
-
-    def __init__(self, ip, port):
+    def __init__(self, ip, port, duration, name):
         self.logger = Logger()
         self.logger.debug("INTO DeviceAbstractor!")
         self.capabilityList = []
 
         self.ip = ip
         self.port = port
+        self.duration = duration
+        self.name = name
 
-        self.client = mqtt.Client()
-        self.client.on_connect = self.on_connect
+        self.profiler = Profiler(self.duration)
 
-        self.client.connect(ip, port, 60)
+        self.doProfiling()
 
-    def changeCapability(self, cap, val):
-        self.client.publish('capability/'+cap)
+    def doProfiling(self):
+        while True:
+            speed, accuracy = self.profiler.read_image()
+
+            payload = {'node': self.name, 'name': 'DetectionSpeed', 'value': speed,
+                       'updateTime': int(round(time.time() * 1000)), }
+            publish.single("capability/CriminalTracking/DetectionSpeed", json.dumps(payload), hostname=self.ip,
+                           port=self.port)
+
+            payload = {'node': self.name, 'name': 'DetectionAccuracy', 'value': accuracy,
+                       'updateTime': int(round(time.time() * 1000)), }
+            publish.single("capability/CriminalTracking/DetectionAccuracy", json.dumps(payload), hostname=self.ip,
+                           port=self.port)
+

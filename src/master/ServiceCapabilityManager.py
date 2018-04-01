@@ -27,6 +27,7 @@ class ServiceCapabilityManager(threading.Thread):
 
     def __init__(self, config, serviceInstance):
         threading.Thread.__init__(self)
+        self.logger = Logger()
         self.nodes = []
         self.serviceInstance = serviceInstance
         self.ip = config["MQTT"]["ip"]
@@ -53,20 +54,18 @@ class ServiceCapabilityManager(threading.Thread):
         )
 
     def availableNodes(self):
-        self.nodes = [
-            {
-                'name': 'node01',
-                'DetectionAccuracy': 100,
-                'VideoComposition': 80,
-                'VideoContinuity': 70,
-                'DetectionSpeed': 90
-            },
-            {
-                'name': 'node02',
-                'DetectionAccuracy': 90,
-                'VideoComposition': 40,
-                'VideoContinuity': 70,
-                'DetectionSpeed': 90
-            }
-        ]
+        self.nodes = []
+        capabilities = self.serviceInstance.getInterpretedRequirement().keys()
+        self.logger.debug(capabilities)
+        for cap in capabilities:
+            docs = self.resourceDB.getCollection().find({
+                "name": cap
+            })
+            for doc in docs:
+                node = doc["node"]
+                if not node in self.nodes:
+                    self.nodes[node] = {}
+                self.nodes[node][cap] = doc["value"]
+
+        self.logger.debug(self.nodes)
         return self.nodes
