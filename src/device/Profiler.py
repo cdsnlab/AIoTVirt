@@ -96,14 +96,15 @@ class Profiler:
 
     def profile_frame(self, frame):
         num = 0
+        accuracy = 0.0
+        speed = time.time()
         while True:
             if num != 0:
                 frame = self.read_frame()
             faceCascade = cv2.CascadeClassifier("resource/cascade_file/haarcascade_profileface.xml")
             #           faceCascade = cv2.CascadeClassifier("./cascade_file/lbpcascade_frontalface_improved.xml")
             bodyCascade = cv2.CascadeClassifier("resource/cascade_file/haarcascade_upperbody.xml")
-            accuracy = 0.0
-            speed = time.time()
+
             faceNum, faceImage = self.detect_faces(faceCascade, frame, scaleFactor=1.1)
             bodyNum, bodyImage = self.detect_faces(bodyCascade, faceImage, scaleFactor=1.1, color=(255, 0, 0))
 
@@ -117,9 +118,10 @@ class Profiler:
                 img += '_no'
             if (bodyNum > 0):
                 img += '_yes.jpg'
-                accuracy += bodyNum
             else:
                 img += '_no.jpg'
+
+            accuracy += bodyNum
             cv2.imwrite(img, bodyImage)
 
             self.logger.debug("{} faces and {} bodies are detected!".format(faceNum, bodyNum))
@@ -132,6 +134,8 @@ class Profiler:
                 else:
                     self.logger.debug("{} speed and {} accuracy for {} frames".format(speed, accuracy, self.duration))
                     self.send_profile(speed, accuracy)
+                    accuracy = 0.0
+                    speed = time.time()
 
             # cv2.imshow("image", cvImage)
 
