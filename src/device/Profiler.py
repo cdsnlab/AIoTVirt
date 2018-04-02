@@ -10,9 +10,11 @@ from sys import argv
 import numpy as np
 import paho.mqtt.client as mqtt
 import paho.mqtt.publish as publish
+from util.Logger import Logger
 
 class Profiler:
     def __init__(self, duration):
+        self.logger = Logger()
         # create server socket
         self.client_socket = socket.socket()
         self.client_socket.connect(('localhost', 1234))
@@ -48,7 +50,7 @@ class Profiler:
 
     def monitor_frame(self, min_area=500):
         isDetected = False
-        num = 0
+        firstFrame = None
         # loop over the frames of the video
         while True:
             # grab the current frame and initialize the occupied/unoccupied
@@ -72,8 +74,7 @@ class Profiler:
             # dilate the thresholded image to fill in holes, then find contours
             # on thresholded image
             thresh = cv2.dilate(thresh, None, iterations=2)
-            (cnts, _) = cv2.findContours(thresh.copy(), cv2.RETR_EXTERNAL,
-                                         cv2.CHAIN_APPROX_SIMPLE)
+            (_, cnts, _) = cv2.findContours(thresh.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
             # loop over the contours
             for c in cnts:
@@ -89,6 +90,7 @@ class Profiler:
                 isDetected = True
                 break
             if isDetected:
+                self.logger.debug("Some objects are detected!")
                 self.profile_frame(frame)
                 isDetected = False
 
@@ -120,12 +122,15 @@ class Profiler:
                 img += '_no.jpg'
             cv2.imwrite(img, bodyImage)
 
+            self.logger.debug("{} faces and {} bodies are detected!".format(faceNum, bodyNum))
+
             if num%self.duration == self.duration-1:
                 speed = time.time()-speed
                 accuracy = accuracy/self.duration*100.0
                 if accuracy == 0.0:
                     break
                 else:
+                    self.logger.debug("{} speed and {} accuracy for {} frames".format(speed, accuracy, self.duration))
                     self.send_profile(speed, accuracy)
 
             # cv2.imshow("image", cvImage)
