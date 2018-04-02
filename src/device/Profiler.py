@@ -99,9 +99,9 @@ class Profiler:
         while True:
             if num != 0:
                 frame = self.read_frame()
-            faceCascade = cv2.CascadeClassifier("./cascade_file/haarcascade_profileface.xml")
+            faceCascade = cv2.CascadeClassifier("resource/cascade_file/haarcascade_profileface.xml")
             #           faceCascade = cv2.CascadeClassifier("./cascade_file/lbpcascade_frontalface_improved.xml")
-            bodyCascade = cv2.CascadeClassifier("./cascade_file/haarcascade_upperbody.xml")
+            bodyCascade = cv2.CascadeClassifier("resource/cascade_file/haarcascade_upperbody.xml")
             accuracy = 0.0
             speed = time.time()
             faceNum, faceImage = self.detect_faces(faceCascade, frame, scaleFactor=1.1)
