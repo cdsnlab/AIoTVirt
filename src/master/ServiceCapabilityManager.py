@@ -54,7 +54,7 @@ class ServiceCapabilityManager(threading.Thread):
         )
 
     def availableNodes(self):
-        self.nodes = []
+        self.nodes = {}
         capabilities = self.serviceInstance.getInterpretedRequirement().keys()
         self.logger.debug(capabilities)
         for cap in capabilities:

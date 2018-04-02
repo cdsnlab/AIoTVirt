@@ -22,11 +22,11 @@ def startService(serviceInstance):
             config['Role'] = 'manager'
         else:
             config['Role'] = 'worker'
-        n.update()
+        n.update(config)
         n.reload()
 
-    client.services.create("face_detection", name=service, networks=["swarm_net"],
-                                     mounts=["/home/pi/video/face_detection/container:/data:rw"], mode="global",
+    client.services.create("service", name=service, networks=["swarm_net"],
+                                     mounts=["/home/pi/video/tracking/container:/data:rw"], mode="global",
                                      constraints=["node.labels."+service+"==true"])
 
 def stopService(serviceInstance):
