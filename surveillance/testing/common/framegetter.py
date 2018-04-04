@@ -19,8 +19,13 @@ class VideoReq(object):
 		res, frame = self.camera.read()
 		if res:
 			frame = imutils.resize(frame, width=300)
-			self.frame = frame
-		return res
+			# self.frame = frame
+		# return res
+		return frame
+
+	def close(self):
+		self.camera.release()
+		cv2.destroyAllWindows()
 
 
 class StreamReq(object):
@@ -39,8 +44,9 @@ class StreamReq(object):
 
 	def request_frame(self):
 		frame = self.videostream.read()
-		self.frame = imutils.resize(frame, width=300)
-		return True
+		# self.frame = imutils.resize(frame, width=300)
+		frame = imutils.resize(frame, width=300)
+		return frame
 
 
 class PipeReq(object):
@@ -54,8 +60,9 @@ class PipeReq(object):
 	def request_frame(self):
 		# Request the frame to the main process and wait for it
 		self.conn.send(("get", self.width.value))
-		self.frame = self.conn.recv()
-		return True
+		# self.frame = self.conn.recv()
+		frame = self.conn.recv()
+		return frame
 
 	def close(self):
 		self.conn.close()
@@ -97,17 +104,19 @@ class TCPReq(object):
 			# print(type(data))
 		# print(len(data))
 		if self.method == "np_compress":
-			self.frame = np.load(io.BytesIO(data))["frame"]
+			# self.frame = np.load(io.BytesIO(data))["frame"]
+			frame = np.load(io.BytesIO(data))["frame"]
 		elif self.method == "jpg_compress":
 			data = np.fromstring(data, dtype="uint8")
 			# self.frame = cv2.imdecode(data, int(cv2.LOAD_IMAGE_COLOR))
 			# Flag > 0 indicates decoding as a colour image. (We implement
 			# converting to gray in another step)
-			self.frame = cv2.imdecode(data, 1)
+			# self.frame = cv2.imdecode(data, 1)
+			frame = cv2.imdecode(data, 1)
 		else:
 			print("Method not implemented yet!")
 			raise Exception("Method not implemented yet!")
-		return True
+		return frame
 
 	def close(self):
 		self.conn.close()

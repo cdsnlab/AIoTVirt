@@ -6,6 +6,7 @@ import argparse
 
 FRAME_WIDTH = 300
 
+
 class NetClient(VideoReq, HOGDetector, Logger):
 	def __init__(self, **kw):
 		super().__init__(**kw)

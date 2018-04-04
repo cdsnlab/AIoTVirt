@@ -1,5 +1,6 @@
 from imutils.object_detection import non_max_suppression
 from functools import partial
+from datetime import datetime
 import numpy as np
 import prctl
 import cv2
@@ -8,12 +9,15 @@ import cv2
 class BaseDetector(object):
 	"""docstring for BaseDetector"""
 
-	def __init__(self, name, display, **kw):
+	def __init__(self, name="", display=False, **kw):
 		super().__init__(**kw)
 		self.display = display
 		self.run_loop = True
 		self.name = name
 		prctl.set_name("cdsn_" + name + "Det")
+		# Start the timer and frame count for FPS approximation
+		self.frame_count = 0
+		self.start = datetime.now()
 
 	# def preprocessing(self):
 	# 	pass
@@ -21,33 +25,51 @@ class BaseDetector(object):
 	# def postprocessing(self):
 	# 	pass
 
+	# def postprocessing(self):
+	def approx_fps(self):
+		"""Approximate fps (processing speed)"""
+		self.frame_count += 1
+		time_elapsed = (datetime.now() - self.start).total_seconds()
+		if time_elapsed >= 1:
+			fps = self.frame_count / time_elapsed
+			print("Approximate FPS: {0:.2f}".format(fps), end="\r")
+			self.frame_count = 0
+			self.start = datetime.now()
+			# Log data if desired (one might need to manually delete
+			# previously created log files)
+			# UPDATE: Logger is now a separate module
+			# if self.log:
+			# 	self.write_log(fps, self.width)
+
+	# @deprecation.deprecated(details="User should write his own run loop")
 	def run(self):
-		# Start the timer and frame count for FPS approximation
-		self.preprocessing()
-		# self.frame_count = 0
-		# self.start = datetime.now()
+		# WARNING: You should be writing your own run loop. This one is kept for
+		# compatibility with the examples I was testing with
+
 		try:
 			while self.run_loop:
 				# Get a frame from camera thread
-				res = self.request_frame()
+				self.frame = self.request_frame()
 				# Break if frammed couldn'tbe grabbed
-				if not res:
+				if not self.frame:
 					break
 				# Get the box corners for the detected objects
 				objRects = self.detect()
 				# If desired, display the frame
 				if self.display:
-					self.display_frame(objRects)
+					res = self.display_frame(objRects)
+					if not res:
+						self.run_loop = False
 				# Approximate FPS
-				self.postprocessing()
-				# self.approx_fps()
+				self.approx_fps()
 		except Exception as e:
 			print(e)
 			self.run_loop = False
 		finally:
-			self.conn.close()
-			if self.log:
-				self.f.close()
+			super().close()
+			# self.conn.close()
+			# if self.log:
+			# 	self.f.close()
 
 
 class CascadeDetector(BaseDetector):
@@ -80,7 +102,9 @@ class CascadeDetector(BaseDetector):
 
 		# If the 'q' key is pressed, stop the loop
 		if cv2.waitKey(1) & 0xFF == ord("q"):
-			self.run_loop = False
+			# self.run_loop = False
+			return False
+		return True
 
 
 class HOGDetector(BaseDetector):
@@ -116,4 +140,6 @@ class HOGDetector(BaseDetector):
 
 		# If the 'q' key is pressed, stop the loop
 		if cv2.waitKey(1) & 0xFF == ord("q"):
-			self.run_loop = False
+			# self.run_loop = False
+			return False
+		return True

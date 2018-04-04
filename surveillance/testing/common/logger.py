@@ -1,44 +1,25 @@
-from datetime import datetime
 import subprocess
 
 
 class Logger(object):
 	"""docstring for Logger"""
 
-	def __init__(self, log=False, **kw):
+	def __init__(self, name="", log=True, **kw):
 		super().__init__(**kw)
-		self.log = log
+		# self.log = log
+		# if self.log:
+		self.name = name
+		logName = self.name + "Det_stats.log"
+		self.f = open(logName, "a+")
+		self.log_registry = []
 		# self.width = width
 
-
-	# def start(self):
-	def preprocessing(self):
-		# Open the log file for this process
-		if self.log:
-			logName = self.name + "Det_stats"
-			self.f = open(logName, "a+")
-		self.frame_count = 0
-		self.start = datetime.now()
-
-	# def approx_fps(self):
-	def postprocessing(self):
-		"""Approximate fps and optionaly write ps output to log"""
-		self.frame_count += 1
-		time_elapsed = (datetime.now() - self.start).total_seconds()
-		if time_elapsed >= 1:
-			fps = self.frame_count / time_elapsed
-			print("Approximate FPS: {0:.2f}".format(fps), end="\r")
-			self.frame_count = 0
-			self.start = datetime.now()
-			# Log data if desired (one might need to manually delete
-			# previously created log files)
-			if self.log:
-				self.write_log(fps)
-
-	def write_log(self, fps):
+	def log_cpu(self, fps, width):
 		# We need to manually write linebreaks
-		self.f.write(str(self.width) + "\n")
-		self.f.write(str(fps) + "\n")
+		# self.f.write(str(width) + "\n")
+		# self.f.write(str(fps) + "\n")
+		log_msg = str(width) + "\n"
+		log_msg += str(fps) + "\n"
 		# cmd = "ps -eL -o comm,cmd,psr,pcpu | grep py >> " + logName
 
 		# We might search for "cdsn_..:" instead of 'py' but
@@ -47,10 +28,23 @@ class Logger(object):
 		p = subprocess.Popen(cmd, stdout=subprocess.PIPE, shell=True)
 		# get output of previously executed command
 		out, err = p.communicate()
-		self.f.write(out.decode())
+		# self.f.write(out.decode())
+		log_msg += out.decode()
 		# Write separating empty newline
-		self.f.write("\n")
+		log_msg += "\n"
+		# self.f.write("\n")
+		return log_msg
+
+	def register(self, func):
+		"""Each function registered should return a string that will be
+		written to the log"""
+		# TODO: Check that func is a callable and that it returns a string
+		self.log_registry.append(func)
+
+	def write_log(self, **kw):
+		for func in self.log_registry:
+			msg = func(**kw)
+			self.f.write(msg)
 
 	def close(self):
-		if self.log:
-			self.f.close()
+		self.f.close()
