@@ -1,3 +1,4 @@
+from imutils.video import FileVideoStream
 from imutils.video import VideoStream
 import numpy as np
 import imutils
@@ -10,21 +11,36 @@ import io
 class VideoReq(object):
 	"""docstring for VideoReq"""
 
-	def __init__(self, video, width=300, **kw):
+	def __init__(self, video, width=300, resize=True, **kw):
 		super().__init__(**kw)
-		self.camera = cv2.VideoCapture(video)
+		# As opposed to cv2.VideoCapture, FileVIdeoStream uses a thread to start
+		# decoding the frames and keeps them in a queue. This way we can improve
+		# the processing time...
+		# self.camera = cv2.VideoCapture(video)
+		self.camera = FileVideoStream(video, queueSize=20).start()
+		time.sleep(1)
 		self.width = width
+		self.resize = resize
 
 	def request_frame(self):
-		res, frame = self.camera.read()
-		if res:
-			frame = imutils.resize(frame, width=300)
-			# self.frame = frame
-		# return res
+		# res, frame = self.camera.read()
+		# if res:
+		# 	frame = imutils.resize(frame, self.width)
+		if self.camera.more():
+			frame = self.camera.read()
+			# Particularly with this class we might be skipping frames (to
+			# simulate a live video feed), if that's the case, it is a waste of
+			# computatinal time to resize the frames and we should do it
+			# somewhere else
+			if self.resize:
+				imutils.resize(frame, self.width)
+		else:
+			frame = None
 		return frame
 
 	def close(self):
-		self.camera.release()
+		# self.camera.release()
+		self.camera.stop()
 		cv2.destroyAllWindows()
 
 
