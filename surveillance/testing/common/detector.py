@@ -35,6 +35,9 @@ class BaseDetector(object):
 			print("Approximate FPS: {0:.2f}".format(fps), end="\r")
 			self.frame_count = 0
 			self.start = datetime.now()
+			return fps
+		else:
+			return None
 			# Log data if desired (one might need to manually delete
 			# previously created log files)
 			# UPDATE: Logger is now a separate module

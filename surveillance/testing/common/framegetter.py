@@ -8,16 +8,47 @@ import cv2
 import io
 
 
+class FileVideoStreamLoop(FileVideoStream):
+	"""Allow Looping when having reached the end of a file"""
+
+	def __init__(self, path, queueSize=128, loop=False):
+		super().__init__(path, queueSize)
+		self.loop = loop
+
+	def update(self):
+		# keep looping infinitely
+		while True:
+			# if the thread indicator variable is set, stop the
+			# thread
+			if self.stopped:
+				return
+			# otherwise, ensure the queue has room in it
+			if not self.Q.full():
+				# read the next frame from the file
+				(grabbed, frame) = self.stream.read()
+				# if the `grabbed` boolean is `False`, then we have
+				# reached the end of the video file
+				if not grabbed:
+					if not self.loop:
+						self.stop()
+						return
+					else:
+						self.stream.set(cv2.CAP_PROP_POS_MSEC, 0)
+						continue
+				# add the frame to the queue
+				self.Q.put(frame)
+
+
 class VideoReq(object):
 	"""docstring for VideoReq"""
 
-	def __init__(self, video, width=300, resize=True, **kw):
+	def __init__(self, video, width=300, resize=True, loop=False, **kw):
 		super().__init__(**kw)
 		# As opposed to cv2.VideoCapture, FileVIdeoStream uses a thread to start
 		# decoding the frames and keeps them in a queue. This way we can improve
 		# the processing time...
 		# self.camera = cv2.VideoCapture(video)
-		self.camera = FileVideoStream(video, queueSize=20).start()
+		self.camera = FileVideoStreamLoop(video, queueSize=60, loop=loop).start()
 		time.sleep(1)
 		self.width = width
 		self.resize = resize
@@ -61,7 +92,7 @@ class StreamReq(object):
 	def request_frame(self):
 		frame = self.videostream.read()
 		# self.frame = imutils.resize(frame, width=300)
-		frame = imutils.resize(frame, width=300)
+		frame = imutils.resize(frame, self.width)
 		return frame
 
 
@@ -87,7 +118,7 @@ class PipeReq(object):
 class TCPReq(object):
 	"""Get frames from camera node"""
 
-	def __init__(self, method, hostname="raspberrypi", port=5000, width=300, **kw):
+	def __init__(self, method="jpg_compress", hostname="raspberrypi", port=5000, width=300, **kw):
 		super().__init__(**kw)
 		# Get server addr through dns (I am assuming they are in the same network). If
 		# we know the nodes' addr ahead we can also harcode them...
@@ -98,6 +129,7 @@ class TCPReq(object):
 		self.conn = soc
 		self.method = method
 		self.width = width
+		self.breceived = 0
 
 	def request_frame(self):
 		msg = "GET," + str(self.width) + "," + self.method
@@ -118,6 +150,7 @@ class TCPReq(object):
 			data += buff
 			buff = self.conn.recv(8192)
 			# print(type(data))
+		self.breceived += len(data)
 		# print(len(data))
 		if self.method == "np_compress":
 			# self.frame = np.load(io.BytesIO(data))["frame"]
