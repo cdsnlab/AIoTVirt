@@ -1,4 +1,5 @@
 from common.detector import HOGDetector
+from common.framegetter import StreamReq
 from common.framegetter import VideoReq
 from common.logger import Logger
 import argparse
@@ -7,7 +8,7 @@ import argparse
 FRAME_WIDTH = 300
 
 
-class NetClient(VideoReq, HOGDetector, Logger):
+class NetClient(StreamReq, HOGDetector, Logger):
 	def __init__(self, **kw):
 		super().__init__(**kw)
 
@@ -19,7 +20,7 @@ parser.add_argument("--log", "-l", action="store_true", help="set this flag to l
 args = parser.parse_args()
 
 print("Starting detection algorithm")
-pedestrianDetector = NetClient(name="Person", width=FRAME_WIDTH, video=args.video,
+pedestrianDetector = NetClient(name="Person", width=FRAME_WIDTH,
 								log=args.log, display=args.display)
 
 pedestrianDetector.run()

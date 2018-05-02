@@ -4,11 +4,11 @@ from common.streamer import TCPStreamer
 from common.logger import Logger
 from contextlib import suppress
 from datetime import datetime
-from math import floor
-from time import sleep
+# from math import floor
+# from time import sleep
 import argparse
 import asyncio
-import imutils
+# import imutils
 # import cv2
 
 parser = argparse.ArgumentParser()
@@ -22,11 +22,11 @@ args = parser.parse_args()
 
 # req = VideoReq(video=args.video, resize=False)
 # detector = HOGDetector(scaleFactor=args.scale, winStride=args.winstride)
-logger = Logger()
+logger = Logger("streamer")
 
 # The new logger logs all of the "registered" functions. In this case a simple
 # line stating the frame number and the number of objects detected
-logger.register(lambda bsent, **kw: str(bsent))
+logger.register(lambda bsent, **kw: str(bsent), logfile="bw.log")
 # logger.register(lambda frame, detected: str(frame) + "," + str(detected))
 # logger.register(logger.log_cpu)
 
@@ -47,7 +47,7 @@ interval = 1
 async def log(interval):
 	while True:
 		try:
-			data = {"bsent": streamer.bytes_sent, "width": width}
+			data = {"bsent": streamer.bytes_sent}
 			logger.write_log(data)
 			streamer.bytes_sent = 0
 			await asyncio.sleep(interval)

@@ -1,19 +1,21 @@
 import subprocess
+# import os
 
 
 class Logger(object):
 	"""docstring for Logger"""
 
-	def __init__(self, name, log=True, mod="w+", **kw):
+	def __init__(self, name="", log=True, mod="w+", **kw):
 		super().__init__(**kw)
 		# self.log = log
 		# if self.log:
 		self.name = name
+		self.mod = mod
 		logName = self.name + ".log"
 		self.f = open(logName, mod)
 		self.log_registry = []
 		self.line_sep = "\n"
-		self.block_sep = "\n"
+		# self.block_sep = "\n"
 		# self.width = width
 
 	def log_cpu(self, **kw):
@@ -43,13 +45,15 @@ class Logger(object):
 		# TODO: Check that func is a callable and that it returns a string
 		if logfile is None:
 			logfile = self.f
+		else:
+			logfile = open(logfile, self.mod)
 		self.log_registry.append((func, logfile))
 
 	def write_log(self, kw):
 		for func, logfile in self.log_registry:
 			msg = func(**kw)
 			logfile.write(msg + self.line_sep)
-		logfile.write(self.block_sep)
+		# logfile.write(self.block_sep)
 	# def register(self, name, func):
 	# 	"""Each function registered should return a string that will be
 	# 	written to the log"""

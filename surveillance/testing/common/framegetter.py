@@ -85,7 +85,7 @@ class StreamReq(object):
 		# the README in the  misc directory or simply remove the "name" kwarg for
 		# it to work normally
 		videostream = VideoStream(usePiCamera=True, name="CameraThread").start()
-		time.sleep(0.1)
+		time.sleep(1)
 		self.videostream = videostream
 		self.width = width
 

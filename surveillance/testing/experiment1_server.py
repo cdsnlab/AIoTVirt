@@ -1,34 +1,30 @@
 from common.streamer import TCPStreamer
 from imutils.video import VideoStream
-# from numpy import savez_compressed
-# from datetime import datetime
-# import argparse
-# import imutils
+from common.logger import Logger
 import asyncio
 import time
-# import cv2
-# import io
-# import socket
-
 
 # We could also use 127.0.0.1 or localhost' but in my experience, on Debian it
 # works most of the times better by putting 0.0.0.0 (all loopback addresses)
 ADDRESS = "0.0.0.0"
 PORT = 5000
 
-# server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-# server.bind((ADDRESS, PORT))
-# server.listen(2)
+logger = Logger("streamer")
 
-# while True:
-# 	conn, addr = server.accept()
-# 	msg = conn.recv(128)
-# 	msg = msg.decode()
-# 	if msg == "GET":
-# 		# Grab Frame
+# The new logger logs all of the "registered" functions. In this case a simple
+# line stating the frame number and the number of objects detected
+logger.register(lambda bsent, **kw: str(bsent), logfile="bw.log")
 
-# 		conn.send(frame)
-
+# async def log(interval):
+# 	while True:
+# 		try:
+# 			data = {"bsent": streamer.bytes_sent}
+# 			logger.write_log(data)
+# 			streamer.bytes_sent = 0
+# 			await asyncio.sleep(interval)
+# 		except asyncio.CancelledError:
+# 			# break
+# 			raise
 
 videostream = VideoStream(usePiCamera=True, name="CameraThread").start()
 time.sleep(0.1)

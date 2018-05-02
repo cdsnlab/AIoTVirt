@@ -1,6 +1,7 @@
 from imutils.object_detection import non_max_suppression
 from functools import partial
 from datetime import datetime
+from time import sleep
 import numpy as np
 import prctl
 import cv2
@@ -51,13 +52,18 @@ class BaseDetector(object):
 
 		try:
 			while self.run_loop:
+				# t0 = datetime.now()
 				# Get a frame from camera thread
 				self.frame = self.request_frame()
+				# t1 = datetime.now()
+				# print("Req time: {0}".format((t1 - t0).total_seconds()))
 				# Break if frammed couldn'tbe grabbed
 				if self.frame is None:
 					break
 				# Get the box corners for the detected objects
 				objRects = self.detect()
+				# t2 = datetime.now()
+				# print("Obj Det Time: {0}".format((t2 - t1).total_seconds()))
 				# If desired, display the frame
 				if self.display:
 					res = self.display_frame(objRects)
@@ -65,6 +71,9 @@ class BaseDetector(object):
 						self.run_loop = False
 				# Approximate FPS
 				self.approx_fps()
+				# t3 = datetime.now()
+				# print("Display/Stats Time: {0}".format((t3 - t2).total_seconds()))
+				# sleep(1)
 		except Exception as e:
 			print(e)
 			self.run_loop = False
