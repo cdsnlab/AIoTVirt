@@ -1,27 +1,31 @@
 from common.detector import CascadeDetector
 from common.detector import HOGDetector
+from contextlib import suppress
 from datetime import datetime
 from math import ceil
-import pandas as pd
+# import pandas as pd
 import numpy as np
 import argparse
 import asyncio
+import logging
 import imutils
 # import socket
 import struct
+import sys
 import cv2
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--img", "-i", default="/media/dv/784A74A44A746134/Users/Nicho/Pictures/Starnberg.jpg")
+parser.add_argument("--debug", action="store_true", help="Show extra information")
+parser.add_argument("--show-only", action="store_true",
+					help="Show the images that would be sent without actually sending them and then exit")
+parser.add_argument("--img", "-i", default="../resources/testImages/Starnberg.jpg")
 parser.add_argument("--descriptor", help="path to cascade descriptor",
-					default="../resources/cascades/haarcascade_frontalcatface.xml", type=str)
+					default="../resources/cascades/haarcascade_frontalface_default.xml", type=str)
 parser.add_argument("--detector", choices=["hog", "cascade"], default="cascade", help="type of detector")
 parser.add_argument("--scale", "-s", help="Scale Factor", default=1.1, type=float)
 parser.add_argument("--winstride", "-w", help="Window Stride", default=(4, 4), type=tuple)
 parser.add_argument("--display", "-d", action="store_true",
 					help="Set flag to display frame on screen")
-parser.add_argument("--local-port", default=3000)
-parser.add_argument("--host", help="DNS hostname", type=str, default="raspberrypi2")
 parser.add_argument("--ip", help="Destination IP ",
 					default="0.0.0.0")
 parser.add_argument("-p",
@@ -32,6 +36,12 @@ parser.add_argument("-p",
 					type=int)
 args = parser.parse_args()
 
+if args.debug:
+	level = logging.DEBUG
+else:
+	level = logging.INFO
+logging.basicConfig(level=level)
+
 DATAGRAM_PAYLOAD_SIZE = 512
 dtypes = {"IMG": 0, "TEXT": 1}
 
@@ -39,82 +49,138 @@ dtypes = {"IMG": 0, "TEXT": 1}
 class ConnManager(asyncio.Protocol):
 	"""docstring for ConnManager"""
 
-	def __init__(self, queue):
+	def __init__(self, queue, stop_ack_flag):
+		self.stop_ack_flag = stop_ack_flag
 		self.queue = queue
+		asyncio.ensure_future(self.stop_ack())
+		# self.command_list = ["start", "stop"]
 
 	def connection_made(self, transport):
 		# Print information to easily see if connections are arriving
-		print("conn made")
+		logging.info("Manager connected")
 		name = transport.get_extra_info("peername")
-		print("Succesfull connection to host {0}".format(name))
+		logging.info("Succesfull connection to host {0}".format(name))
 		# The transport is basically the socket object wrapped inside asyncio
-		# self.transport = transport
+		self.transport = transport
 
 	def data_received(self, data):
+		logging.debug("Manager received '{}'".format(data))
 		cmd = data.decode()
-		if cmd == "start":
-			self.queue.put("start")
-		elif cmd == "stop":
-			self.queue.put("stop")
-		else:
-			print("[Error] Command not recognized: {0}".format(cmd))
+		asyncio.ensure_future(self.send_command(cmd))
+
+	async def send_command(self, cmd):
+		try:
+			# if cmd not in self.command_list:
+			# 	logging.error("Command not recognized: {}".format(cmd))
+			# logging.info("ConnManager received command '{}'".format(cmd))
+			await self.queue.put(cmd)
+		except asyncio.CancelledError:
+			raise
+
+	async def stop_ack(self):
+		try:
+			while True:
+				await self.stop_ack_flag.wait()
+				logging.debug("ConnManager: Sending stop ACK")
+				self.stop_ack_flag.clear()
+				self.transport.write("stop ACK".upper().encode())
+		except asyncio.CancelledError:
+			raise
 
 
 class UDPStreamer(asyncio.DatagramProtocol):
 	"""docstring for UDPStreamer"""
 
-	def __init__(self, queue):
+	def __init__(self, queue, stop_ack_flag, img_data):
+		self.stop_ack_flag = stop_ack_flag
+		self.img_data = img_data
 		self.queue = queue
 		self.run = False
 		self._ready = asyncio.Event()
 		self._start = asyncio.Event()
 		asyncio.ensure_future(self._await_command())
 
-	# def datagram_received(self, data, addr):
-	# 	asyncio.ensure_future(send_img_data(payload))
+	def connection_made(self, transport):
+		# Print information to easily see if connections are arriving
+		logging.info("UDP Streamer started")
+		# The transport is basically the socket object wrapped inside asyncio
+		self.transport = transport
+		self._ready.set()
+
+	def connection_lost(self, exc):
+		logging.info('The server closed the connection')
+		logging.warning("This is the end of the program but I don't know how to exit cleanly... Please pres ctrl c ;)")
+		# I guess it's not the cleanest way to exit but well...
+		# raise KeyboardInterrupt
 
 	async def _await_command(self):
-		await self._ready.wait()
-		print("[Info] Awaiting for commands...")
-		while True:
-			cmd = await self.queue.get()
-			if cmd == "start":
-				payload = ""
-				self.run = True
-				self._start.set()
-				asyncio.ensure_future(self.send_img_data(payload))
-			elif cmd == "stop":
-				self.run = False
-				self._start.clear()
-			else:
-				print("[Error] Command not recognized {0}".format(cmd))
+		try:
+			await self._ready.wait()
+			while True:
+				logging.debug("Awaiting for commands...")
+				cmd = await self.queue.get()
+				logging.debug("UDPStreamer received command '{}'".format(cmd))
+				if cmd.startswith("start"):
+					try:
+						cmd, dtype = cmd.split(",")
+					except ValueError:
+						logging.error("Couldn't interpret command: {}".format(cmd))
+						continue
+					logging.info("Start received. Sending img data...")
+					payload = self.img_data[dtype]
+					self.run = True
+					self._start.set()
+					asyncio.ensure_future(self.send_img_data(payload))
+				elif cmd == "stop":
+					logging.info("Stop received. Sending will halt.")
+					self.run = False
+					self.stop_ack_flag.set()
+					self._start.clear()
+				else:
+					logging.error("[Error] Command not recognized {0}".format(cmd))
+		except asyncio.CancelledError:
+			raise
 
 	async def send_img_data(self, payload):
-		while True:
+		try:
 			if not self._start.is_set():
-				self._start.wait()
-			# Calculate how many datagrams we will need to send the image
-			num_datagrams = ceil(len(payload) / DATAGRAM_PAYLOAD_SIZE)
-			print("num datagrams: {}".format(num_datagrams))
-			dtype = dtypes["IMG"]
-			# The last datagram will most probably be smaller than the rest so send it
-			# separately
-			for seq in range(num_datagrams - 1):
-				if self.run:
-					start_idx = seq * DATAGRAM_PAYLOAD_SIZE
-					end_idx = (seq + 1) * DATAGRAM_PAYLOAD_SIZE
-					fmt = "<BI{}s".format(DATAGRAM_PAYLOAD_SIZE)
-					dgram_payload = struct.pack(fmt, dtype, seq, payload[start_idx:end_idx])
-					self.transport.sendto(dgram_payload, (args.ip, args.dest_port))
-				else:
+				await self._start.wait()
+			while True:
+				if not self.run:
 					break
-			else:
-				seq = num_datagrams - 1
-				start_idx = seq * DATAGRAM_PAYLOAD_SIZE
-				dgram_payload = struct.pack("<BI{0}s".format(len(payload)), dtype, seq, payload[start_idx:])
-				if self.run:
-					self.transport.sendto(dgram_payload, (args.ip, args.dest_port))
-					self.transport.sendto("END".encode(), (args.ip, args.dest_port))
+				# Calculate how many datagrams we will need to send the image
+				num_datagrams = ceil(len(payload) / DATAGRAM_PAYLOAD_SIZE)
+				logging.debug("num datagrams: {}".format(num_datagrams))
+				dtype = dtypes["IMG"]
+				# The last datagram will most probably be smaller than the rest so send it
+				# separately
+				for seq in range(num_datagrams - 1):
+					if self.run and len(payload) > 0:
+						start_idx = seq * DATAGRAM_PAYLOAD_SIZE
+						end_idx = (seq + 1) * DATAGRAM_PAYLOAD_SIZE
+						fmt = "<BI{}s".format(DATAGRAM_PAYLOAD_SIZE)
+						dgram_payload = struct.pack(fmt, dtype, seq, payload[start_idx:end_idx])
+						self.transport.sendto(dgram_payload, (args.ip, args.dest_port))
+						await asyncio.sleep(0)
+					else:
+						break
+				else:
+					seq = num_datagrams - 1
+					start_idx = seq * DATAGRAM_PAYLOAD_SIZE
+					dgram_payload = payload[start_idx:]
+					# logging.debug("last package size: {0}. start idx: {1}. Seq {2}".format(len(dgram_payload), start_idx, seq))
+					dgram_payload = struct.pack("<BI{0}s".format(len(dgram_payload)), dtype, seq, dgram_payload)
+					if self.run:
+						self.transport.sendto(dgram_payload, (args.ip, args.dest_port))
+						await asyncio.sleep(0)
+						self.transport.sendto("END".encode(), (args.ip, args.dest_port))
+						await asyncio.sleep(0)
+		except asyncio.CancelledError:
+			self.transport.abort()
+			raise
+
+	# async def send_dgram(self, payload):
+	# 	self.transport.write(payload)
 
 
 if args.detector == "hog":
@@ -155,7 +221,7 @@ if args.display:
 	# cv2.waitKey(0)
 img_data = cv2.imencode(".jpg", frame,
 						[int(cv2.IMWRITE_JPEG_QUALITY), 95])[1].tostring()
-print("Uncompressed size: {0}".format(len(img_data)))
+logging.debug("Uncompressed size: {0}".format(len(img_data)))
 
 # I had problems when creating an image using np.zeros. With zeros_like it
 # works as expected so I assume the error was due to data type
@@ -165,53 +231,55 @@ t0 = datetime.now()
 # copy time was in the order of magnitude of 100 micro seconds so I think it
 # wouldn't really affect performance since we are aiming at ~10fps which
 # implies 100ms
+cropped = None
 for (fX, fY, fW, fH) in objRects:
 	cropped = frame[fY: fY + fH, fX:fX + fW]
 	frameClone[fY: fY + fH, fX:fX + fW] = cropped
 # cropped = frame[fY: fY + fH, fX:fX + fW]
 ellapsed = datetime.now() - t0
-print("Time for copying ROI: {0}".format(ellapsed.total_seconds()))
+logging.debug("Time for copying ROI: {0}".format(ellapsed.total_seconds()))
 # cv2.imshow("img", frameClone)
 # # If the 'q' key is pressed, stop the loop
 # cv2.waitKey(0)
 # Compress the images
 masked_data = cv2.imencode(".jpg", frameClone,
 						[int(cv2.IMWRITE_JPEG_QUALITY), 95])[1].tostring()
-print("Masked size: {0}".format(len(masked_data)))
+logging.debug("Masked size: {0}".format(len(masked_data)))
 cropped_data = cv2.imencode(".jpg", cropped,
-						[int(cv2.IMWRITE_JPEG_QUALITY), 95])[1].tostring()
-print("Compressed size: {0}".format(len(cropped_data)))
-t_measurements = []
-# for data in [img_data, masked_data, cropped_data]:
-# 	col = []
-# 	for i in range(50):
-# 		t0 = datetime.now()
-# 		send_img(data)
-# 		res = soc.recv(32)
-# 		if res.decode() == "ACK":
-# 			t_send = datetime.now() - t0
-# 			print("send time: {t}".format(t=t_send.total_seconds()))
-# 			col.append(t_send)
-# 		else:
-# 			print("Didn't receive ACK")
-# 	t_measurements.append(col)
-# 	# send_img(masked_data)
-# 	# send_img(cropped_data)
+							[int(cv2.IMWRITE_JPEG_QUALITY), 95])[1].tostring() \
+				if cropped is not None else masked_data
+logging.debug("Compressed size: {0}".format(len(cropped_data)))
+data_dict = {"full": img_data, "masked": masked_data, "cropped": cropped_data}
 
-d = {"t_full": t_measurements[0], "t_masked": t_measurements[1], "t_cropped": t_measurements[2]}
-df = pd.DataFrame(data=d)
-df.to_csv("experiment2.csv")
+if args.show_only:
+	cv2.imshow("img", frameClone)
+	# # If the 'q' key is pressed, stop the loop
+	# cv2.waitKey(0)
+	cv2.imshow("img", frameClone)
+	# # If the 'q' key is pressed, stop the loop
+	# cv2.waitKey(0)
+	cv2.imshow("img", frameClone)
+	# # If the 'q' key is pressed, stop the loop
+	cv2.waitKey(0)
+	cv2.destroyAllWindows()
+	sys.exit(0)
 
-SERVER_ADDRESS = "0.0.0.0"
-SERVER_PORT = 5000
+SERVER_ADDRESS = args.ip
+SERVER_PORT = args.dest_port
 
 loop = asyncio.get_event_loop()
+# queue = asyncio.Queue()
 queue = asyncio.Queue(loop=loop)
-# Create the server based on our protocol
-udp_coro = loop.create_datagram_endpoint(lambda: UDPStreamer(queue), remote_addr=(SERVER_ADDRESS, SERVER_PORT))
-tcp_coro = loop.create_connection(lambda: ConnManager(queue), SERVER_ADDRESS, SERVER_PORT)
-udp_server = loop.run_until_complete(udp_coro)
-tcp_server = loop.run_until_complete(tcp_coro)
+stop_ack_flag = asyncio.Event()
+try:
+	# Create the server based on our protocol
+	udp_coro = loop.create_datagram_endpoint(lambda: UDPStreamer(queue, stop_ack_flag, data_dict), remote_addr=(SERVER_ADDRESS, SERVER_PORT))
+	tcp_coro = loop.create_connection(lambda: ConnManager(queue, stop_ack_flag), SERVER_ADDRESS, SERVER_PORT)
+	udp_server = loop.run_until_complete(udp_coro)
+	tcp_server = loop.run_until_complete(tcp_coro)
+except ConnectionRefusedError:
+	logging.error("Connection refused by server. It might be shutdown.")
+	sys.exit(0)
 
 try:
 	loop.run_forever()
@@ -220,9 +288,13 @@ except KeyboardInterrupt:
 except Exception as e:
 	raise e
 
-# server.close()
-udp_server.close()
-tcp_server.close()
-loop.run_until_complete(udp_server.wait_closed())
-loop.run_until_complete(tcp_server.wait_closed())
+udp_server[0].close()
+tcp_server[0].close()
+pending = asyncio.Task.all_tasks()
+for task in pending:
+	task.cancel()
+	# Now we should await task to execute it's cancellation.
+	# Cancelled task raises asyncio.CancelledError that we can suppress:
+	with suppress(asyncio.CancelledError):
+		loop.run_until_complete(task)
 loop.close()
