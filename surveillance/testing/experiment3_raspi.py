@@ -47,16 +47,21 @@ dtypes = {"IMG": 0, "TEXT": 1}
 
 
 class ConnManager(asyncio.Protocol):
-	"""docstring for ConnManager"""
+	"""Handle TCP commands from the controller"""
 
 	def __init__(self, queue, stop_ack_flag):
 		self.stop_ack_flag = stop_ack_flag
 		self.queue = queue
+		# TODO: It might be even better to differentiate in the send_command
+		# function between the different commands and in case of stop await
+		# until it's done... But I don't know how to write an awaitable
+		# function. Will look into it later
 		asyncio.ensure_future(self.stop_ack())
 		# self.command_list = ["start", "stop"]
 
 	def connection_made(self, transport):
 		# Print information to easily see if connections are arriving
+		# This is the server's address
 		logging.info("Manager connected")
 		name = transport.get_extra_info("peername")
 		logging.info("Succesfull connection to host {0}".format(name))
@@ -64,6 +69,7 @@ class ConnManager(asyncio.Protocol):
 		self.transport = transport
 
 	def data_received(self, data):
+		"""Data received are commands/messages from the controller"""
 		logging.debug("Manager received '{}'".format(data))
 		cmd = data.decode()
 		asyncio.ensure_future(self.send_command(cmd))
@@ -73,16 +79,22 @@ class ConnManager(asyncio.Protocol):
 			# if cmd not in self.command_list:
 			# 	logging.error("Command not recognized: {}".format(cmd))
 			# logging.info("ConnManager received command '{}'".format(cmd))
+
+			# Send the received command to the UDPStreamer
 			await self.queue.put(cmd)
 		except asyncio.CancelledError:
 			raise
 
 	async def stop_ack(self):
+		"""Notify the controller we are stopping operations"""
 		try:
 			while True:
+				# Wait for the UDPStreamer to stop
 				await self.stop_ack_flag.wait()
 				logging.debug("ConnManager: Sending stop ACK")
+				# Reset the flag
 				self.stop_ack_flag.clear()
+				# Send ACK to the controller
 				self.transport.write("stop ACK".upper().encode())
 		except asyncio.CancelledError:
 			raise
@@ -98,6 +110,8 @@ class UDPStreamer(asyncio.DatagramProtocol):
 		self.run = False
 		self._ready = asyncio.Event()
 		self._start = asyncio.Event()
+		# We have to be able to react to ConnManager's commands even between
+		# sends so we make _await_command a separate coroutine
 		asyncio.ensure_future(self._await_command())
 
 	def connection_made(self, transport):
@@ -115,9 +129,11 @@ class UDPStreamer(asyncio.DatagramProtocol):
 
 	async def _await_command(self):
 		try:
+			# Wait until the transport has finished initialisation
 			await self._ready.wait()
 			while True:
 				logging.debug("Awaiting for commands...")
+				# ConnManager will send commands through the queue
 				cmd = await self.queue.get()
 				logging.debug("UDPStreamer received command '{}'".format(cmd))
 				if cmd.startswith("start"):
@@ -130,11 +146,16 @@ class UDPStreamer(asyncio.DatagramProtocol):
 					payload = self.img_data[dtype]
 					self.run = True
 					self._start.set()
+					# We want to keep listening for commands so we send in a
+					# separate coroutine
 					asyncio.ensure_future(self.send_img_data(payload))
 				elif cmd == "stop":
 					logging.info("Stop received. Sending will halt.")
+					# Set this flag so that the send coroutine breaks from the
+					# loop
 					self.run = False
 					self.stop_ack_flag.set()
+					# This flag might be unnecesary but anyway...
 					self._start.clear()
 				else:
 					logging.error("[Error] Command not recognized {0}".format(cmd))
@@ -174,7 +195,7 @@ class UDPStreamer(asyncio.DatagramProtocol):
 						self.transport.sendto(dgram_payload, (args.ip, args.dest_port))
 						await asyncio.sleep(0)
 						self.transport.sendto("END".encode(), (args.ip, args.dest_port))
-						await asyncio.sleep(0)
+						await asyncio.sleep(0.001)
 		except asyncio.CancelledError:
 			self.transport.abort()
 			raise
