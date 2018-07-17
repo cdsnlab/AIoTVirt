@@ -18,4 +18,6 @@ dos2unix install_opencv.sh
 ./install_dependency.sh
 ./install_opencv.sh
 
-3) 
+3) copy the video streaming source code
+
+3) run the video streaming.  
