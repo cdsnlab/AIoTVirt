@@ -19,6 +19,8 @@ sudo apt-get install libxvidcore-dev libx264-dev -y
 
 # GTK lib for GUI
 sudo apt-get install libgtk2.0-dev libgtk-3-dev -y
+sudo apt-get install libqtgui4 -y
+
 
 # extra dependency
 sudo apt-get install libatlas-base-dev gfortran -y
