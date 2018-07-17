@@ -22,6 +22,6 @@ dos2unix install_videostreaming_lib.sh
 ./install_opencv.sh
 ./ install_videostreaming_lib.sh
 
-3) copy the video streaming source code
-
-3) run the video streaming.  
+3) run the video streaming.
+cd surveillance/testing
+python3 netstreamer_test.py
