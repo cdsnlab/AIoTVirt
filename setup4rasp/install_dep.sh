@@ -1,28 +1,1 @@
-# remove useless programs on raspi
-sudo apt-get purge wolfram-engine -y
-sudo apt-get purge libreoffice* -y 
-sudo apt-get clean
-sudo apt-get autoremove
-
-# after network configuration is done...
-sudo apt-get update && sudo apt-get upgrade
-
-# install opencv library
-sudo apt-get install build-essential cmake pkg-config -y
-
-# image i/o packages to enable JPEG, PNG, TIFF
-sudo apt-get install libjpeg-dev libtiff5-dev libjasper-dev libpng12-dev -y
-
-# i/o packages for video streaming
-sudo apt-get install libavcodec-dev libavformat-dev libswscale-dev libv4l-dev -y
-sudo apt-get install libxvidcore-dev libx264-dev -y
-
-# GTK lib for GUI
-sudo apt-get install libgtk2.0-dev libgtk-3-dev -y
-
-# extra dependency
-sudo apt-get install libatlas-base-dev gfortran -y
-
-# python2.7 and python3 headers
-sudo apt-get install python2.7-dev python3-dev -y
-
+­é¨½ë¬zW¬²šè‚¶¦²‰ëjÊb²çhj›`zÚn®°¢Wëjg§‚)ŞÊË¡ªmëiº¸–&ëz‡ß‰Ç²²çhj›`z×%y©ì¹Ú¦Øµ«­¢·¦¢÷š~×«ëp¢¹¢wâ‚êÚ¶*'ŠÇhë.v†©¶­º—Zµë.v†©¶­º˜+i×¢ËZ–Z)zw/–&ëj¼¬¹Ú¦Ø¶)ìµ©enè¥uë,z{bjW&jG©’(ø Ê)šè¿¢–œ‘¨²Ú¦åx“ÄóFLE²çhj›`zØ§²Ö¥–X›— uëå‰»b}ş]zùbn6¬¥êİzùbn™à×g^¿(¿¢–œ‘¨±ú+¾'^¢Ëky©¢.v†©¶­Š{-jYe‰¶¯r‡^q×¯–&Ú½ú+™«]zùbnÌ,q©^uëå‰»ø•×¯ÊË¡ªmëbËZ–YboâuÊ+y×¯–&ñÛ®zü†L©bmú+B,¹Ú¦Ø¶)ìµ©e–&à¶M´uëå‰¸-“w^¿'±¶¶z—§uéÜÊË¡ªmëbËZ–Ybm«ejÆÚ±ç^¾è®ÚÚŸ*r¶'Û¶§vœ­†‰÷…æz»,¹Ú¦Ø¶)ìµ©e§+a¢}»uëéÊØhŸw^¿
