@@ -4,8 +4,14 @@ sudo apt-get purge libreoffice* -y
 sudo apt-get clean
 sudo apt-get autoremove
 
+
+
 # after network configuration is done...
 sudo apt-get update && sudo apt-get upgrade
+
+# generic libraries
+sudo apt-get install build-essential libcap-dev -y
+
 
 # install opencv library
 sudo apt-get install build-essential cmake pkg-config -y
