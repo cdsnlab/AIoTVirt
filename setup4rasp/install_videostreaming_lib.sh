@@ -7,6 +7,6 @@ sudo pip3 install python-prctl
 # this is due to a change in imutils codes for camera thread naming. 
 sudo su
 cd ../surveillance/misc
-cp pivideostream.py /usr/local/lib/python3.5/site-packages/imutils/video
-cp videostream.py /usr/local/lib/python3.5/site-packages/imutils/video
+cp pivideostream.py /usr/local/lib/python3.5/dist-packages/imutils/video
+cp videostream.py /usr/local/lib/python3.5/dist-packages/imutils/video
 exit
