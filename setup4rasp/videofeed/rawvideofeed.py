@@ -7,7 +7,7 @@ import picamera
 # Connect a client socket to my_server:8000 (change my_server to the
 # hostname of your server)
 client_socket = socket.socket()
-client_socket.connect(('143.248.53.143', 8000))
+client_socket.connect(('143.248.53.143', 5000))
 
 # Make a file-like object out of the connection
 connection = client_socket.makefile('wb')
@@ -23,6 +23,6 @@ try:
      camera.start_recording(connection, format='h264')
      camera.wait_recording(60)
      camera.stop_recording()
- finally:
+finally:
      connection.close()
      client_socket.close()
