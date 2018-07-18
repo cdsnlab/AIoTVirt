@@ -7,7 +7,8 @@ import picamera
 # Connect a client socket to my_server:8000 (change my_server to the
 # hostname of your server)
 client_socket = socket.socket()
-client_socket.connect(('143.248.53.143', 5000))
+# change the socket receive port for your use!
+client_socket.connect(('143.248.53.143', 40909))
 
 # Make a file-like object out of the connection
 connection = client_socket.makefile('wb')
