@@ -8,6 +8,7 @@ import picamera
 # hostname of your server)
 client_socket = socket.socket()
 # change the socket receive port for your use!
+# we use 40909 -> raspi09, 40808 -> raspi08, 40707 -> raspi07
 client_socket.connect(('143.248.53.143', 40909))
 
 # Make a file-like object out of the connection
