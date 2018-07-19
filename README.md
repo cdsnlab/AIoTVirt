@@ -14,6 +14,10 @@ Version: 3.5.3
 
 Library: paho-mqtt, pymongo, docker
 
+### FIles
+Initial raspberry pi install is under setup4rasp.
+Initial edge server install manual is under setup4edgeserver.
+
 ## MQTT Message Format
 
 ### Service request (Example)
