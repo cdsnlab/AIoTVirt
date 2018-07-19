@@ -14,13 +14,13 @@ sudo chmod 777 install_videostreaming_lib.sh
 sudo apt-get install tofrodos
 sudo ln -s /usr/bin/fromdos /usr/bin/dos2unix 
 
-dos2unix install_dep.sh
+dos2unix install_dependency.sh
 dos2unix install_opencv.sh
 dos2unix install_videostreaming_lib.sh
 
 ./install_dependency.sh
 ./install_opencv.sh
-./ install_videostreaming_lib.sh
+./install_videostreaming_lib.sh
 
 3) run the video streaming.
 cd surveillance/testing
