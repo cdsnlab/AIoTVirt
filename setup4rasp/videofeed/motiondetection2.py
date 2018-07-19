@@ -38,12 +38,14 @@ for f in camera.capture_continuous(rawCapture, format="bgr", use_video_port=True
 
 	frame = imutils.resize(frame, width=500)
 	# to detect brightness.
+	brightness = []
 	hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
-	#brightness = np.average(frame)
-	for x in range(0, len(hsv)):
-		for y in range(0, len(hsv[0])):
-			print(hsv[x, y][2])
-	# print(brightness)
+	for x in range(0, len(hsv)): # 500
+		for y in range(0, len(hsv[0])): # 500
+			brightness.append(hsv[x, y][2])
+	avgbri = sum(brightness) / float(len(brightness))
+	print (avgbri)
+	
 
 	# resize the frame, convert it to grayscale, and blur it
 	gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
