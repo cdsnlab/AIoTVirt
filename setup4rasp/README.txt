@@ -22,7 +22,7 @@ dos2unix install_videostreaming_lib.sh
 ./install_opencv.sh
 ./install_videostreaming_lib.sh
 
-3) run the video streaming.
+3) run the video streaming under either... 
 cd surveillance/testing
 python3 netstreamer_test.py
 or 
