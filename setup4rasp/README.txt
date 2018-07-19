@@ -1,12 +1,15 @@
-0) once stretch image is installed & network configuration is setup, do the following.
+Each folder contains...
+docker_related -> docker related (dockerfile, build files) codes.
+videofeed -> video streaming to edge server codes.
+
+
+
+=============================INSTALLING========================================
+
+1) once stretch image is installed & network configuration is setup, do the following.
 NOTE: network configuration is done manually along with port forwarding at the router. 
 
-1) copy the two files. 
-install_dependency.sh
-install_opencv.sh
-install_videostreaming_lib.sh
-
-note: read this blog for more information on dependency. 
+note: read this blog for more information on installing opencv & dependency libraries. 
 https://www.pyimagesearch.com/2017/09/04/raspbian-stretch-install-opencv-3-python-on-your-raspberry-pi/
 
 2) run the following codes to install opencv related libraries.
@@ -30,3 +33,5 @@ cd surveillance/testing
 python3 netstreamer_test.py
 or 
 cd videofeed/xxxx.py
+
+
