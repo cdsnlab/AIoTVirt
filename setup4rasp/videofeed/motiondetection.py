@@ -34,7 +34,7 @@ for f in camera.capture_continuous(rawCapture, format="bgr", use_video_port=True
 	# the timestamp and occupied/unoccupied text
 	frame = f.array
 	timestamp = datetime.datetime.now()
-	text = "Unoccupied"
+	text = "still"
 
 	# resize the frame, convert it to grayscale, and blur it
 	frame = imutils.resize(frame, width=500)
@@ -71,9 +71,9 @@ for f in camera.capture_continuous(rawCapture, format="bgr", use_video_port=True
 
 		# compute the bounding box for the contour, draw it on the frame,
 		# and update the text
-		(x, y, w, h) = cv2.boundingRect(c)
-		cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
-		text = "Occupied"
+		#(x, y, w, h) = cv2.boundingRect(c)
+		#cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
+		text = "movement detected"
 
 	# draw the text and timestamp on the frame
 	ts = timestamp.strftime("%A %d %B %Y %I:%M:%S%p")
