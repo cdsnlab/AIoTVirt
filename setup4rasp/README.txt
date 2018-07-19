@@ -25,3 +25,5 @@ dos2unix install_videostreaming_lib.sh
 3) run the video streaming.
 cd surveillance/testing
 python3 netstreamer_test.py
+or 
+cd videofeed/xxxx.py
