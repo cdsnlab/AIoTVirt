@@ -1,5 +1,6 @@
 {
 	"videofile": "../sampleVideo/cam131.avi",
 	"haarfrontalface": "../resources/cascades/haarcascade_frontalface_default.xml",
-	"haarfullbody": "../resources/cascades/haarcascade_fullbody.xml"
+	"haarfullbody": "../resources/cascades/haarcascade_fullbody.xml",
+	"outputformat": "output.avi"
 }
