@@ -21,7 +21,7 @@ vid = cv2.VideoCapture(conf["videofile"])
 vid_width = vid.get(cv2.CAP_PROP_FRAME_WIDTH)
 vid_height = vid.get(cv2.CAP_PROP_FRAME_HEIGHT)
 fourcc = cv2.VideoWriter_fourcc(*'MJPG')
-out = cv2.VideoWriter('output.avi',fourcc, 10.0, (int(vid_width),int(vid_height)))
+out = cv2.VideoWriter(conf["outputfile"],fourcc, 10.0, (int(vid_width),int(vid_height)))
 
 if(vid.isOpened()== False):
         print("error opening video stream or file")
