@@ -34,4 +34,13 @@ python3 netstreamer_test.py
 or 
 cd videofeed/xxxx.py
 
+==========================REDIS UPDATE NEEDED==================================
+wget http://download.redis.io/redis-stable.tar.gz 
+tar xvzf redis-stable.tar.gz
+cd redis-stable
+make
+sudo make install
+
+
+
 
