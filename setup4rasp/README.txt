@@ -17,6 +17,7 @@ sudo chmod 777 install_dependency.sh
 sudo chmod 777 install_opencv.sh
 sudo chmod 777 install_videostreaming_lib.sh
 
+
 sudo apt-get install tofrodos
 sudo ln -s /usr/bin/fromdos /usr/bin/dos2unix 
 
@@ -35,12 +36,10 @@ or
 cd videofeed/xxxx.py
 
 ==========================REDIS UPDATE NEEDED==================================
-wget http://download.redis.io/redis-stable.tar.gz 
-tar xvzf redis-stable.tar.gz
-cd redis-stable
-make
-sudo make install
 
+sudo chmod 777 install_redis.sh
+dos2unix install_redis.sh
+./install_redis.sh
 
 
 
