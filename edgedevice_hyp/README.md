@@ -1,1 +1,0 @@
-# ncsdk_container
