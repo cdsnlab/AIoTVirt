@@ -7,7 +7,7 @@ mkdir -p /home/$USER/workspace/redisdb
 
 run by 
 
-sudo docker run --name some-redis -d -p 6379:6379 -v /home/cdsn/workspace/redisdb:/data redis redis-server --appendonly yes
+sudo docker run --name some-redis -d --net=host -p 6379:6379 -v /home/cdsn/workspace/redisdb:/data redis redis-server --appendonly yes
 
 2. Run or build hyp
 

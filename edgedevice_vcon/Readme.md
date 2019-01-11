@@ -1,6 +1,6 @@
 run by 
 
-sudo docker run -it --name vcontest spencerjang/ncs_vcon /bin/bash
+sudo docker run --rm --net=host -it --name vcontest spencerjang/ncs_vcon /bin/bash
 
 or build it yourself by 
 
