@@ -244,7 +244,8 @@ def infer_image_fps( graph, img, frame, fps ):
 
     r.hmset(counter, save)
 #    r.sadd("myset",save)
-    print(save)
+    r.hgetall(counter)
+    #print(save)
     # need plots...! for multiple objects
     del(a)
 

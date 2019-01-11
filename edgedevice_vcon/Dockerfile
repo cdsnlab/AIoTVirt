@@ -14,7 +14,7 @@ RUN apt-get update \
 RUN sudo pip3 install psutil
 RUN sudo pip3 install redis
 
-ADD vcontainer/ /vcontainer
+ADD . /vcontainer
 WORKDIR /vcontainer
 
 
