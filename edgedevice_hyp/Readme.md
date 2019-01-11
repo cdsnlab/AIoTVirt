@@ -1,3 +1,8 @@
+0. create directories
+
+mkdir -p /home/$USER/workspace/redisdb
+
+
 1. Run redis 
 
 run by 
