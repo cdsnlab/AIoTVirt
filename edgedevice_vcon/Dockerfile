@@ -13,6 +13,7 @@ RUN apt-get update \
 	&& apt-get clean all
 RUN sudo pip3 install psutil
 RUN sudo pip3 install redis
+RUN sudo pip3 install paho-mqtt
 
 ADD . /vcontainer
 WORKDIR /vcontainer
