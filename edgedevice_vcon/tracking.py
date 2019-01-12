@@ -1,9 +1,12 @@
+#-*-coding: utf-8 -*-
 import os
 import sys
 import argparse
 import time
 import redis
-
+import time
+# mqtt messaging 
+import message
 
 
 def main():
@@ -11,24 +14,30 @@ def main():
     global r
     global window
     obj = ''
-    #r = redis.Redis(host='localhost', port=6379, db=0)
+
+    message.sub_topic(message.client, "/data")
+
     r = redis.Redis(host="localhost", port=6379, db=0)
     keys = r.keys('*')
     keylen = len(keys)
     for i in range (window):
-        if r.hget(keylen-i, "numberofobjects") == 0: # 없는경우.
+        if (r.hget(keylen-i, "numberofobjects") == 0):
             pass
             # do smth.
-        elif r.hget(keylen-i, "numberofobjects") !=0: # 여러개 있는 경우. 
-            # keep track of all new objects.
+        elif r.hget(keylen-i, "numberofobjects") !=0: 
             obj = r.hget(keylen-i, "a").decode("utf-8")
-            #score, class, x, y로 구성 됨. 
+            #score, class, x, y 
             res = obj.strip('[]')
-            data = res.split(',')
-            print (data[3])
+            # do smth
 
+    # send message to other devices.
+    message.pub_message(message.client,"/data", "now?")
+#    message.pub(client, "now?")
+
+    time.sleep(10)
 
 if __name__== '__main__':
+    global window
     parser = argparse.ArgumentParser(
             description="tracking application container.")
 
