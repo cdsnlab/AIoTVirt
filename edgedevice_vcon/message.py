@@ -1,4 +1,4 @@
-import paho.mqtt.client as mqtta
+import paho.mqtt.client as mqtt
 import os
 
 broker = "143.248.53.143"
@@ -10,7 +10,12 @@ def on_connect(client, userdata, flags, rc):
 
 def on_message(client, userdata, msg):
     print(msg.payload.decode())
-    os.system("docker run --name busybox busybox:latest")
+    # run a downloaded container. 
+    #os.system("sudo docker run -it busybox &")
+    
+    # re/start an exited container. the container should already be created beforehand. 
+    os.system("sudo docker restart test3")
+    os.system("sudo docker exec -it test3 date +%T.%N")
     
 
 def pub_message (client, topic, msg):

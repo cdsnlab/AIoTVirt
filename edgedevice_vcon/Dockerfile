@@ -19,4 +19,4 @@ ADD . /vcontainer
 WORKDIR /vcontainer
 
 
-CMD ["python3", "tracking"]
+CMD ["python3", "tracking.py"]

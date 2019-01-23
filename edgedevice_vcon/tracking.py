@@ -5,6 +5,7 @@ import argparse
 import time
 import redis
 import time
+from datetime import datetime
 # mqtt messaging 
 import message
 
@@ -31,9 +32,9 @@ def main():
             # do smth
 
     # send message to other devices.
-    message.pub_message(message.client,"/data", "now?")
-#    message.pub(client, "now?")
-
+    curTime = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
+    message.pub_message(message.client,"/data", curTime)
+    os.system('sudo ntpq -p')
     time.sleep(10)
 
 if __name__== '__main__':
