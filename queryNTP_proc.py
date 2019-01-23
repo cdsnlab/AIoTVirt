@@ -2,7 +2,11 @@ import subprocess
 import json
 import re
 
+<<<<<<< HEAD
 proc = subprocess.Popen(['ntpq', '-p'], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, encoding='utf8')
+=======
+proc = subprocess.Popen(['ntpq', '-p'], stdout=subprocess.PIPE,stderr = subprocess.STDOUT, encoding='utf8')
+>>>>>>> baf3da5ef74a42e67414534aaa0cbcf81c66c36d
 stdout_value = proc.communicate()[0]
 
 #remove the header lines
@@ -55,4 +59,8 @@ if r:
 
 result = {'query_result': 'ok' if r else 'failed', 'data': data}
 
+<<<<<<< HEAD
 print (json.dumps(result))
+=======
+print (json.dumps(result))
+>>>>>>> baf3da5ef74a42e67414534aaa0cbcf81c66c36d
