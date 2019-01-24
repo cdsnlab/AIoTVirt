@@ -17,7 +17,7 @@ def run_server(port, name):
         msg = data.decode()
         th = threading.Thread(target=handle_message, args=(msg,))
         th.start()
-        ack_msg = '{}->{}{}'.format(name, msg, 'ack')
+        ack_msg = '{}->{}'.format(name, 'ack')
         sock.send(ack_msg.encode())
 
 
@@ -37,7 +37,8 @@ def run_client(target_ip, port):
 
 def send_ctrl_msg(sock, msg):
     print('[MESSAGING] client sending msg: {}'.format(msg))
-    sock.send(msg.encode())
+    # sock.send(msg.encode())
+    sock.send(msg)
     rep = sock.recv().decode()
     print(' - Reply from server: {}'.format(rep))
 
