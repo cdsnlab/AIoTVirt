@@ -1,6 +1,11 @@
 import sys, zmq
 import time
 import threading
+import base64
+import cv2
+import json
+import pickle
+
 
 DEFAULT_SERVER_PORT = 8888
 DEFAULT_NODE_NAME = 'Controller'
@@ -21,11 +26,25 @@ def run_server(port, name):
         sock.send(ack_msg.encode())
 
 
+def decode_image(img_b64encoded):
+    img_binary = base64.b64decode(img_b64encoded)
+    fp = open('recv.jpg', 'wb')
+    fp.write(img_binary)
+    fp.close()
+    #cv2.imshow('ImageWindow', img_binary)
+    img = cv2.imread('recv.jpg', 0)
+    frame = cv2.imdecode(img, cv2.IMREAD_COLOR)
+    cv2.imshow("messsssi", frame)
+    cv2.waitKey(0)
+    cv2.destroyAllWindows()
+
+
 def handle_message(msg):
     print('[MESSAGING] listener received: {}'.format(msg))
-    print(' - start handling msg {}'.format(msg))
-    time.sleep(5)
-    print(' - handling msg {} complete'.format(msg))
+    msg_dict = json.loads(msg)
+    if msg_dict['type'] == 'img':
+        decode_image(msg_dict['img_string'].encode('ascii'))
+        print(' - saved img.')
 
 
 def run_client(target_ip, port):
@@ -38,7 +57,7 @@ def run_client(target_ip, port):
 def send_ctrl_msg(sock, msg):
     print('[MESSAGING] client sending msg: {}'.format(msg))
     # sock.send(msg.encode())
-    sock.send(msg)
+    sock.send_string(msg)
     rep = sock.recv().decode()
     print(' - Reply from server: {}'.format(rep))
 
