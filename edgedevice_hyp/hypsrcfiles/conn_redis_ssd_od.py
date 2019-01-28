@@ -323,8 +323,7 @@ def main():
                 json_data_with_img = message_bus.create_message_with_img( frame )
                 message_bus.send_ctrl_msg(target_sock, json_data_with_img)
                 '''
-                b = smallerimg.tolist()
-                jsonified_data = message_bus.create_message_list_numpy(b)
+                jsonified_data = message_bus.create_message_list_numpy(img)
                 message_bus.send_ctrl_msg(target_sock, jsonified_data)
             else: 
                 curTime = time.time()

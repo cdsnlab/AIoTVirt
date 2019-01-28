@@ -53,10 +53,11 @@ def send_ctrl_msg(sock, msg):
     print(' - Reply from server: {}'.format(rep))
 
 
-def create_message_list_numpy(nplist):
+def create_message_list_numpy(img):
+    listednpa = img.tolist()
 #    curTime = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
     curTime = datetime.utcnow().strftime('%H:%M:%S.%f')[:-3]
-    json_msg = {'type': 'img', 'img_string': nplist, 'time' : curTime}
+    json_msg = {'type': 'img', 'img_string': listednpa, 'time' : curTime}
     return json.dumps(json_msg)
 
 if __name__ == '__main__':
