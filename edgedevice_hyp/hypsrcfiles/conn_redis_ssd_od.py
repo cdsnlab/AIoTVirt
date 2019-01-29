@@ -266,6 +266,8 @@ def close_ncs_device( device, graph ):
 def main():
     global r
     global elapsedtime
+
+    framecnt = 0
     # setup my network connection
     camip, camport, camname = camaddr.split('/',2)
     th_listen = threading.Thread(target=message_bus.run_server, args=(camport, camname))
@@ -315,6 +317,7 @@ def main():
             print(curTime)
             ret, frame = cap.read() # ndarray
             smallerimg = cv2.resize( frame, (width, height)) 
+            framecnt += 1
             if tr == 1:
                 
                 # send it directly
@@ -323,7 +326,7 @@ def main():
                 json_data_with_img = message_bus.create_message_with_img( frame )
                 message_bus.send_ctrl_msg(target_sock, json_data_with_img)
                 '''
-                jsonified_data = message_bus.create_message_list_numpy(img)
+                jsonified_data = message_bus.create_message_list_numpy(smallerimg, framecnt, camname)
                 message_bus.send_ctrl_msg(target_sock, jsonified_data)
             else: 
                 curTime = time.time()

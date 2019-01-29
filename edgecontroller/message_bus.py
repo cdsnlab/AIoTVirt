@@ -34,7 +34,6 @@ def run_client(target_ip, port):
     print('[MESSAGING] client connected to {}:{}'.format(target_ip, port))
     return sock
 
-
 def handle_message(msg):
     #print('[MESSAGING] listener received: {}'.format(msg))
     msg_dict = json.loads(msg)
@@ -42,13 +41,14 @@ def handle_message(msg):
         img = unjsonify(msg_dict['img_string'])
         #cv2.imwrite(msg_dict['time']+'.jpg', img)
         #print(' - saved img.')
-        curTime = datetime.utcnow().strftime('%H:%M:%S.%f')[:-3]
-        curdatetime = datetime.strptime(curTime, '%H:%M:%S.%f')
-        sentdatetime = datetime.strptime(msg_dict['time'], '%H:%M:%S.%f')
-        print("from: ", msg_dict['srcname'])
-        print("timebtw: ", curdatetime-sentdatetime)
-        print("size: ",sys.getsizeof(img))
-        #print("fc: ",msg_dict['framecnt'])
+        print(msg_dict['time'])
+        print(sys.getsizeof(img))
+        '''
+        log
+        - start time
+        - end time
+
+        '''
 
 def unjsonify(msg):
     return np.array(msg)
@@ -59,11 +59,11 @@ def send_ctrl_msg(sock, msg):
     print(' - Reply from server: {}'.format(rep))
 
 
-def create_message_list_numpy(img, framecnt,name):
+def create_message_list_numpy(img):
+    listednpa = img.tolist()
 #    curTime = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
-    b = img.tolist()
     curTime = datetime.utcnow().strftime('%H:%M:%S.%f')[:-3]
-    json_msg = {'type': 'img', 'img_string': b, 'time' : curTime, 'framecnt': framecnt, 'srcname': name}
+    json_msg = {'type': 'img', 'img_string': listednpa, 'time' : curTime}
     return json.dumps(json_msg)
 
 if __name__ == '__main__':
