@@ -14,6 +14,7 @@ import cv2
 import numpy
 import psutil
 import ast
+import threading
 
 
 #
@@ -26,6 +27,16 @@ def load_graph(graph_file, device):
     # Load the graph buffer into the NCS
     graph = device.AllocateGraph(blob)
     return graph
+
+#
+# Decorator for threading methods in a class
+#
+def threaded(fn):
+    def wrapper(*args, **kwargs):
+        thread = threading.Thread(target=fn, args=args, kwargs=kwargs)
+        thread.start()
+        return thread
+    return wrapper
 
 
 class Hypervisor(object):
@@ -254,7 +265,8 @@ class Hypervisor(object):
                     break
             cap.release()
 
-    def img_ssd_send_metadata(self):
+    @threaded
+    def img_ssd_save_metadata(self):
         framecnt = 0
         prev_time = 0
 
@@ -290,7 +302,6 @@ class Hypervisor(object):
 
             while cap.isOpened():
                 curr_time_str = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
-                print(curr_time_str)
                 ret, frame = cap.read()  # ndarray
                 # smallerimg = cv2.resize(frame, (self.width, self.height))
                 # result, encimg = cv2.imencode('.jpg', smallerimg, encode_param)
@@ -305,13 +316,22 @@ class Hypervisor(object):
                 img = self.pre_process_image(frame)
                 self.infer_image_fps(graph, img, frame, fps)
 
-                # Send metadata of a captured image. (for each image? Yes for now.)
-                metadata_json = {'type': 'img_metadata', 'device_name': self.device_name, 'context': 'test', 'time':curr_time_str}
-                self.msg_bus.send_message_json(self.controller_ip, self.controller_port, metadata_json)
-
                 if (cv2.waitKey(3) & 0xFF == ord('q')):
                     break
             cap.release()
+
+    def img_ssd_send_metadata(self):
+        print('[Hypervisor] Existing work 2: load and send metadata')
+        while True:
+            # load metadata from Redis
+            contexts = {'a': 'a'}
+
+            curr_time_str = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
+            print(' -', curr_time_str)
+            metadata_json = {'type': 'img_metadata', 'device_name': self.device_name, 'context': contexts,
+                             'time': curr_time_str}
+            self.msg_bus.send_message_json(self.controller_ip, self.controller_port, metadata_json)
+            time.sleep(1)
 
 
 if __name__ == '__main__':
@@ -387,6 +407,7 @@ if __name__ == '__main__':
         hyp.img_ssd_send_raw_image()
     elif ARGS.transmission == 'e2':
         print('[Hypervisor] running as an existing work 2. (image metadata)')
+        hyp.img_ssd_save_metadata()
         hyp.img_ssd_send_metadata()
     elif ARGS.transmission == 'e3':
         print('[Hypervisor] running as an existing work 3.')
