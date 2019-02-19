@@ -137,6 +137,35 @@ class Hypervisor(object):
 
         return img
 
+    #cascade here..
+    def infer_image_haar(frame, fps):
+        a = []
+        curTime = time.time()
+        body_cascade = cv2.CascadeClassifier('cascades/haarcascade_upperbody.xml')
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    
+        body = body_cascade.detectMultiScale(gray, 1.1, 8)
+        infTime = time.time()-curTime 
+
+        a = [[] for _ in range(len(pick))]
+        cpu = psutil.cpu_percent()
+
+        for i in len(body):
+
+            for(xA, yA, xB, yB) in pick:
+                a[i].append("90")
+                a[i].append("15:person")
+                (y1, x1) = (yA, xA)
+                a[i].append(y1,x1)
+                (y2, x2) = (yB, xB)
+                a[i].append(y2,x2)
+
+        save = {"elapsedtime": "{0:.2f}".format(elapsedtime), "CPU": str(cpu), "inftime": str("{0:.2f}".format(inftime)), "fps": str("{0:.2f}".format(fps)), "numberofobjects": str(len(pick)),"a": str(a)}
+        r.hmset(counter, save)
+        del(a)
+
+
+
     # hog codes here
     def infer_image_hog (frame, fps):
         a = []  
