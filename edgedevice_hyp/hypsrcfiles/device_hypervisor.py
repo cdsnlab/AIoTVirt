@@ -15,6 +15,8 @@ import numpy
 import psutil
 import ast
 import threading
+import imutils
+from imutils.object_detection import non_max_suppression
 
 
 #
@@ -136,9 +138,12 @@ class Hypervisor(object):
         return img
 
     # hog codes here
-    def infer_image_hog (hog_descriptor ,frame, fps):
-        global counter
+    def infer_image_hog (frame, fps):
         a = []  
+        
+        hog = cv2.HOGDescriptor()
+        hog.setSVMDetector(cv2.HOGDescriptor_getDefaultPeopleDetector())
+
         curTime = time.time()
         (rects, weights) = hog.detectMultiScale(frame, winStride=(4,4), padding=(8,8), scale=1.05)
         rects = np.array([[x,y,x+w,y+h] for (x,y,w,h) in rects])
@@ -156,6 +161,8 @@ class Hypervisor(object):
                 a[i].append(y1,x1)
                 (y2, x2) = (yB, xB)
                 a[i].append(y2,x2)
+
+        self.counter += 1
 
         save = {"elapsedtime": "{0:.2f }".format(elapsedtime), "CPU": str(cpu), "inftime": str("{0:.2f}".format(inftime)), "fps": str("{0:.2f}".format(fps)), "numberofobjects": str(len(pick)),"a": str(a)}
         r.hmset(counter, save)
