@@ -135,6 +135,33 @@ class Hypervisor(object):
 
         return img
 
+    # hog codes here
+    def infer_image_hog (hog_descriptor ,frame, fps):
+        global counter
+        a = []  
+        curTime = time.time()
+        (rects, weights) = hog.detectMultiScale(frame, winStride=(4,4), padding=(8,8), scale=1.05)
+        rects = np.array([[x,y,x+w,y+h] for (x,y,w,h) in rects])
+        pick = non_max_suppression(rects, probs=None, overlapThresh=0.65)
+        infTime = time.time()-curTime 
+       
+        a = [[] for _ in range(len(pick))]
+        cpu = psutil.cpu_percent()
+        for i in len(pick):
+    
+            for(xA, yA, xB, yB) in pick:
+                a[i].append("90")
+                a[i].append("15:person")
+                (y1, x1) = (yA, xA)
+                a[i].append(y1,x1)
+                (y2, x2) = (yB, xB)
+                a[i].append(y2,x2)
+
+        save = {"elapsedtime": "{0:.2f }".format(elapsedtime), "CPU": str(cpu), "inftime": str("{0:.2f}".format(inftime)), "fps": str("{0:.2f}".format(fps)), "numberofobjects": str(len(pick)),"a": str(a)}
+        r.hmset(counter, save)
+        del(a)
+
+
     def infer_image_fps(self, graph, img, frame, fps):
         # Load the image as a half-precision floating point array
         graph.LoadTensor(img, 'user object')
