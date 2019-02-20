@@ -149,6 +149,7 @@ class Hypervisor(object):
 
         a = [[] for _ in range(len(pick))]
         cpu = psutil.cpu_percent()
+        ram = psutil.virtual_memory()
 
         for i in len(body):
 
@@ -181,6 +182,7 @@ class Hypervisor(object):
        
         a = [[] for _ in range(len(pick))]
         cpu = psutil.cpu_percent()
+        ram = psutil.virtual_memory()
         for i in len(pick):
     
             for(xA, yA, xB, yB) in pick:
@@ -225,6 +227,7 @@ class Hypervisor(object):
 
         # print (numobj)
         cpu = psutil.cpu_percent()
+        ram = psutil.virtual_memory()
 
         for i in range(0, output_dict['num_detections']):
             print("%3.1f%%\t" % output_dict['detection_scores_' + str(i)]
@@ -463,7 +466,7 @@ if __name__ == '__main__':
 
     # Operations based on scheme options
     if ARGS.transmission == 'p':
-        print('[Hypervisor] running as a proposed scheme.')
+        print('[Hypervisor] running our proposed scheme.')
     elif ARGS.transmission == 'e1':
         print('[Hypervisor] running as an existing work 1. (raw image stream)')
         # Run video analytics with SSD
