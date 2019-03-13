@@ -17,6 +17,7 @@ import ast
 import threading
 import imutils
 from imutils.object_detection import non_max_suppression
+import signal
 
 
 #
@@ -54,6 +55,7 @@ class Hypervisor(object):
         self.msg_bus = MessageBus(name, port, 'camera')
         self.msg_bus.register_callback('device_list', self.handle_message)
         self.msg_bus.register_callback('migration_request', self.handle_message)
+        signal.signal(signal.SIGINT, self.signal_handler)
 
         self.camera = None  # OpenCV camera object
         self.live = live
@@ -71,6 +73,18 @@ class Hypervisor(object):
         self.mean = [127.5, 127.5, 127.5]
         self.scale = 0.00789
         self.starttime = time.time()
+        self.logfile = None
+
+    def cpuusage(self):
+        return psutil.cpu_percent()
+
+    def ramusage(self):
+        return psutil.virtual_memory()
+
+    def signal_handler(self, sig, frame):
+        self.logfile.close()
+        print('closing logfile, exiting')
+        sys.exit(0)
 
     def load_labels(self, labels_file):
         self.labels = [ line.rstrip('\n') for line in
@@ -199,7 +213,6 @@ class Hypervisor(object):
         r.hmset(counter, save)
         del(a)
 
-
     def infer_image_fps(self, graph, img, frame, fps):
         # Load the image as a half-precision floating point array
         graph.LoadTensor(img, 'user object')
@@ -271,6 +284,8 @@ class Hypervisor(object):
                 "numberofobjects": str(numobj), "a": str(a)}
 
         self.redis_db.hmset(self.counter, save)
+        self.logfile.write(str(self.counter))
+        self.logfile.write(str(save)+"\n")
         print(self.redis_db.hgetall(self.counter))
         # print(save)
         # need plots...! for multiple objects
@@ -317,12 +332,16 @@ class Hypervisor(object):
             cap = cv2.VideoCapture(self.live)
 
             while cap.isOpened():
-                curTime = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
+                curTime = datetime.utcnow().strftime('%H:%M:%S.%f')[:-3]
                 print(curTime)
                 ret, frame = cap.read()  # ndarray
                 #smallerimg = cv2.resize(frame, (self.width, self.height))
                 #result, encimg = cv2.imencode('.jpg', smallerimg, encode_param)
-
+                
+                cpu = psutil.cpu_percent()
+                ram = psutil.virtual_memory()
+                # log here. 
+                self.logfile.write(str(framecnt)+"\t"+curTime+"\t"+str(sys.getsizeof(frame))+"\t"+str(cpu)+"\n")
                 jsonified_data = MessageBus.create_message_list_numpy(frame, framecnt, encode_param, self.device_name)
                 self.msg_bus.send_message_str(self.controller_ip, self.controller_port, jsonified_data)
                 framecnt += 1
@@ -434,7 +453,9 @@ if __name__ == '__main__':
     parser.add_argument('-c', '--colormode', type=str,
                         default="bgr",
                         help="RGB vs BGR color sequence. This is network dependent.")
-
+    parser.add_argument('-fn', '--filename', type=str,
+                        default='logfiles.txt',
+                        help="your log filename name.")
     ARGS = parser.parse_args()
 
     # Read 'camera.ini'
@@ -463,19 +484,24 @@ if __name__ == '__main__':
     hyp.scale = float(config['Parameter']['scale'])
     hyp.connect_redis_db(6379)
     hyp.load_labels(ARGS.labels)
+    hyp.logfile = open(ARGS.filename, mode='wt', encoding='utf-8')
 
     # Operations based on scheme options
     if ARGS.transmission == 'p':
         print('[Hypervisor] running our proposed scheme.')
+        #not properly imp
     elif ARGS.transmission == 'e1':
         print('[Hypervisor] running as an existing work 1. (raw image stream)')
         # Run video analytics with SSD
         hyp.img_ssd_send_raw_image()
-    elif ARGS.transmission == 'e2':
-        print('[Hypervisor] running as an existing work 2. (image metadata)')
+        hyp.logfile.close()
+    elif ARGS.transmission == 'e2': # what is meta data? 
+        print('[Hypervisor] running as an existing work 2. (image metadata)') 
         hyp.img_ssd_save_metadata()
         hyp.img_ssd_send_metadata()
+        hyp.logfile.close()
     elif ARGS.transmission == 'e3':
         print('[Hypervisor] running as an existing work 3.')
+        hyp.logfile.close()
     else:
         print('[Hypervisor] Error: invalid option for the scheme.')

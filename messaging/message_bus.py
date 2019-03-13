@@ -127,6 +127,6 @@ class MessageBus(object):
     def create_message_list_numpy(img, framecnt, encode_param, device_name):
         _, encimg = cv2.imencode('.jpg', img, encode_param)
         encstr = base64.b64encode(encimg).decode('ascii')
-        curTime = datetime.utcnow().strftime('%H:%M:%S.%f')[:-3]
+        curTime = datetime.utcnow().strftime('%H:%M:%S.%f')[:-3] # string format
         json_msg = {'type': 'img', 'img_string': encstr, 'time': curTime, 'framecnt': framecnt, 'device_name': device_name}
         return json.dumps(json_msg)
