@@ -495,6 +495,7 @@ if __name__ == '__main__':
         # Run video analytics with SSD
         hyp.img_ssd_send_raw_image()
         hyp.logfile.close()
+        
     elif ARGS.transmission == 'e2': # what is meta data? 
         print('[Hypervisor] running as an existing work 2. (image metadata)') 
         hyp.img_ssd_save_metadata()
