@@ -28,6 +28,7 @@ class Controller(object):
         self.COLORS = None
         self.confidence = 0.8
         self.net = None # load caffe model
+        self.cnt = 0
 
     def cpuusage(self):
         self.cpu = psutil.cpu_percent()
@@ -83,10 +84,10 @@ class Controller(object):
 
         # lets do object dectection here... 
         self.detection(decimg)       
+#        print(dir(decimg))
+#        print(dir(cv2.imread('soccer.jpg')))
 
     def detection(self, frame):
-#        self.setcc()
-     #   self.loadmodel()
         (h,w) = frame.shape[:2]
         blob = cv2.dnn.blobFromImage(cv2.resize(frame, (300,300)), 0.007843, (300, 300), 127.5)
         print("[INFO] computing object detections...")
@@ -97,7 +98,6 @@ class Controller(object):
         # extract the confidence (i.e., probability) associated with the
         # prediction
                 confidence = detections[0, 0, i, 2]
-                print("here")
         # filter out weak detections by ensuring the `confidence` is
         # greater than the minimum confidence
                 if confidence > self.confidence:
@@ -116,6 +116,9 @@ class Controller(object):
                         cv2.putText(frame, label, (startX, y), cv2.FONT_HERSHEY_SIMPLEX, 0.5, self.COLORS[idx], 2)
 #        cv2.imshow("Output", frame)
 #        cv2.waitkey(0)
+#        cv2.imwrite(str(self.cnt)+'.jpg',frame)
+#        self.cnt +=1
+        print("[INFO] detection done")
 
     def setcc(self):
         print("[INFO] loading classes and colors...")
