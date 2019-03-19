@@ -9,6 +9,16 @@ import numpy as np
 import signal
 import imutils
 import psutil
+import queue
+import threading
+import time
+
+def threaded(fn):
+    def wrapper(*args, **kwargs):
+        thread = threading.Thread(target=fn, args=args, kwargs=kwargs)
+        thread.start()
+        return thread
+    return wrapper
 
 class Controller(object):
     def __init__(self, name, port):
@@ -29,6 +39,8 @@ class Controller(object):
         self.confidence = 0.8
         self.net = None # load caffe model
         self.cnt = 0
+        self.imgq = queue.Queue() # infinite queue.
+        self.image_dequeue_proc()
 
     def cpuusage(self):
         self.cpu = psutil.cpu_percent()
@@ -82,10 +94,21 @@ class Controller(object):
 #        print(" - timebtw: ", sentdatetime-curdatetime)
 #        print(" - size: ", sys.getsizeof(decimg))  # 0.3MB
 
-        # lets do object dectection here... 
-        self.detection(decimg)       
-#        print(dir(decimg))
-#        print(dir(cv2.imread('soccer.jpg')))
+        self.imgq.put(decimg) # keep chugging
+        print(self.imgq.qsize())
+        # lets do object dectection here... works fine if done with lock
+#        self.detection(decimg)
+       
+    @threaded
+    def image_dequeue_proc(self):
+        while (True):
+            if (self.imgq.empty()):
+                # print('empty')
+                time.sleep(1)
+                continue
+            else:
+                self.detection(self.imgq.get())
+
 
     def detection(self, frame):
         (h,w) = frame.shape[:2]
