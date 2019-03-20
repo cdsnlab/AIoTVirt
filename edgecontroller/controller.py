@@ -1,3 +1,4 @@
+import argparse
 import configparser
 import sys
 sys.path.insert(0, '../messaging')
@@ -28,6 +29,7 @@ class Controller(object):
         self.msg_bus.register_callback('img_metadata', self.handle_message)
         signal.signal(signal.SIGINT, self.signal_handler)
         self.logfile = None
+        self.logfile2 = None
         self.dalgorithm = "yolo"
         self.starttime = 0.0
         self.endtime = 0.0
@@ -36,11 +38,12 @@ class Controller(object):
         self.label_path = None
         self.CLASSES = None
         self.COLORS = None
-        self.confidence = 0.8
+        self.confidence = 0.4
         self.net = None # load caffe model
-        self.cnt = 0
+        self.framecnt = 0
         self.imgq = queue.Queue() # q for image.
         self.timerq = queue.Queue() # q for image wait time
+        self.framecntq = queue.Queue() # q for frame cnt
         self.image_dequeue_proc() 
 
     def cpuusage(self):
@@ -54,6 +57,7 @@ class Controller(object):
 
     def signal_handler(self, sig, frame):
         self.logfile.close()
+        self.logfile2.close()
         print('closing logfile')
         sys.exit(0)
 
@@ -87,30 +91,46 @@ class Controller(object):
         decimg = cv2.imdecode(imgarray, cv2.IMREAD_COLOR)
 #        cv2.imwrite(msg_dict['time']+'.jpg', decimg)
 #        print(' - saved img.')
-        curTime = datetime.utcnow().strftime('%H:%M:%S.%f')[:-3] # string format
+        curTime = datetime.utcnow().strftime('%H:%M:%S.%f') # string forma
         curdatetime = datetime.strptime(curTime, '%H:%M:%S.%f')
         sentdatetime = datetime.strptime(msg_dict['time'], '%H:%M:%S.%f')
-        self.logfile.write(str(msg_dict['framecnt'])+"\t"+curTime+"\t"+str(sentdatetime - curdatetime)+"\t"+str(sys.getsizeof(decimg))+'\t'+str(self.cpuusage())+'\n')
-#        print(" - from: ", msg_dict['device_name'])
-#        print(" - timebtw: ", sentdatetime-curdatetime)
-#        print(" - size: ", sys.getsizeof(decimg))  # 0.3MB
+        self.logfile.write(str(msg_dict['framecnt'])+"\t"+str((sentdatetime - curdatetime).total_seconds())+"\t"+str(sys.getsizeof(decimg))+'\t'+str(self.cpuusage())+'\n')
 
         self.imgq.put(decimg) # keep chugging
         self.timerq.put(curdatetime)
-        # lets do object dectection here... works fine if done with lock
-#        self.detection(decimg)
-       
+        self.framecntq.put(str(msg_dict['framecnt']))
+    
+
     @threaded
     def image_dequeue_proc(self):
+        prev_time= 0
+        endcnt =0 # if idle for 2 minutes, save and quit.
         while (True):
             if (self.imgq.empty()):
-                # print('empty')
-                time.sleep(1)
+                if(endcnt >= 120):
+                    self.logfile.close()
+                    self.logfile2.close()
+                    print("byebye")
+                    sys.exit(0)
+                else:
+                    time.sleep(1)
+                    endcnt += 1
+
                 continue
             else:
+
                 self.detection(self.imgq.get())
-                curT = datetime.utcnow().strftime('%H:%M:%S.%f')[:-3] # string format
-                print("decay time in queue:", datetime.strptime(curT, '%H:%M:%S.%f') - self.timerq.get())
+                curT = datetime.utcnow().strftime('%H:%M:%S.%f') # string format
+                decay = datetime.strptime(curT, '%H:%M:%S.%f') - self.timerq.get()
+#                print(type(decay))
+#                print(decay.total_seconds())
+                cnt = self.framecntq.get()
+                curr_time = time.time()
+                sec = curr_time - prev_time
+                prev_time = curr_time
+                fps = 1/ (sec)
+#                print("fps: ", fps)
+                self.logfile2.write(str(cnt)+"\t"+str(fps)+"\t"+str(decay.total_seconds())+"\n")
 
 
     def detection(self, frame):
@@ -119,7 +139,7 @@ class Controller(object):
         print("[INFO] computing object detections...")
         self.net.setInput(blob)
         detections = self.net.forward()
-
+        print("number of objects: ",(detections.shape[2]))
         for i in np.arange(0, detections.shape[2]):
         # extract the confidence (i.e., probability) associated with the
         # prediction
@@ -142,8 +162,6 @@ class Controller(object):
                         cv2.putText(frame, label, (startX, y), cv2.FONT_HERSHEY_SIMPLEX, 0.5, self.COLORS[idx], 2)
 #        cv2.imshow("Output", frame)
 #        cv2.waitkey(0)
-#        cv2.imwrite(str(self.cnt)+'.jpg',frame)
-#        self.cnt +=1
         print("[INFO] detection done")
 
     def setcc(self):
@@ -164,12 +182,17 @@ class Controller(object):
 
 
 if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description="IoT controller of Chameleon.")
+    parser.add_argument('-ln1', '--logfilename1', type=str, default='logfilecpu.txt', help="logfile name for cpu usage")
+    parser.add_argument('-ln2', '--logfilename2', type=str, default='logfileframe.txt', help="logfile name for frame related things.")
+    ARGS = parser.parse_args()
     # Read 'master.ini'
     config = configparser.ConfigParser()
     config.read('../resource/config/master.ini')
     listen_port = config['controller']['port']
     controller_name = config['controller']['name']
-    logfile_name = config['logs']['logfilename']
+#    logfile_name = config['logs']['logfilename'] # for cpu usage
+#    logfile_name2 = config['logs']['logfilename2'] # for frame related info
     label_path = config['detection_label']['yolo']
     prototxtpath =  config['mSSD']['prototxt']
     modelpath = config['mSSD']['model']
@@ -177,7 +200,8 @@ if __name__ == '__main__':
     print("[INFO] Loading model...")
     ctrl.net = cv2.dnn.readNetFromCaffe(prototxtpath, modelpath)
     ctrl.setcc()
-    ctrl.logfile = open(logfile_name, 'w')
+    ctrl.logfile = open(ARGS.logfilename1, 'w')
+    ctrl.logfile2 = open(ARGS.logfilename2, 'w')
     ctrl.label_path = label_path
 
 

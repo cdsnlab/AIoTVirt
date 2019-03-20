@@ -332,23 +332,27 @@ class Hypervisor(object):
             cap = cv2.VideoCapture(self.live)
 
             while cap.isOpened():
-                curTime = datetime.utcnow().strftime('%H:%M:%S.%f')[:-3]
+#                curTime = datetime.utcnow().strftime('%H:%M:%S.%f')[:-3]
+                curTime = datetime.utcnow().strftime('%H:%M:%S.%f')
                 print(curTime)
                 ret, frame = cap.read()  # ndarray
                 #smallerimg = cv2.resize(frame, (self.width, self.height))
                 #result, encimg = cv2.imencode('.jpg', smallerimg, encode_param)
-                
+                if (ret!=1):
+                    self.logfile.close()
+                    sys.exit(0)
                 cpu = psutil.cpu_percent()
                 ram = psutil.virtual_memory()
-                # log here. 
-                self.logfile.write(str(framecnt)+"\t"+curTime+"\t"+str(sys.getsizeof(frame))+"\t"+str(cpu)+"\n")
+                # log here.
+                self.logfile.write(str(framecnt)+"\t"+str(sys.getsizeof(frame))+"\t"+str(cpu)+"\n")
                 jsonified_data = MessageBus.create_message_list_numpy(frame, framecnt, encode_param, self.device_name)
                 self.msg_bus.send_message_str(self.controller_ip, self.controller_port, jsonified_data)
                 framecnt += 1
 
                 if (cv2.waitKey(3) & 0xFF == ord('q')):
                     break
-            cap.release()
+#            cap.release()
+
 
     @threaded
     def img_ssd_save_metadata(self):
@@ -386,7 +390,7 @@ class Hypervisor(object):
             cap = cv2.VideoCapture(self.live)
 
             while cap.isOpened():
-                curr_time_str = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
+                curr_time_str = datetime.utcnow().strftime('%H:%M:%S.%f')[:-3]
                 ret, frame = cap.read()  # ndarray
                 # smallerimg = cv2.resize(frame, (self.width, self.height))
                 # result, encimg = cv2.imencode('.jpg', smallerimg, encode_param)
