@@ -39,8 +39,9 @@ class Controller(object):
         self.confidence = 0.8
         self.net = None # load caffe model
         self.cnt = 0
-        self.imgq = queue.Queue() # infinite queue.
-        self.image_dequeue_proc()
+        self.imgq = queue.Queue() # q for image.
+        self.timerq = queue.Queue() # q for image wait time
+        self.image_dequeue_proc() 
 
     def cpuusage(self):
         self.cpu = psutil.cpu_percent()
@@ -95,7 +96,7 @@ class Controller(object):
 #        print(" - size: ", sys.getsizeof(decimg))  # 0.3MB
 
         self.imgq.put(decimg) # keep chugging
-        print(self.imgq.qsize())
+        self.timerq.put(curdatetime)
         # lets do object dectection here... works fine if done with lock
 #        self.detection(decimg)
        
@@ -108,6 +109,8 @@ class Controller(object):
                 continue
             else:
                 self.detection(self.imgq.get())
+                curT = datetime.utcnow().strftime('%H:%M:%S.%f')[:-3] # string format
+                print("decay time in queue:", datetime.strptime(curT, '%H:%M:%S.%f') - self.timerq.get())
 
 
     def detection(self, frame):
@@ -174,8 +177,6 @@ if __name__ == '__main__':
     print("[INFO] Loading model...")
     ctrl.net = cv2.dnn.readNetFromCaffe(prototxtpath, modelpath)
     ctrl.setcc()
-    #ctrl.prototxt = prototxtpath
-    #ctrl.model = modelpath
     ctrl.logfile = open(logfile_name, 'w')
     ctrl.label_path = label_path
 
