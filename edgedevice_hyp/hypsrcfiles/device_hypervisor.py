@@ -2,7 +2,7 @@ import argparse
 import configparser
 import sys
 import time
-from datetime import datetime
+from datetime import datetime,date
 sys.path.insert(0, '../../messaging')
 from message_bus import MessageBus
 from utils import visualize_output
@@ -18,6 +18,7 @@ import threading
 import imutils
 from imutils.object_detection import non_max_suppression
 import signal
+import ntplib
 
 
 #
@@ -298,8 +299,14 @@ class Hypervisor(object):
     def img_ssd_send_raw_image(self):
         framecnt = 0
         prevTime = 0
-        starttime = time.time()
-
+        starttime = datetime.now()
+        ntp_response = ntplib.NTPClient().request('time.windows.com',version=3)
+        returntime = datetime.now()
+        #print(ntp_response.tx_time)
+        print("starttime is" + str(starttime))
+        #print(datetime.fromtimestamp(ntp_response.tx_time))
+        timegap=datetime.fromtimestamp(ntp_response.tx_time) - starttime - (returntime - starttime)/2
+        print(timegap)
         # make ncs connection
         device = self.open_ncs_device()
         graph = load_graph(self.graph_file, device)
@@ -333,19 +340,21 @@ class Hypervisor(object):
 
             while cap.isOpened():
 #                curTime = datetime.utcnow().strftime('%H:%M:%S.%f')[:-3]
-                curTime = datetime.utcnow().strftime('%H:%M:%S.%f')
+                curTime=datetime.utcnow().strftime('%H:%M:%S.%f')
                 print(curTime)
                 ret, frame = cap.read()  # ndarray
-                #smallerimg = cv2.resize(frame, (self.width, self.height))
+             
                 #result, encimg = cv2.imencode('.jpg', smallerimg, encode_param)
                 if (ret!=1):
                     self.logfile.close()
                     sys.exit(0)
+            
+                smallerimg = cv2.resize(frame, (self.width, self.height))
                 cpu = psutil.cpu_percent()
                 ram = psutil.virtual_memory()
                 # log here.
-                self.logfile.write(str(framecnt)+"\t"+str(sys.getsizeof(frame))+"\t"+str(cpu)+"\n")
-                jsonified_data = MessageBus.create_message_list_numpy(frame, framecnt, encode_param, self.device_name)
+                self.logfile.write(str(framecnt)+"\t"+str(sys.getsizeof(smallerimg))+"\t"+str(cpu)+"\n")
+                jsonified_data = MessageBus.create_message_list_numpy(smallerimg, framecnt, encode_param, self.device_name,timegap)
                 self.msg_bus.send_message_str(self.controller_ip, self.controller_port, jsonified_data)
                 framecnt += 1
 

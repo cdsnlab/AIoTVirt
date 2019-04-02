@@ -6,8 +6,9 @@ import json
 from node_table import NodeTable
 import netif_util
 import collections
-from datetime import datetime
-
+from datetime import datetime,timedelta
+import ntplib
+from time import ctime
 
 #
 # Decorator for threading methods in a class
@@ -124,9 +125,10 @@ class MessageBus(object):
             return
 
     @staticmethod
-    def create_message_list_numpy(img, framecnt, encode_param, device_name):
+    def create_message_list_numpy(img, framecnt, encode_param, device_name,timegap=timedelta()):
         _, encimg = cv2.imencode('.jpg', img, encode_param)
         encstr = base64.b64encode(encimg).decode('ascii')
-        curTime = datetime.utcnow().strftime('%H:%M:%S.%f')[:-3] # string format
+        now = datetime.utcnow()+timegap
+        curTime = now.strftime('%H:%M:%S.%f') # string format
         json_msg = {'type': 'img', 'img_string': encstr, 'time': curTime, 'framecnt': framecnt, 'device_name': device_name}
         return json.dumps(json_msg)
