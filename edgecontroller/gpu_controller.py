@@ -40,6 +40,7 @@ class Controller(object):
         signal.signal(signal.SIGINT, self.signal_handler)
         self.logfile = None
         self.logfile2 = None
+        self.logfile3 = None
         self.dalgorithm = "yolo"
         self.starttime = 0.0
         self.endtime = 0.0
@@ -77,6 +78,7 @@ class Controller(object):
     def signal_handler(self, sig, frame):
         self.logfile.close()
         self.logfile2.close()
+        self.logfile3.close()
         print('closing logfile')
         torch.cuda.empty_cache()
         print('clearing cuda cache')
@@ -85,7 +87,7 @@ class Controller(object):
     def draw_bbox(self, imgs, bbox, colors, classes):
         img = imgs[int(bbox[0])]
         label = classes[int(bbox[-1])]
-        print("label: ", label)
+        #print("label: ", label)
         p1 = tuple(bbox[1:3].int())
         p2 = tuple(bbox[3:5].int())
         color = random.choice(colors)
@@ -191,15 +193,24 @@ class Controller(object):
         detections = self.model(frame_tensor, self.cuda).cpu()
         detections = process_result(detections, self.confidence, self.nms_thresh)
         print("number of detected objects: ", len(detections))
+        a = [[] for _ in range(len(detections))]
         if len(detections) != 0:
             detections = transform_result(detections, [frame], self.input_size)
-            print(detections)
-            for detection in detections:
+#            for detection in detections:
+            for idx, detection in enumerate(detections):
+                a[idx].append(float(detection[6]))
+                a[idx].append(self.classes[int(detection[-1])])
+                a[idx].append(int(detection[1]))
+                a[idx].append(int(detection[2]))
+                a[idx].append(int(detection[3]))
+                a[idx].append(int(detection[4]))
+                print(a)
                 self.draw_bbox([frame], detection, self.colors, self.classes)
         # save frames if you need to.
         #cv2.imwrite('frame'+cnt+'.jpg', frame)
+        self.logfile3.write(str(cnt)+"\t"+str(a)+"\n")
         end_time = time.time()
-        print("[INFO] detection done. It took {} seconds", end_time - start_time)
+        print("[INFO] detection done. It took "+str(end_time-start_time)+" seconds")
 
     def detection(self, frame):
         (h,w) = frame.shape[:2]
@@ -246,6 +257,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="IoT controller of Chameleon.")
     parser.add_argument('-ln1', '--logfilename1', type=str, default='logfilecpu.txt', help="logfile name for cpu usage")
     parser.add_argument('-ln2', '--logfilename2', type=str, default='logfileframe.txt', help="logfile name for frame related things.")
+    parser.add_argument('-ln3', '--logfilename3', type=str, default='logfilecontext.txt', help="logfile name for context related things.")
     parser.add_argument("--confidence", dest = "confidence", help = "Object Confidence to filter predictions", default = 0.5)
     parser.add_argument("--nms_thresh", dest = "nms_thresh", help = "NMS Threshhold", default = 0.4)
     ARGS = parser.parse_args()
@@ -274,6 +286,7 @@ if __name__ == '__main__':
 
     ctrl.logfile = open(ARGS.logfilename1, 'w')
     ctrl.logfile2 = open(ARGS.logfilename2, 'w')
+    ctrl.logfile3 = open(ARGS.logfilename3, 'w')
     ctrl.label_path = label_path
     print("[INFO] Finished setup!")
 
