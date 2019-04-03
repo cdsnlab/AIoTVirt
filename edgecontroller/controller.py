@@ -13,6 +13,7 @@ import psutil
 import queue
 import threading
 import time
+import ntplib
 
 def threaded(fn):
     def wrapper(*args, **kwargs):
@@ -44,7 +45,15 @@ class Controller(object):
         self.imgq = queue.Queue() # q for image.
         self.timerq = queue.Queue() # q for image wait time
         self.framecntq = queue.Queue() # q for frame cnt
-        self.image_dequeue_proc() 
+        self.image_dequeue_proc()
+        self.gettimegap()
+
+    def gettimegap(self):
+        starttime = datetime.now()
+        ntp_response = ntplib.NTPClient().request('time.windows.com', version=3)
+        returntime = datetime.now()
+        self.timegap = datetime.fromtimestamp(ntp_response.tx_time) - starttime - (returntime - starttime) / 2
+
 
     def cpuusage(self):
         self.cpu = psutil.cpu_percent()
@@ -91,10 +100,11 @@ class Controller(object):
         decimg = cv2.imdecode(imgarray, cv2.IMREAD_COLOR)
 #        cv2.imwrite(msg_dict['time']+'.jpg', decimg)
 #        print(' - saved img.')
-        curTime = datetime.utcnow().strftime('%H:%M:%S.%f') # string forma
+        localNow = datetime.utcnow()+self.timegap
+        curTime = localNow.strftime('%H:%M:%S.%f') # string forma
         curdatetime = datetime.strptime(curTime, '%H:%M:%S.%f')
         sentdatetime = datetime.strptime(msg_dict['time'], '%H:%M:%S.%f')
-        self.logfile.write(str(msg_dict['framecnt'])+"\t"+str((sentdatetime - curdatetime).total_seconds())+"\t"+str(sys.getsizeof(decimg))+'\t'+str(self.cpuusage())+'\n')
+        self.logfile.write(str(msg_dict['framecnt'])+"\t"+str(( curdatetime-sentdatetime).total_seconds())+"\t"+str(sys.getsizeof(decimg))+'\t'+str(self.cpuusage())+'\n')
 
         self.imgq.put(decimg) # keep chugging
         self.timerq.put(curdatetime)
