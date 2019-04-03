@@ -24,7 +24,10 @@ def process_result(detection, obj_threshhold, nms_threshhold):
         pred_index = pred_index.float().unsqueeze(-1)
         bboxes = torch.cat((bboxes[:, :5], pred_score, pred_index), dim=1)
         pred_classes = torch.unique(bboxes[:, -1])
-
+        #print("pred_score: ", pred_score)
+        #print("pred_index: ", pred_index)
+        #print("bboxes: ", bboxes)
+        #print("pred_classes", pred_classes)
         # non max suppression for each predicted class
 
         for cls in pred_classes:

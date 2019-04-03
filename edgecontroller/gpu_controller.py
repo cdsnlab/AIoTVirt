@@ -85,6 +85,7 @@ class Controller(object):
     def draw_bbox(self, imgs, bbox, colors, classes):
         img = imgs[int(bbox[0])]
         label = classes[int(bbox[-1])]
+        print("label: ", label)
         p1 = tuple(bbox[1:3].int())
         p2 = tuple(bbox[3:5].int())
         color = random.choice(colors)
@@ -155,16 +156,16 @@ class Controller(object):
 
                 continue
             else:
+                cnt = self.framecntq.get()
                 if self.cuda:
-                    print("using gpu")
-                    self.detection_gpu(self.model, self.imgq.get())
+                    #print("using gpu")
+                    self.detection_gpu(self.model, self.imgq.get(), cnt)
                 else: # no GPU enabled
                     self.detection(self.imgq.get())
                 curT = datetime.utcnow().strftime('%H:%M:%S.%f') # string format
                 decay = datetime.strptime(curT, '%H:%M:%S.%f') - self.timerq.get()
 #                print(type(decay))
 #                print(decay.total_seconds())
-                cnt = self.framecntq.get()
                 curr_time = time.time()
                 sec = curr_time - prev_time
                 prev_time = curr_time
@@ -178,7 +179,7 @@ class Controller(object):
         self.classes = self.load_classes ("data/coco.names")
         self.colors = [self.colors[1]]
 
-    def detection_gpu(self, model, frame):
+    def detection_gpu(self, model, frame, cnt):
 #        print('Detecting...')
         start_time = time.time()
         frame_tensor = cv_image2tensor(frame, self.input_size).unsqueeze(0)
@@ -192,9 +193,11 @@ class Controller(object):
         print("number of detected objects: ", len(detections))
         if len(detections) != 0:
             detections = transform_result(detections, [frame], self.input_size)
+            print(detections)
             for detection in detections:
                 self.draw_bbox([frame], detection, self.colors, self.classes)
-        cv2.imwrite('frame'+self.framecnt+'.jpg', frame)
+        # save frames if you need to.
+        #cv2.imwrite('frame'+cnt+'.jpg', frame)
         end_time = time.time()
         print("[INFO] detection done. It took {} seconds", end_time - start_time)
 
