@@ -204,11 +204,11 @@ class Controller(object):
                 a[idx].append(int(detection[2]))
                 a[idx].append(int(detection[3]))
                 a[idx].append(int(detection[4]))
-                print(a)
+#                print(a)
                 self.draw_bbox([frame], detection, self.colors, self.classes)
         # save frames if you need to.
         #cv2.imwrite('frame'+cnt+'.jpg', frame)
-        self.logfile3.write(str(cnt)+"\t"+str(a)+"\n")
+        self.logfile3.write(str(cnt)+"\t"+str(len(detections))+"\t"+str(a)+"\n")
         end_time = time.time()
         print("[INFO] detection done. It took "+str(end_time-start_time)+" seconds")
 
