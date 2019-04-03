@@ -58,8 +58,6 @@ class Hypervisor(object):
         self.msg_bus.register_callback('migration_request', self.handle_message)
         signal.signal(signal.SIGINT, self.signal_handler)
 
-        # get time gap between server and client 
-        self.timegap()
 
         self.camera = None  # OpenCV camera object
         self.live = live
@@ -78,13 +76,14 @@ class Hypervisor(object):
         self.scale = 0.00789
         self.starttime = time.time()
         self.logfile = None
-		self.timegap = 0.0
+#        self.timegap = datetime.datetime()
+        self.gettimegap()
 
-	def timegap(self):
-    	starttime = datetime.now()
-    	ntp_reponse = ntplib.NTPClient().request('time.windows.com', version=3)
-    	returntime = datetime.now()
-    	self.timegap = datetime.fromtimestamp(ntp_response.tx_time) - starttime - (returntime - starttime)/2	
+    def gettimegap(self):
+        starttime = datetime.now()
+        ntp_response = ntplib.NTPClient().request('time.windows.com', version=3)
+        returntime = datetime.now()
+        self.timegap = datetime.fromtimestamp(ntp_response.tx_time) - starttime - (returntime - starttime)/2
 
     def cpuusage(self):
         return psutil.cpu_percent()
