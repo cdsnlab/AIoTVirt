@@ -198,19 +198,19 @@ class Controller(object):
             detections = transform_result(detections, [frame], self.input_size)
 #            for detection in detections:
             for idx, detection in enumerate(detections):
-                a[idx].append(float(detection[6]))
-                a[idx].append(self.classes[int(detection[-1])])
-                a[idx].append(int(detection[1]))
-                a[idx].append(int(detection[2]))
-                a[idx].append(int(detection[3]))
-                a[idx].append(int(detection[4]))
+                a[idx].append(float(detection[6])) # prediction score
+                a[idx].append(self.classes[int(detection[-1])]) # prediction class
+                a[idx].append(int(detection[1])) # x1
+                a[idx].append(int(detection[2])) # y1
+                a[idx].append(int(detection[3])) # x2 
+                a[idx].append(int(detection[4])) # y2
 #                print(a)
                 self.draw_bbox([frame], detection, self.colors, self.classes)
         # save frames if you need to.
-        #cv2.imwrite('frame'+cnt+'.jpg', frame)
-        self.logfile3.write(str(cnt)+"\t"+str(len(detections))+"\t"+str(a)+"\n")
+#        cv2.imwrite('frame'+cnt+'.jpg', frame)
         end_time = time.time()
         print("[INFO] detection done. It took "+str(end_time-start_time)+" seconds")
+        self.logfile3.write(str(cnt)+"\t"+str(len(detections))+"\t"+str(a)+"\t"+str(end_time-start_time)+"\n")
 
     def detection(self, frame):
         (h,w) = frame.shape[:2]
@@ -258,8 +258,8 @@ if __name__ == '__main__':
     parser.add_argument('-ln1', '--logfilename1', type=str, default='logfilecpu.txt', help="logfile name for cpu usage")
     parser.add_argument('-ln2', '--logfilename2', type=str, default='logfileframe.txt', help="logfile name for frame related things.")
     parser.add_argument('-ln3', '--logfilename3', type=str, default='logfilecontext.txt', help="logfile name for context related things.")
-    parser.add_argument("--confidence", dest = "confidence", help = "Object Confidence to filter predictions", default = 0.5)
-    parser.add_argument("--nms_thresh", dest = "nms_thresh", help = "NMS Threshhold", default = 0.4)
+    parser.add_argument("--confidence", dest = "confidence", help = "Object Confidence to filter predictions", default = 0.7)
+    parser.add_argument("--nms_thresh", dest = "nms_thresh", help = "NMS Threshhold", default = 0.5)
     ARGS = parser.parse_args()
     # Read 'master.ini'
     config = configparser.ConfigParser()
