@@ -63,7 +63,7 @@ class Controller(object):
 
     def gettimegap(self):
         starttime = datetime.now()
-        ntp_response = ntplib.NTPClient().request('time.windows.com', version=3)
+        ntp_response = ntplib.NTPClient().request('2.kr.pool.ntp.org', version=3)
         returntime = datetime.now()
         self.timegap = datetime.fromtimestamp(ntp_response.tx_time) - starttime - (returntime - starttime) / 2
 
