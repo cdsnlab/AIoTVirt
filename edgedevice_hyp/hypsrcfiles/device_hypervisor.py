@@ -141,6 +141,14 @@ class Hypervisor(object):
         device.OpenDevice()
         return device
 
+    def getfps(self, oldtime):
+        curr_time = time.time()
+        sec = curr_time - oldtime
+        fps = 1 / sec
+        return curr_time, fps
+        
+
+
     def close_ncs_device(self, device, graph):
         graph.DeallocateGraph()
         device.CloseDevice()
@@ -372,6 +380,9 @@ class Hypervisor(object):
 #            cap.release()
 
 
+#
+# existing work e2
+#
     @threaded
     def img_ssd_save_metadata(self):
         framecnt = 0
@@ -386,10 +397,11 @@ class Hypervisor(object):
             while (True):
                 ret, frame = self.camera.read()
                 #### get fps
-                curr_time = time.time()
-                sec = curr_time - prev_time
-                prev_time = curr_time
-                fps = 1 / (sec)
+                prev_time, fps = getfps(prev_time)
+                #curr_time = time.time()
+                #sec = curr_time - prev_time
+                #prev_time = curr_time
+                #fps = 1 / (sec)
 
                 print("estimated live fps {0}".format(fps))
                 img = self.pre_process_image(frame)
