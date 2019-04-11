@@ -8,10 +8,11 @@ from message_bus import MessageBus
 from utils import visualize_output
 from utils import deserialize_output
 import mvnc.mvncapi as mvnc
+import dlib
 import json
 import redis
 import cv2
-import numpy
+import numpy as np
 import psutil
 import ast
 import threading
@@ -19,6 +20,8 @@ import imutils
 from imutils.object_detection import non_max_suppression
 import signal
 import ntplib
+import trackableobject 
+import centroidtracker
 
 
 #
@@ -78,6 +81,10 @@ class Hypervisor(object):
         self.logfile = None
 #        self.timegap = datetime.datetime()
         self.gettimegap()
+        self.frame_skips = 10
+        self.ct = None
+        self.trackers = []
+        self.trackableObjects = {}
 
     def gettimegap(self):
         starttime = datetime.now()
@@ -164,8 +171,8 @@ class Hypervisor(object):
             img = img[:, :, ::-1]
 
         # Mean subtraction & scaling [A common technique used to center the data]
-        img = img.astype(numpy.float16)
-        img = (img - numpy.float16(self.mean)) * self.scale
+        img = img.astype(np.float16)
+        img = (img - np.float16(self.mean)) * self.scale
 
         return img
 
@@ -231,7 +238,7 @@ class Hypervisor(object):
         r.hmset(counter, save)
         del(a)
 
-    def infer_image_fps(self, graph, img, frame, fps):
+    def infer_image_fps(self, graph,img, frame, fps):
         # Load the image as a half-precision floating point array
         graph.LoadTensor(img, 'user object')
 
@@ -247,10 +254,8 @@ class Hypervisor(object):
             self.confidence_threshold,
             frame.shape)
 
-        # elapsedtime = time.time() - starttime
-        # Print the results (each image/frame may have multiple objects)
         # print( "I found these objects in ( %.2f ms ):" % ( numpy.sum( inference_time ) ) )
-        inftime = numpy.sum(inference_time)
+        inftime = np.sum(inference_time)
         numobj = (output_dict['num_detections'])
 
         # create array for detected obj
@@ -304,7 +309,7 @@ class Hypervisor(object):
         self.redis_db.hmset(self.counter, save)
         self.logfile.write(str(self.counter))
         self.logfile.write(str(save)+"\n")
-        print(self.redis_db.hgetall(self.counter))
+        #print(self.redis_db.hgetall(self.counter))
         # print(save)
         # need plots...! for multiple objects
         del (a)
@@ -315,15 +320,7 @@ class Hypervisor(object):
     #
     def img_ssd_send_raw_image(self):
         framecnt = 0
-        prevTime = 0
-#        starttime = datetime.now()
-#        ntp_response = ntplib.NTPClient().request('time.windows.com',version=3)
-#        returntime = datetime.now()
-        #print(ntp_response.tx_time)
-#        print("starttime is" + str(starttime))
-        #print(datetime.fromtimestamp(ntp_response.tx_time))
-#        timegap=datetime.fromtimestamp(ntp_response.tx_time) - starttime - (returntime - starttime)/2
-#        print(timegap)
+        prev_time = 0
         # make ncs connection
         device = self.open_ncs_device()
         graph = load_graph(self.graph_file, device)
@@ -334,18 +331,23 @@ class Hypervisor(object):
             while (True):
                 ret, frame = self.camera.read()
                 #### get fps
-                curTime = time.time()
-                sec = curTime - prevTime
-                prevTime = curTime
-                fps = 1 / (sec)
-
+                
+                prev_time, fps = self.getfps(prev_time)
                 print("estimated live fps {0}".format(fps))
                 img = self.pre_process_image(frame)
-                # this is spencers code for infering fps.
-                self.infer_image_fps(graph, img, frame, fps)
+                smallerimg = cv2.resize(img, (self.width, self.height))
+                cpu = psutil.cpu_percent()
+                ram = psutil.virtual_memory()
+                # log here.
+                self.logfile.write(str(framecnt)+"\t"+str(sys.getsizeof(smallerimg))+"\t"+str(cpu)+"\n")
+                jsonified_data = MessageBus.create_message_list_numpy(smallerimg, framecnt, encode_param, self.device_name,self.timegap)
+                self.msg_bus.send_message_str(self.controller_ip, self.controller_port, jsonified_data)
+                framecnt += 1
+
 
                 # Display the frame for 5ms, and close the window so that the next
                 # frame can be displayed. Close the window if 'q' or 'Q' is pressed.
+                
                 if (cv2.waitKey(1) & 0xFF == ord('q')):
                     break
 
@@ -358,15 +360,16 @@ class Hypervisor(object):
             while cap.isOpened():
 #                curTime = datetime.utcnow().strftime('%H:%M:%S.%f')[:-3]
                 curTime=datetime.utcnow().strftime('%H:%M:%S.%f')
-                print(curTime)
                 ret, frame = cap.read()  # ndarray
-             
+                prev_time, fps = self.getfps(prev_time)
+                print("estimated transmission fps {0}".format(fps))
+                img = self.pre_process_image(frame)
                 #result, encimg = cv2.imencode('.jpg', smallerimg, encode_param)
                 if (ret!=1):
                     self.logfile.close()
                     sys.exit(0)
             
-                smallerimg = cv2.resize(frame, (self.width, self.height))
+                smallerimg = cv2.resize(img, (self.width, self.height))
                 cpu = psutil.cpu_percent()
                 ram = psutil.virtual_memory()
                 # log here.
@@ -384,7 +387,7 @@ class Hypervisor(object):
 # existing work e2
 #
     @threaded
-    def img_ssd_save_metadata(self):
+    def img_ssd_save_send_metadata(self):
         framecnt = 0
         prev_time = 0
 
@@ -398,10 +401,6 @@ class Hypervisor(object):
                 ret, frame = self.camera.read()
                 #### get fps
                 prev_time, fps = getfps(prev_time)
-                #curr_time = time.time()
-                #sec = curr_time - prev_time
-                #prev_time = curr_time
-                #fps = 1 / (sec)
 
                 print("estimated live fps {0}".format(fps))
                 img = self.pre_process_image(frame)
@@ -422,35 +421,259 @@ class Hypervisor(object):
             while cap.isOpened():
                 curr_time_str = datetime.utcnow().strftime('%H:%M:%S.%f')[:-3]
                 ret, frame = cap.read()  # ndarray
-                # smallerimg = cv2.resize(frame, (self.width, self.height))
+                smallerimg = cv2.resize(frame, (self.width, self.height))
                 # result, encimg = cv2.imencode('.jpg', smallerimg, encode_param)
-                framecnt += 1
+
 
                 # TODO: Capture contexts.
                 #### get fps
-                curr_time = time.time()
-                sec = curr_time - prev_time
-                prev_time = curr_time
-                fps = 1 / (sec)
-                img = self.pre_process_image(frame)
-                self.infer_image_fps(graph, img, frame, fps)
+                prev_time, fps = self.getfps(prev_time)
+                print("estimated video fps {0}".format(fps))
+                img = self.pre_process_image(smallerimg)
+                self.infer_image_fps(graph, img, smallerimg, fps)
 
+                self.img_ssd_send_metadata(framecnt)
+                framecnt += 1
                 if (cv2.waitKey(3) & 0xFF == ord('q')):
                     break
-            cap.release()
+#            cap.release()
 
-    def img_ssd_send_metadata(self):
-        print('[Hypervisor] Existing work 2: load and send metadata')
-        while True:
-            # load metadata from Redis
-            contexts = {'a': 'a'}
+    def img_ssd_send_metadata(self, framecnt):
+#        print('[Hypervisor] Existing work 2: load and send metadata')
+        localNow = datetime.utcnow()+self.timegap
+        curTime = localNow.strftime('%H:%M:%S.%f') # string format
+        # load metadata from Redis
+        save=self.redis_db.hgetall(self.counter)
+        save.update({'type': 'img_metadata'})
+        save.update({'framecnt': framecnt})
+        save.update({'time': curTime})
+        print(save)
+#            contexts = {'a': 'a'}
 
-            curr_time_str = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
-            print(' -', curr_time_str)
-            metadata_json = {'type': 'img_metadata', 'device_name': self.device_name, 'context': contexts,
-                             'time': curr_time_str}
-            self.msg_bus.send_message_json(self.controller_ip, self.controller_port, metadata_json)
-            time.sleep(1)
+            
+#            curr_time_str = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
+        print(' -', curTime)
+#            metadata_json = {'type': 'img_metadata', 'device_name': self.device_name, 'context': contexts, 'time': curTime}
+        self.msg_bus.send_message_json(self.controller_ip, self.controller_port, save)
+        time.sleep(0.001)
+
+    @threaded
+    def tracking_objects(self):
+        framecnt = 0
+        prev_time = 0
+
+        # make ncs connection
+        device = self.open_ncs_device()
+        graph = load_graph(self.graph_file, device)
+
+        # Main loop: Capture live stream & send frames to NCS
+        if self.live == 1:
+            while (True):
+                ret, frame = self.camera.read()
+                #### get fps
+                prev_time, fps = getfps(prev_time)
+
+                print("estimated live fps {0}".format(fps))
+                img = self.pre_process_image(frame)
+                # this is spencers code for infering fps.
+                # self.infer_image_fps(graph, img, frame, fps)
+
+                # Display the frame for 5ms, and close the window so that the next
+                # frame can be displayed. Close the window if 'q' or 'Q' is pressed.
+                if (cv2.waitKey(1) & 0xFF == ord('q')):
+                    break
+
+            self.close_ncs_device(device, graph)
+
+        else:
+            # tracks objects of only one frame.
+            # self.track_from_frame(graph) 
+            # detects objects every 10 frames, tracks every frames.
+            self.periodic_tracking(graph)
+
+    def periodic_tracking(self, graph):
+
+        prev_time = 0
+        framecnt = 0
+        labels = []
+#        trackers = []
+#        positions = []
+
+        encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), 90]
+        cap = cv2.VideoCapture(self.live)
+
+        while cap.isOpened():
+            curr_time_str = datetime.utcnow().strftime('%H:%M:%S.%f')[:-3]
+            ret, frame = cap.read()  # ndarray
+            if frame is None:
+                break
+            frame = cv2.resize(frame, (self.width, self.height))
+            img = self.pre_process_image(frame)
+            rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            prev_time, fps = self.getfps(prev_time)
+            print("estimated video fps {0}".format(fps))
+            
+            positions = []
+            if self.counter % self.frame_skips ==0:
+                graph.LoadTensor(img, 'user object')
+
+                # Get the results from NCS
+                output, userobj = graph.GetResult()
+                inference_time = graph.GetGraphOption(mvnc.GraphOption.TIME_TAKEN)
+
+                # Deserialize the output into a python dictionary
+                output_dict = deserialize_output.ssd(
+                    output,
+                    self.confidence_threshold,
+                    frame.shape)
+
+                self.tracker_direction(frame, output_dict)
+                numobj = (output_dict['num_detections'])
+
+                for i in range(0, output_dict['num_detections']):
+                    print("%3.1f%%\t" % output_dict['detection_scores_' + str(i)]
+                          + self.labels[int(output_dict['detection_classes_' + str(i)])]
+                         + ": Top Left: " + str(output_dict['detection_boxes_' + str(i)][0])
+                        + " Bottom Right: " + str(output_dict['detection_boxes_' + str(i)][1]))
+                    (y1, x1) = output_dict.get('detection_boxes_' + str(i))[0]
+                    (y2, x2) = output_dict.get('detection_boxes_' + str(i))[1]
+
+                    display_str = (self.labels[output_dict.get('detection_classes_' + str(i))] + ": " + str(output_dict.get('detection_scores_' + str(i))) + "%")
+                    inftime = np.sum(inference_time)
+
+                    frame = visualize_output.draw_bounding_box(y1, x1, y2, x2, frame, thickness=4, color=(255, 255, 0), display_str=display_str)
+                    cv2.putText(frame, 'FPS:' + str(fps), (10, 50), cv2.FONT_HERSHEY_SIMPLEX, 0.65, (255, 255, 255), 2, cv2.LINE_AA)
+
+            else:
+                for tracker in self.trackers:
+                    tracker.update(frame)
+                    pos = tracker.get_position()
+                    startX = int(pos.left())
+                    startY = int(pos.top())
+                    endX = int(pos.right())
+                    endY = int(pos.bottom())
+                    positions.append((startX, startY, endX, endY))
+                    print ("Tracking " + str(startX) + " " + str(startY))
+
+            objects = self.ct.update(positions)
+
+            for (objectID, centroid) in objects.items():
+                to = self.trackableObjects.get(objectID, None)
+
+                if to == None:
+                    to = trackableobject.TrackableObject(objectID, centroid)
+                else:
+                    y = [c[1] for c in to.centroids]
+                    direction = centroid[1] - np.mean(y)
+                    to.centroids.append(centroid)
+                    if not to.counted:
+                        if direction < 0:
+                            print("going up")
+                        elif direction > 0:
+                            print("going down")
+                self.trackableObjects[objectID] = to
+
+            self.counter += 1
+#            cv2.imwrite('frame'+str(self.counter)+'.jpg', frame)
+            if self.display == "on":
+                cv2.imshow('NCS live inference', frame)
+            if(cv2.waitKey(3) & 0xFF == ord('q')):
+                break
+        cap.release()
+
+
+    def tracker_direction(self,rgb, output_dict):
+        self.trackers = []
+        for i in range(0, output_dict['num_detections']):
+            (startY, startX) = output_dict.get('detection_boxes_' + str(i))[0]
+            (endY, endX) = output_dict.get('detection_boxes_' + str(i))[1]
+            print("detected " + str(startX)+" "+str(startY))
+            tracker = dlib.correlation_tracker()
+            rect = dlib.rectangle(startX, startY, endX, endY)
+            tracker.start_track(rgb,rect)
+            self.trackers.append(tracker)
+
+    def track_from_frame(self, graph):
+        prev_time = 0
+        framecnt = 0
+        labels = []
+        trackers = []
+
+        encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), 90]
+        cap = cv2.VideoCapture(self.live)
+
+        while cap.isOpened():
+            curr_time_str = datetime.utcnow().strftime('%H:%M:%S.%f')[:-3]
+            ret, frame = cap.read()  # ndarray
+            if frame is None:
+                break
+            frame = cv2.resize(frame, (self.width, self.height))
+            rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            prev_time, fps = self.getfps(prev_time)
+            print("estimated video fps {0}".format(fps))
+
+
+#            if len(trackers) ==0:
+#                (h,w) = frame.shape[:2]
+#                blob = cv2.dnn.blobFromImage(frame, 0.007843, (w,h), 127.5)
+#            net.setinput(blob)
+#            detections = net.forward()
+            if len(trackers) ==0:
+                img = self.pre_process_image(frame)
+                graph.LoadTensor(img, 'user object')
+
+                # Get the results from NCS
+                output, userobj = graph.GetResult()
+
+                # Get execution time
+                inference_time = graph.GetGraphOption(mvnc.GraphOption.TIME_TAKEN)
+
+                # Deserialize the output into a python dictionary
+                output_dict = deserialize_output.ssd(output, self.confidence_threshold, frame.shape)
+
+                inftime = np.sum(inference_time)
+                print("inf time: ", inftime)
+                numobj = (output_dict['num_detections'])
+                # does not matter how many objects are in the frame.. :(
+                for i in np.arange(0, output_dict['num_detections']):
+                    print("%3.1f%%\t" % output_dict['detection_scores_' + str(i)]
+                          + self.labels[int(output_dict['detection_classes_' + str(i)])]
+                          + ": Top Left: " + str(output_dict['detection_boxes_' + str(i)][0])
+                          + " Bottom Right: " + str(output_dict['detection_boxes_' + str(i)][1]))
+                    if output_dict['detection_scores_' + str(i)] > self.confidence_threshold :
+                        if output_dict ['detection_classes_'+str(i)] != 15: # skip if not human
+                            continue
+                        boxxy = output_dict['detection_boxes_'+str(i)][0] # Y1, X1
+                        boxxy += (output_dict['detection_boxes_'+str(i)][1]) #Y2, X2
+                        idx = output_dict['detection_classes_' + str(i)]
+                        label = self.labels[idx]
+                        (startY, startX, endY, endX) = boxxy
+                        t = dlib.correlation_tracker()
+                        rect = dlib.rectangle(startX, startY, endX, endY)
+                        t.start_track(rgb, rect)
+                        labels.append(label)
+                        trackers.append(t)
+                        cv2.rectangle(frame, (startX, startY), (endX, endY), (0,255,0),2)
+
+                        cv2.putText(frame,label,(startX, startY - 15), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 255,0), 2)
+                    
+            else:
+                for (t, l) in zip(trackers, labels):
+                    t.update(rgb)
+                    pos = t.get_position()
+
+                    startX = int(pos.left())
+                    startY = int(pos.top())
+                    endX = int(pos.right())
+                    endY = int(pos.bottom())
+
+                cv2.rectangle(frame, (startX, startY), (endX, endY), (0, 255, 0),2)
+                cv2.putText(frame, l, (startX, startY-15), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0,255,0),2)
+
+            cv2.imshow("Frame", frame)
+            framecnt += 1
+            if (cv2.waitKey(3) & 0xFF == ord('q')):
+                break
 
 
 if __name__ == '__main__':
@@ -487,14 +710,15 @@ if __name__ == '__main__':
     parser.add_argument('-c', '--colormode', type=str,
                         default="bgr",
                         help="RGB vs BGR color sequence. This is network dependent.")
-    parser.add_argument('-fn', '--filename', type=str,
-                        default='logfiles.txt',
+    parser.add_argument('-ln', '--logname', type=str,
+                        default='logfile.txt',
                         help="your log filename name.")
+
     ARGS = parser.parse_args()
 
     # Read 'camera.ini'
     config = configparser.ConfigParser()
-    config.read('../../resource/config/camera.ini')
+    config.read('../../resource/config/camera_823_main.ini')
 
     # Hypervisor initialization and connection
     controller_ip = config['message_bus']['controller_ip']
@@ -518,7 +742,8 @@ if __name__ == '__main__':
     hyp.scale = float(config['Parameter']['scale'])
     hyp.connect_redis_db(6379)
     hyp.load_labels(ARGS.labels)
-    hyp.logfile = open(ARGS.filename, mode='wt', encoding='utf-8')
+    hyp.logfile = open(ARGS.logname, 'w')
+    hyp.ct = centroidtracker.CentroidTracker(maxDisappeared=40, maxDistance =50)
 
     # Operations based on scheme options
     if ARGS.transmission == 'p':
@@ -532,11 +757,15 @@ if __name__ == '__main__':
         
     elif ARGS.transmission == 'e2': # what is meta data? 
         print('[Hypervisor] running as an existing work 2. (image metadata)') 
-        hyp.img_ssd_save_metadata()
-        hyp.img_ssd_send_metadata()
-        hyp.logfile.close()
+        hyp.img_ssd_save_send_metadata()
+#        hyp.logfile.close()
+        
     elif ARGS.transmission == 'e3':
         print('[Hypervisor] running as an existing work 3.')
+        hyp.logfile.close()
+    elif ARGS.transmission == 'tracking':
+        print('[Hypervisor] tracking objects.')
+        hyp.tracking_objects()
         hyp.logfile.close()
     else:
         print('[Hypervisor] Error: invalid option for the scheme.')
