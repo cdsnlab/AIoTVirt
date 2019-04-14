@@ -58,9 +58,8 @@ class Hypervisor(object):
 
         self.msg_bus = MessageBus(name, port, 'camera')
         self.msg_bus.register_callback('device_list', self.handle_message)
-        self.msg_bus.register_callback('migration_request', self.handle_message)
+        self.msg_bus.register_callback('handoff_request', self.handle_message)
         signal.signal(signal.SIGINT, self.signal_handler)
-
 
         self.camera = None  # OpenCV camera object
         self.live = live
@@ -119,8 +118,9 @@ class Hypervisor(object):
                     print(' - adding a new node_info: ', item['device_name'])
                     self.msg_bus.node_table.add_entry(item['device_name'], item['ip'], item['port'], item['location'], item['capability'])
 
-        elif msg_dict['type'] == 'migration_request':
-            print(' - migration request')
+        elif msg_dict['type'] == 'handoff_request':
+            print(' - received handoff request')
+            # add the image to trackable list... but we don't know the coordinates...!
 
         else:
             # Silently ignore invalid message types.
@@ -128,11 +128,45 @@ class Hypervisor(object):
 
     def join(self):
         # Create a join message based on NIC information.
-        # my_node_info = self.msg_bus.get_my_node_info(self.ifname)
-        # print('My node info:', my_node_info)
+
+        print("connecting to edge server")
         join_msg = dict(type='join', device_name=device_name, ip=self.device_ip_ext, port=self.device_port_ext,
                         location='N1_823_1', capability='no')
         self.msg_bus.send_message_json(self.controller_ip, self.controller_port, join_msg)
+        
+        # We might not need to join other cameras, just sent handoff-message!
+
+        '''
+        if self.device_name == "camera02": #if this devices is center device
+            print("connecting to left cam")
+            join_msg = dict(type='join', device_name=device_name, ip=self.device_ip_ext, port=self.device_port_ext,
+                        location='N1_823_1', capability='no')
+            self.msg_bus.send_message_json(self.left_device_ip_int, self.left_device_port, join_msg)
+            print("connecting to right cam")
+            join_msg = dict(type='join', device_name=device_name, ip=self.device_ip_ext, port=self.device_port_ext,
+                        location='N1_823_1', capability='no')
+            self.msg_bus.send_message_json(self.right_device_ip_int, self.right_device_port, join_msg)
+
+        elif self.device_name == "camera01": # if this devices is the left device
+            print("connecting to center cam")
+            join_msg = dict(type='join', device_name=device_name, ip=self.device_ip_ext, port=self.device_port_ext,
+                        location='N1_823_1', capability='no')
+            self.msg_bus.send_message_json(self.center_device_ip_int, self.center_device_port, join_msg)
+            print("connecting to right cam")
+            join_msg = dict(type='join', device_name=device_name, ip=self.device_ip_ext, port=self.device_port_ext,
+                        location='N1_823_1', capability='no')
+            self.msg_bus.send_message_json(self.right_device_ip_int, self.right_device_port, join_msg)
+
+        elif self.device_name == "camera03": # if this device is the right device
+            print("connecting to left cam")
+            join_msg = dict(type='join', device_name=device_name, ip=self.device_ip_ext, port=self.device_port_ext,
+                        location='N1_823_1', capability='no')
+            self.msg_bus.send_message_json(self.left_device_ip_int, self.left_device_port, join_msg)
+            print("connecting to right cam")
+            join_msg = dict(type='join', device_name=device_name, ip=self.device_ip_ext, port=self.device_port_ext,
+                        location='N1_823_1', capability='no')
+            self.msg_bus.send_message_json(self.center_device_ip_int, self.center_device_port, join_msg)
+        '''
 
     def connect_redis_db(self, redis_port):
         self.redis_db = redis.Redis(host='localhost', port=redis_port, db=0)
@@ -154,7 +188,6 @@ class Hypervisor(object):
         fps = 1 / sec
         return curr_time, fps
         
-
 
     def close_ncs_device(self, device, graph):
         graph.DeallocateGraph()
@@ -496,8 +529,6 @@ class Hypervisor(object):
         prev_time = 0
         framecnt = 0
         labels = []
-#        trackers = []
-#        positions = []
 
         encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), 90]
         cap = cv2.VideoCapture(self.live)
@@ -522,27 +553,28 @@ class Hypervisor(object):
                 inference_time = graph.GetGraphOption(mvnc.GraphOption.TIME_TAKEN)
 
                 # Deserialize the output into a python dictionary
-                output_dict = deserialize_output.ssd(
-                    output,
-                    self.confidence_threshold,
-                    frame.shape)
-
-                self.tracker_direction(frame, output_dict)
+                output_dict = deserialize_output.ssd(output, self.confidence_threshold, frame.shape)
+                
+                self.tracker_direction(frame, output_dict) # only tracks human! nothing else
                 numobj = (output_dict['num_detections'])
 
                 for i in range(0, output_dict['num_detections']):
-                    print("%3.1f%%\t" % output_dict['detection_scores_' + str(i)]
-                          + self.labels[int(output_dict['detection_classes_' + str(i)])]
-                         + ": Top Left: " + str(output_dict['detection_boxes_' + str(i)][0])
-                        + " Bottom Right: " + str(output_dict['detection_boxes_' + str(i)][1]))
-                    (y1, x1) = output_dict.get('detection_boxes_' + str(i))[0]
-                    (y2, x2) = output_dict.get('detection_boxes_' + str(i))[1]
+                    if output_dict['detection_scores_' + str(i)] > self.confidence_threshold :
+                        if output_dict ['detection_classes_'+str(i)] != 15: # skip if not human
+                            continue
+                  
+                        (y1, x1) = output_dict.get('detection_boxes_' + str(i))[0]
+                        (y2, x2) = output_dict.get('detection_boxes_' + str(i))[1]
+                        center_x = ( x1 + x2 ) / 2
+                        center_y = ( y1 + y2 ) / 2
+                        cv2.circle (frame, (int(center_x), int(center_y)), 5, (0,255,0), -1)
+                        display_str = (self.labels[output_dict.get('detection_classes_' + str(i))] + ": " + str(output_dict.get('detection_scores_' + str(i))) + "%")
+                        inftime = np.sum(inference_time)
 
-                    display_str = (self.labels[output_dict.get('detection_classes_' + str(i))] + ": " + str(output_dict.get('detection_scores_' + str(i))) + "%")
-                    inftime = np.sum(inference_time)
+                        frame = visualize_output.draw_bounding_box(y1, x1, y2, x2, frame, thickness=4, color=(255, 255, 0), display_str=display_str)
+                        cv2.putText(frame, 'FPS:' + str(fps), (10, 50), cv2.FONT_HERSHEY_SIMPLEX, 0.65, (255, 255, 255), 2, cv2.LINE_AA)
 
-                    frame = visualize_output.draw_bounding_box(y1, x1, y2, x2, frame, thickness=4, color=(255, 255, 0), display_str=display_str)
-                    cv2.putText(frame, 'FPS:' + str(fps), (10, 50), cv2.FONT_HERSHEY_SIMPLEX, 0.65, (255, 255, 255), 2, cv2.LINE_AA)
+                        cv2.imwrite ("frame"+str(self.counter)+".jpg", frame)
 
             else:
                 for tracker in self.trackers:
@@ -553,8 +585,16 @@ class Hypervisor(object):
                     endX = int(pos.right())
                     endY = int(pos.bottom())
                     positions.append((startX, startY, endX, endY))
-                    print ("Tracking " + str(startX) + " " + str(startY))
 
+                    center_x = ( startX+endX ) / 2
+                    center_y = ( startY+endY ) / 2
+                    cv2.circle (frame, (int(center_x), int(center_y)), 5, (0,255,0), -1)
+
+                    frame = visualize_output.draw_bounding_box(startY, startX, endY, endX, frame, thickness=4, color=(255, 255, 0), display_str="")
+
+                    print ("Tracking " + str(startX) + " " + str(startY))
+            
+ 
             objects = self.ct.update(positions)
 
             for (objectID, centroid) in objects.items():
@@ -564,13 +604,35 @@ class Hypervisor(object):
                     to = trackableobject.TrackableObject(objectID, centroid)
                 else:
                     y = [c[1] for c in to.centroids]
-                    direction = centroid[1] - np.mean(y)
+                    x = [c[0] for c in to.centroids]
+                    dirY = centroid[1] - np.mean(y)
+                    dirX = centroid[0] - np.mean(x)
+                    # print (dirY, dirX)
                     to.centroids.append(centroid)
                     if not to.counted:
-                        if direction < 0:
-                            print("going up")
-                        elif direction > 0:
-                            print("going down")
+                        if dirY < -2:
+                            if dirX < -2:
+                                print('NW')
+                            elif dirX < 2 and dirX > -2:
+                                print("N")
+                            elif dirX > 2:
+                                print('NE')
+                            
+                        elif dirY < 2 and dirY > -2:
+                            if dirX < -2:
+                                print('W')
+                            elif dirX < 2 and dirX > -2:
+                                print ('stable')
+                            elif dirX > 2:
+                                print('E')
+                        elif dirY > 2:
+                            if dirX < -2:
+                                print('SW')
+                            elif dirX < 2 and dirX > -2:
+                                print ('S')
+                            elif dirX > 2:
+                                print('SE')
+
                 self.trackableObjects[objectID] = to
 
             self.counter += 1
@@ -579,19 +641,25 @@ class Hypervisor(object):
                 cv2.imshow('NCS live inference', frame)
             if(cv2.waitKey(3) & 0xFF == ord('q')):
                 break
+#            time.sleep(1)
         cap.release()
 
-
+    # add detected objects into self.trackers
     def tracker_direction(self,rgb, output_dict):
-        self.trackers = []
-        for i in range(0, output_dict['num_detections']):
-            (startY, startX) = output_dict.get('detection_boxes_' + str(i))[0]
-            (endY, endX) = output_dict.get('detection_boxes_' + str(i))[1]
-            print("detected " + str(startX)+" "+str(startY))
-            tracker = dlib.correlation_tracker()
-            rect = dlib.rectangle(startX, startY, endX, endY)
-            tracker.start_track(rgb,rect)
-            self.trackers.append(tracker)
+        #self.trackers = []
+        for i in np.arange(0, output_dict['num_detections']):
+            if output_dict['detection_scores_' + str(i)] > self.confidence_threshold :
+                if output_dict ['detection_classes_'+str(i)] != 15: # skip if not human
+                    continue
+
+                print("%3.1f%%\t" % output_dict['detection_scores_' + str(i)] + self.labels[int(output_dict['detection_classes_' + str(i)])] + ": Top Left: " + str(output_dict['detection_boxes_' + str(i)][0]) + " Bottom Right: " + str(output_dict['detection_boxes_' + str(i)][1]))
+                (startY, startX) = output_dict.get('detection_boxes_' + str(i))[0]
+                (endY, endX) = output_dict.get('detection_boxes_' + str(i))[1]
+                #print("detected " + str(output_dict['detection_classes_'+str(i)]) + str(startX)+" "+str(startY))
+                tracker = dlib.correlation_tracker() # is this the same object from before?
+                rect = dlib.rectangle(startX, startY, endX, endY)
+                tracker.start_track(rgb,rect)
+                self.trackers.append(tracker)
 
     def track_from_frame(self, graph):
         prev_time = 0
@@ -723,14 +791,28 @@ if __name__ == '__main__':
     # Hypervisor initialization and connection
     controller_ip = config['message_bus']['controller_ip']
     controller_port = config['message_bus']['controller_port']
-    device_name = config['message_bus']['device_name']
-    device_port = config['message_bus']['device_port']
-    device_ip_ext = config['message_bus']['device_ip_ext']
-    device_port_ext = config['message_bus']['device_port_ext']
+    device_name = config['message_bus']['center_device_name']
+    device_port = config['message_bus']['center_device_port']
+    device_ip_ext = config['message_bus']['center_device_ip_ext']
+    device_port_ext = config['message_bus']['center_device_port_ext']
+
     hyp = Hypervisor(device_name, device_port, device_ip_ext, device_port_ext, ARGS.iface, controller_ip, controller_port, ARGS.videofile, ARGS.transmission)
     hyp.join()
 
+    #connection to other cameras
+    hyp.left_device_name = config['message_bus']['left_device_name']
+    hyp.left_device_port = config['message_bus']['left_device_port']
+    hyp.left_device_ip_int = config['message_bus']['left_device_ip_int']
+    hyp.left_device_ip_ext = config['message_bus']['left_device_ip_ext']
+
+    '''
+    hyp.right_device_name = config['message_bus']['right_device_name']
+    hyp.right_device_port = config['message_bus']['right_device_port']
+    hyp.right_device_ip_int = config['message_bus']['right_device_ip_int']
+    hyp.right_device_ip_ext = config['message_bus']['right_device_ip_ext']
+    '''
     # Camera-related settings
+
     hyp.display = ARGS.display
     hyp.graph_file = ARGS.graph
     hyp.width = ARGS.width
@@ -743,7 +825,7 @@ if __name__ == '__main__':
     hyp.connect_redis_db(6379)
     hyp.load_labels(ARGS.labels)
     hyp.logfile = open(ARGS.logname, 'w')
-    hyp.ct = centroidtracker.CentroidTracker(maxDisappeared=40, maxDistance =50)
+    hyp.ct = centroidtracker.CentroidTracker(maxDisappeared=20, maxDistance =50)
 
     # Operations based on scheme options
     if ARGS.transmission == 'p':

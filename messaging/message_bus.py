@@ -107,8 +107,8 @@ class MessageBus(object):
                 elif msg_dict['type'] == 'img_metadata':
                     for handler in self.handlers.get('img_metadata', []):
                         handler(msg_dict)
-                elif msg_dict['type'] == 'migration_request':
-                    for handler in self.handlers.get('migration_request', []):
+                elif msg_dict['type'] == 'handoff_request':
+                    for handler in self.handlers.get('handoff_request', []):
                         handler(msg_dict)
                 else:
                     pass
