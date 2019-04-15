@@ -65,7 +65,7 @@ class Hypervisor(object):
         self.live = live
         self.tr_method = tr_method
         self.labels = None
-        self.confidence_threshold = 0.80
+        self.confidence_threshold = 0.70
         self.redis_db = None
         self.display = 'off'
         self.graph_file = ''
@@ -80,10 +80,10 @@ class Hypervisor(object):
         self.logfile = None
 #        self.timegap = datetime.datetime()
         self.gettimegap()
-        self.frame_skips = 10
+        self.frame_skips = 30
         self.ct = None
         self.trackers = []
-        self.trackableObjects = {}
+        self.trobs = {}
 
     def gettimegap(self):
         starttime = datetime.now()
@@ -519,8 +519,7 @@ class Hypervisor(object):
             self.close_ncs_device(device, graph)
 
         else:
-            # tracks objects of only one frame.
-            # self.track_from_frame(graph) 
+
             # detects objects every 10 frames, tracks every frames.
             self.periodic_tracking(graph)
 
@@ -529,6 +528,7 @@ class Hypervisor(object):
         prev_time = 0
         framecnt = 0
         labels = []
+
 
         encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), 90]
         cap = cv2.VideoCapture(self.live)
@@ -543,9 +543,10 @@ class Hypervisor(object):
             rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             prev_time, fps = self.getfps(prev_time)
             print("estimated video fps {0}".format(fps))
-            
             positions = []
+
             if self.counter % self.frame_skips ==0:
+                self.trackers = []
                 graph.LoadTensor(img, 'user object')
 
                 # Get the results from NCS
@@ -555,8 +556,8 @@ class Hypervisor(object):
                 # Deserialize the output into a python dictionary
                 output_dict = deserialize_output.ssd(output, self.confidence_threshold, frame.shape)
                 
-                self.tracker_direction(frame, output_dict) # only tracks human! nothing else
-                numobj = (output_dict['num_detections'])
+                # self.tracker_direction(frame, output_dict) # only tracks human! nothing else
+                #numobj = (output_dict['num_detections'])
 
                 for i in range(0, output_dict['num_detections']):
                     if output_dict['detection_scores_' + str(i)] > self.confidence_threshold :
@@ -565,20 +566,28 @@ class Hypervisor(object):
                   
                         (y1, x1) = output_dict.get('detection_boxes_' + str(i))[0]
                         (y2, x2) = output_dict.get('detection_boxes_' + str(i))[1]
-                        center_x = ( x1 + x2 ) / 2
-                        center_y = ( y1 + y2 ) / 2
-                        cv2.circle (frame, (int(center_x), int(center_y)), 5, (0,255,0), -1)
-                        display_str = (self.labels[output_dict.get('detection_classes_' + str(i))] + ": " + str(output_dict.get('detection_scores_' + str(i))) + "%")
+                        #center_x = ( x1 + x2 ) / 2
+                        #center_y = ( y1 + y2 ) / 2
+                        #positions.append((x1,y1,x2,y2))
+                        #self.ct.update(positions) # check if there is anything similar   
+                        tracker = dlib.correlation_tracker()
+                        rect = dlib.rectangle(x1, y1, x2, y2)
+                        tracker.start_track(rgb,rect)
+                        self.trackers.append(tracker)
+
+
+                        #cv2.circle (frame, (int(center_x), int(center_y)), 5, (255,255,0), -1)
+                        #display_str = (self.labels[output_dict.get('detection_classes_' + str(i))] + ": " + str(output_dict.get('detection_scores_' + str(i))) + "%")
+                        
                         inftime = np.sum(inference_time)
+                        #frame = visualize_output.draw_bounding_box(y1, x1, y2, x2, frame, thickness=4, color=(255, 255, 0), display_str=display_str)
+                        #cv2.putText(frame, 'FPS:' + str(fps), (10, 50), cv2.FONT_HERSHEY_SIMPLEX, 0.65, (255, 255, 255), 2, cv2.LINE_AA)
 
-                        frame = visualize_output.draw_bounding_box(y1, x1, y2, x2, frame, thickness=4, color=(255, 255, 0), display_str=display_str)
-                        cv2.putText(frame, 'FPS:' + str(fps), (10, 50), cv2.FONT_HERSHEY_SIMPLEX, 0.65, (255, 255, 255), 2, cv2.LINE_AA)
-
-                        cv2.imwrite ("frame"+str(self.counter)+".jpg", frame)
+                        #cv2.imwrite ("frame"+str(self.counter)+".jpg", frame)
 
             else:
-                for tracker in self.trackers:
-                    tracker.update(frame)
+                for tracker in self.trackers: # it does not remove anything from this list, thats why ..
+                    tracker.update(rgb)
                     pos = tracker.get_position()
                     startX = int(pos.left())
                     startY = int(pos.top())
@@ -586,29 +595,32 @@ class Hypervisor(object):
                     endY = int(pos.bottom())
                     positions.append((startX, startY, endX, endY))
 
-                    center_x = ( startX+endX ) / 2
-                    center_y = ( startY+endY ) / 2
-                    cv2.circle (frame, (int(center_x), int(center_y)), 5, (0,255,0), -1)
+#                    center_x = ( startX+endX ) / 2
+#                    center_y = ( startY+endY ) / 2
+#                    cv2.circle (frame, (int(center_x), int(center_y)), 5, (0,255,0), -1)
 
-                    frame = visualize_output.draw_bounding_box(startY, startX, endY, endX, frame, thickness=4, color=(255, 255, 0), display_str="")
+#                    frame = visualize_output.draw_bounding_box(startY, startX, endY, endX, frame, thickness=4, color=(255, 255, 0), display_str="")
 
-                    print ("Tracking " + str(startX) + " " + str(startY))
+                    #print ("Tracking " + str(startX) + " " + str(startY))
             
- 
+            print("positions: ", positions)
             objects = self.ct.update(positions)
+            print("number of objects to track: ", len(objects))
 
             for (objectID, centroid) in objects.items():
-                to = self.trackableObjects.get(objectID, None)
+                to = self.trobs.get(objectID, None)
 
                 if to == None:
                     to = trackableobject.TrackableObject(objectID, centroid)
                 else:
+                    cv2.circle(frame, (centroid[0],centroid[1]),4,(255,255,255),-1)
                     y = [c[1] for c in to.centroids]
                     x = [c[0] for c in to.centroids]
                     dirY = centroid[1] - np.mean(y)
                     dirX = centroid[0] - np.mean(x)
                     # print (dirY, dirX)
                     to.centroids.append(centroid)
+                    '''
                     if not to.counted:
                         if dirY < -2:
                             if dirX < -2:
@@ -632,8 +644,11 @@ class Hypervisor(object):
                                 print ('S')
                             elif dirX > 2:
                                 print('SE')
+                    '''
 
-                self.trackableObjects[objectID] = to
+                self.trobs[objectID] = to
+                text = "ID {}".format(objectID)
+                cv2.putText(frame, text, (centroid[0]-10, centroid[1]-10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (111,111,111),2)
 
             self.counter += 1
 #            cv2.imwrite('frame'+str(self.counter)+'.jpg', frame)
@@ -652,96 +667,16 @@ class Hypervisor(object):
                 if output_dict ['detection_classes_'+str(i)] != 15: # skip if not human
                     continue
 
-                print("%3.1f%%\t" % output_dict['detection_scores_' + str(i)] + self.labels[int(output_dict['detection_classes_' + str(i)])] + ": Top Left: " + str(output_dict['detection_boxes_' + str(i)][0]) + " Bottom Right: " + str(output_dict['detection_boxes_' + str(i)][1]))
+                #print("%3.1f%%\t" % output_dict['detection_scores_' + str(i)] + self.labels[int(output_dict['detection_classes_' + str(i)])] + ": Top Left: " + str(output_dict['detection_boxes_' + str(i)][0]) + " Bottom Right: " + str(output_dict['detection_boxes_' + str(i)][1]))
                 (startY, startX) = output_dict.get('detection_boxes_' + str(i))[0]
                 (endY, endX) = output_dict.get('detection_boxes_' + str(i))[1]
                 #print("detected " + str(output_dict['detection_classes_'+str(i)]) + str(startX)+" "+str(startY))
-                tracker = dlib.correlation_tracker() # is this the same object from before?
+                # but how do we know that they are the same?
+                tracker = dlib.correlation_tracker() # initialize a new object to track
                 rect = dlib.rectangle(startX, startY, endX, endY)
                 tracker.start_track(rgb,rect)
                 self.trackers.append(tracker)
 
-    def track_from_frame(self, graph):
-        prev_time = 0
-        framecnt = 0
-        labels = []
-        trackers = []
-
-        encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), 90]
-        cap = cv2.VideoCapture(self.live)
-
-        while cap.isOpened():
-            curr_time_str = datetime.utcnow().strftime('%H:%M:%S.%f')[:-3]
-            ret, frame = cap.read()  # ndarray
-            if frame is None:
-                break
-            frame = cv2.resize(frame, (self.width, self.height))
-            rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            prev_time, fps = self.getfps(prev_time)
-            print("estimated video fps {0}".format(fps))
-
-
-#            if len(trackers) ==0:
-#                (h,w) = frame.shape[:2]
-#                blob = cv2.dnn.blobFromImage(frame, 0.007843, (w,h), 127.5)
-#            net.setinput(blob)
-#            detections = net.forward()
-            if len(trackers) ==0:
-                img = self.pre_process_image(frame)
-                graph.LoadTensor(img, 'user object')
-
-                # Get the results from NCS
-                output, userobj = graph.GetResult()
-
-                # Get execution time
-                inference_time = graph.GetGraphOption(mvnc.GraphOption.TIME_TAKEN)
-
-                # Deserialize the output into a python dictionary
-                output_dict = deserialize_output.ssd(output, self.confidence_threshold, frame.shape)
-
-                inftime = np.sum(inference_time)
-                print("inf time: ", inftime)
-                numobj = (output_dict['num_detections'])
-                # does not matter how many objects are in the frame.. :(
-                for i in np.arange(0, output_dict['num_detections']):
-                    print("%3.1f%%\t" % output_dict['detection_scores_' + str(i)]
-                          + self.labels[int(output_dict['detection_classes_' + str(i)])]
-                          + ": Top Left: " + str(output_dict['detection_boxes_' + str(i)][0])
-                          + " Bottom Right: " + str(output_dict['detection_boxes_' + str(i)][1]))
-                    if output_dict['detection_scores_' + str(i)] > self.confidence_threshold :
-                        if output_dict ['detection_classes_'+str(i)] != 15: # skip if not human
-                            continue
-                        boxxy = output_dict['detection_boxes_'+str(i)][0] # Y1, X1
-                        boxxy += (output_dict['detection_boxes_'+str(i)][1]) #Y2, X2
-                        idx = output_dict['detection_classes_' + str(i)]
-                        label = self.labels[idx]
-                        (startY, startX, endY, endX) = boxxy
-                        t = dlib.correlation_tracker()
-                        rect = dlib.rectangle(startX, startY, endX, endY)
-                        t.start_track(rgb, rect)
-                        labels.append(label)
-                        trackers.append(t)
-                        cv2.rectangle(frame, (startX, startY), (endX, endY), (0,255,0),2)
-
-                        cv2.putText(frame,label,(startX, startY - 15), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 255,0), 2)
-                    
-            else:
-                for (t, l) in zip(trackers, labels):
-                    t.update(rgb)
-                    pos = t.get_position()
-
-                    startX = int(pos.left())
-                    startY = int(pos.top())
-                    endX = int(pos.right())
-                    endY = int(pos.bottom())
-
-                cv2.rectangle(frame, (startX, startY), (endX, endY), (0, 255, 0),2)
-                cv2.putText(frame, l, (startX, startY-15), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0,255,0),2)
-
-            cv2.imshow("Frame", frame)
-            framecnt += 1
-            if (cv2.waitKey(3) & 0xFF == ord('q')):
-                break
 
 
 if __name__ == '__main__':
