@@ -80,10 +80,14 @@ class Hypervisor(object):
         self.logfile = None
 #        self.timegap = datetime.datetime()
         self.gettimegap()
-        self.frame_skips = 30
-        self.ct = None
-        self.trackers = []
-        self.trobs = {}
+        self.frame_skips = 30 # how many frames should be skipped before detection 
+        self.ct = None # centroid tracker
+        self.trackers = [] 
+        self.trobs = {} # tracking objects
+        self.boundary = {} # check if its on the boundary of the frame 0: top, 1: right, 2: bottom, 3: left
+        self.objstatus = {} # objects current moving direction
+        self.framethr = 100 # boundary of the frame to indicate the the its leaving 
+
 
     def gettimegap(self):
         starttime = datetime.now()
@@ -510,6 +514,7 @@ class Hypervisor(object):
                 img = self.pre_process_image(frame)
                 # this is spencers code for infering fps.
                 # self.infer_image_fps(graph, img, frame, fps)
+                self.periodic_tracking(graph)
 
                 # Display the frame for 5ms, and close the window so that the next
                 # frame can be displayed. Close the window if 'q' or 'Q' is pressed.
@@ -522,6 +527,72 @@ class Hypervisor(object):
 
             # detects objects every 10 frames, tracks every frames.
             self.periodic_tracking(graph)
+
+    def checkboundary(self, centroid, objectID):
+        if(centroid[0]<self.framethr):
+            if(centroid[1]<self.framethr):
+                self.boundary[objectID] = "TL"
+            elif(centroid[1]>self.framethr and centroid[1] < (self.height-self.framethr)):
+                self.boundary[objectID] = "CL"
+            elif(centroid[1]>(self.width-self.framethr)):
+                self.boundary[objectID] = "BL"
+        elif (centroid[0]>self.framethr and centroid[0] < (self.width - self.framethr)):
+            if(centroid[1] < self.framethr):
+                self.boundary[objectID] = "TC"
+            elif(centroid[1]>self.framethr and centroid[1] < (self.height-self.framethr)):
+                self.boundary[objectID] = "CC"
+            elif(centroid[1]>(self.width-self.framethr)):
+                self.boundary[objectID] = "BC"
+        elif (centroid[0] > (self.width - self.framethr)):
+            if(centroid[1] < self.framethr):
+                self.boundary[objectID] = "TR"
+            elif(centroid[1]>self.framethr and centroid[1] < (self.height-self.framethr)):
+                self.boundary[objectID] = "CR"
+            elif(centroid[1]>(self.width-self.framethr)):
+                self.boundary[objectID] = "BR"
+        
+    def checkdir(self, dirX, dirY,objectID):
+        if dirY < -2:
+            if dirX < -2:
+                self.objstatus[objectID] = "NW"
+            elif dirX < 2 and dirX > -2:
+                self.objstatus[objectID] = "N"
+            elif dirX > 2:
+                self.objstatus[objectID] = "NE"
+                            
+        elif dirY < 2 and dirY > -2:
+            if dirX < -2:
+                self.objstatus[objectID] = "W"
+            elif dirX < 2 and dirX > -2:
+                self.objstatus[objectID] = "-"
+            elif dirX > 2:
+                self.objstatus[objectID] = "E"
+
+        elif dirY > 2:
+            if dirX < -2:
+                self.objstatus[objectID] = "SW"
+            elif dirX < 2 and dirX > -2:
+                self.objstatus[objectID] = "S"
+            elif dirX > 2:
+                self.objstatus[objectID] = "SE"
+
+    def checkhandoff(self, objectID):
+        if(self.boundary[objectID] == "TL" or self.boundary[objectID] == "TC" or self.boundary[objectID] == "TR"):
+            if (self.objstatus[objectID]=="NW" or self.objstatus[objectID]=="N" or self.objstatus[objectID]=="NE"):
+                # do hand off request to next cam
+                print ("need hand off to top cam.")
+        elif(self.boundary[objectID] == "TR" or self.boundary[objectID] == "CR" or self.boundary[objectID] == "BR"):
+            if (self.objstatus[objectID]=="NE" or self.objstatus[objectID]=="E" or self.objstatus[objectID]=="SE"):
+                # do hand off request to next cam
+                print ("need hand off to right cam.")
+        elif(self.boundary[objectID] == "BL" or self.boundary[objectID] == "BC" or self.boundary[objectID] == "BR"):
+            if (self.objstatus[objectID]=="SW" or self.objstatus[objectID]=="S" or self.objstatus[objectID]=="SE"):
+                # do hand off request to next cam
+                print ("need hand off to bottom cam.")
+        elif(self.boundary[objectID] == "TL" or self.boundary[objectID] == "CL" or self.boundary[objectID] == "BL"):
+            if (self.objstatus[objectID]=="NW" or self.objstatus[objectID]=="W" or self.objstatus[objectID]=="SW"):
+                # do hand off request to next cam
+                print ("need hand off to left cam.")
 
     def periodic_tracking(self, graph):
 
@@ -542,7 +613,7 @@ class Hypervisor(object):
             img = self.pre_process_image(frame)
             rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             prev_time, fps = self.getfps(prev_time)
-            print("estimated video fps {0}".format(fps))
+            #print("estimated video fps {0}".format(fps))
             positions = []
 
             if self.counter % self.frame_skips ==0:
@@ -603,9 +674,9 @@ class Hypervisor(object):
 
                     #print ("Tracking " + str(startX) + " " + str(startY))
             
-            print("positions: ", positions)
+            #print("positions: ", positions)
             objects = self.ct.update(positions)
-            print("number of objects to track: ", len(objects))
+            #print("number of objects to track: ", len(objects))
 
             for (objectID, centroid) in objects.items():
                 to = self.trobs.get(objectID, None)
@@ -620,31 +691,21 @@ class Hypervisor(object):
                     dirX = centroid[0] - np.mean(x)
                     # print (dirY, dirX)
                     to.centroids.append(centroid)
-                    '''
+                    
                     if not to.counted:
-                        if dirY < -2:
-                            if dirX < -2:
-                                print('NW')
-                            elif dirX < 2 and dirX > -2:
-                                print("N")
-                            elif dirX > 2:
-                                print('NE')
-                            
-                        elif dirY < 2 and dirY > -2:
-                            if dirX < -2:
-                                print('W')
-                            elif dirX < 2 and dirX > -2:
-                                print ('stable')
-                            elif dirX > 2:
-                                print('E')
-                        elif dirY > 2:
-                            if dirX < -2:
-                                print('SW')
-                            elif dirX < 2 and dirX > -2:
-                                print ('S')
-                            elif dirX > 2:
-                                print('SE')
-                    '''
+                        #print("centroid (x,y): ", centroid[0], centroid[1])
+                        self.checkboundary(centroid, objectID)
+                        #print("boundary: ", self.boundary[objectID])
+
+                        self.checkdir(dirX, dirY, objectID)
+                        #print("objstatus: ", self.objstatus[objectID])
+
+                        self.checkhandoff(objectID)
+
+                                
+
+
+                    
 
                 self.trobs[objectID] = to
                 text = "ID {}".format(objectID)
