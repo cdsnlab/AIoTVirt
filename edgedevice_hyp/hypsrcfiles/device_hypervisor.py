@@ -484,7 +484,7 @@ class Hypervisor(object):
             while (True):
                 ret, frame = self.camera.read()
                 #### get fps
-                prev_time, fps = getfps(prev_time)
+                prev_time, fps = self.getfps(prev_time)
 
                 print("estimated live fps {0}".format(fps))
                 img = self.pre_process_image(frame)
