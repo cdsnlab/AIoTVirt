@@ -410,7 +410,7 @@ class Hypervisor(object):
 
         # Main loop: Capture live stream & send frames to NCS
         if self.live == 1:
-
+            self.camera = cv2.VideoCapture(0)
             while (True):
                 ret, frame = self.camera.read()
                 #### get fps
@@ -480,6 +480,7 @@ class Hypervisor(object):
 
         # Main loop: Capture live stream & send frames to NCS
         if self.live == 1:
+            self.camera = cv2.VideoCapture(0)
             while (True):
                 ret, frame = self.camera.read()
                 #### get fps
