@@ -132,3 +132,13 @@ class MessageBus(object):
         curTime = now.strftime('%H:%M:%S.%f') # string format
         json_msg = {'type': 'img', 'img_string': encstr, 'time': curTime, 'framecnt': framecnt, 'device_name': device_name}
         return json.dumps(json_msg)
+
+
+    @staticmethod
+    def create_message_list_numpy_handoff(img, encode_param, device_name,timegap=timedelta()):
+        _, encimg = cv2.imencode('.jpg', img, encode_param)
+        encstr = base64.b64encode(encimg).decode('ascii')
+        now = datetime.utcnow()+timegap
+        curTime = now.strftime('%H:%M:%S.%f') # string format
+        json_msg = {'type': 'handoff_request', 'obj_string': encstr, 'time': curTime, 'device_name': device_name}
+        return json.dumps(json_msg)

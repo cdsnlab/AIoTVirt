@@ -78,15 +78,24 @@ class Hypervisor(object):
         self.scale = 0.00789
         self.starttime = time.time()
         self.logfile = None
+        self.encode_param = None
 #        self.timegap = datetime.datetime()
         self.gettimegap()
+        self.curframe = None # current frame
+        self.tm_methods = ['cv2.TM_SQDIFF_NORMED', 'cv2.TM_CCOEFF_NORMED', 'cv2.TM_CCORR_NORMED', 'cv2.TM_CCOEFF', 'cv2.TM_CCORR', 'cv2.TM_SQDIFF']
+        self.tm_op1 = cv2.TM_CCOEFF_NORMED
+        self.tm_op2 = cv2.TM_CCOEFF
+        self.tm_op3 = cv2.TM_CCORR_NORMED
+        self.tm_op4 = cv2.TM_CCORR
+        self.tm_op5 = cv2.TM_SQDIFF_NORMED
+        self.tm_op6 = cv2.TM_SQDIFF
         self.frame_skips = 30 # how many frames should be skipped before detection 
         self.ct = None # centroid tracker
         self.trackers = [] 
         self.trobs = {} # tracking objects
         self.boundary = {} # check if its on the boundary of the frame 0: top, 1: right, 2: bottom, 3: left
         self.objstatus = {} # objects current moving direction
-        self.framethr = 100 # boundary of the frame to indicate the the its leaving 
+        self.framethr = 50 # boundary of the frame to indicate the the its leaving 
 
 
     def gettimegap(self):
@@ -123,12 +132,49 @@ class Hypervisor(object):
                     self.msg_bus.node_table.add_entry(item['device_name'], item['ip'], item['port'], item['location'], item['capability'])
 
         elif msg_dict['type'] == 'handoff_request':
-            print(' - received handoff request')
+            self.process_cropped_image_tracking(msg_dict)
             # add the image to trackable list... but we don't know the coordinates...!
 
         else:
             # Silently ignore invalid message types.
             pass
+
+
+    def process_cropped_image_tracking(self, msg_dict):
+        print(' - received handoff request')
+
+        decstr = base64.b64decode(msg_dict['img_string'])
+        imgarray = np.fromstring(decstr, dtype=np.uint8)
+        tracking_template = cv2.imdecode(imgarray, cv2.IMREAD_COLOR)
+        for meth in self.tm_methods:
+            res = cv2.matchTemplate(self.curframe, tracking_template, meth)
+            min_val,max_val,min_loc, max_loc = cv2.minMaxLoc(res) # max_val is the matching threshold
+            print (meth, max_val)
+
+
+            if method in [cv2.TM_SQDIFF, cv2.TM_SQDIFF_NORMED]:
+                top_left = min_loc
+            else:
+                top_left = max_loc
+
+            bottom_right = (top_left[0]+w,top_left[1]+h)
+            cv2.rectangle(self.curframe, top_left, bottom_right,255,5)
+
+
+
+
+#        cv2.imwrite(msg_dict['time']+'.jpg', decimg)
+#        print(' - saved img.')
+        localNow = datetime.utcnow()+self.timegap
+        curTime = datetime.utcnow().strftime('%H:%M:%S.%f') # string forma
+        curdatetime = datetime.strptime(curTime, '%H:%M:%S.%f')
+        sentdatetime = datetime.strptime(msg_dict['time'], '%H:%M:%S.%f')
+        #self.logfile.write(str(msg_dict['framecnt'])+"\t"+str((curdatetime - sentdatetime).total_seconds())+"\t"+str(sys.getsizeof(decimg))+'\t'+str(self.cpuusage())+'\n')
+
+        self.imgq.put(decimg) # keep chugging
+        self.timerq.put(curdatetime)
+        self.framecntq.put(str(msg_dict['framecnt']))
+        self.framecnt = str(msg_dict['framecnt'])
 
     def join(self):
         # Create a join message based on NIC information.
@@ -377,7 +423,7 @@ class Hypervisor(object):
                 ram = psutil.virtual_memory()
                 # log here.
                 self.logfile.write(str(framecnt)+"\t"+str(sys.getsizeof(smallerimg))+"\t"+str(cpu)+"\n")
-                jsonified_data = MessageBus.create_message_list_numpy(smallerimg, framecnt, encode_param, self.device_name,self.timegap)
+                jsonified_data = MessageBus.create_message_list_numpy(smallerimg, framecnt, self.encode_param, self.device_name,self.timegap)
                 self.msg_bus.send_message_str(self.controller_ip, self.controller_port, jsonified_data)
                 framecnt += 1
 
@@ -391,7 +437,7 @@ class Hypervisor(object):
             self.close_ncs_device(device, graph)
         # sy: read video from file
         else:
-            encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), 90]
+            self.encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), 90]
             cap = cv2.VideoCapture(self.live)
 
             while cap.isOpened():
@@ -401,7 +447,7 @@ class Hypervisor(object):
                 prev_time, fps = self.getfps(prev_time)
                 print("estimated transmission fps {0}".format(fps))
                 img = self.pre_process_image(frame)
-                #result, encimg = cv2.imencode('.jpg', smallerimg, encode_param)
+                #result, encimg = cv2.imencode('.jpg', smallerimg, self.encode_param)
                 if (ret!=1):
                     self.logfile.close()
                     sys.exit(0)
@@ -411,7 +457,7 @@ class Hypervisor(object):
                 ram = psutil.virtual_memory()
                 # log here.
                 self.logfile.write(str(framecnt)+"\t"+str(sys.getsizeof(smallerimg))+"\t"+str(cpu)+"\n")
-                jsonified_data = MessageBus.create_message_list_numpy(smallerimg, framecnt, encode_param, self.device_name,self.timegap)
+                jsonified_data = MessageBus.create_message_list_numpy(smallerimg, framecnt, self.encode_param, self.device_name,self.timegap)
                 self.msg_bus.send_message_str(self.controller_ip, self.controller_port, jsonified_data)
                 framecnt += 1
 
@@ -452,7 +498,7 @@ class Hypervisor(object):
             self.close_ncs_device(device, graph)
 
         else:
-            encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), 90]
+            self.encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), 90]
             cap = cv2.VideoCapture(self.live)
 
             while cap.isOpened():
@@ -581,18 +627,24 @@ class Hypervisor(object):
             if (self.objstatus[objectID]=="NW" or self.objstatus[objectID]=="N" or self.objstatus[objectID]=="NE"):
                 # do hand off request to next cam
                 print ("need hand off to top cam.")
+                return "TOP"
         elif(self.boundary[objectID] == "TR" or self.boundary[objectID] == "CR" or self.boundary[objectID] == "BR"):
             if (self.objstatus[objectID]=="NE" or self.objstatus[objectID]=="E" or self.objstatus[objectID]=="SE"):
                 # do hand off request to next cam
                 print ("need hand off to right cam.")
+                return "RIGHT"
         elif(self.boundary[objectID] == "BL" or self.boundary[objectID] == "BC" or self.boundary[objectID] == "BR"):
             if (self.objstatus[objectID]=="SW" or self.objstatus[objectID]=="S" or self.objstatus[objectID]=="SE"):
                 # do hand off request to next cam
                 print ("need hand off to bottom cam.")
+                return "BOTTOM"
         elif(self.boundary[objectID] == "TL" or self.boundary[objectID] == "CL" or self.boundary[objectID] == "BL"):
             if (self.objstatus[objectID]=="NW" or self.objstatus[objectID]=="W" or self.objstatus[objectID]=="SW"):
                 # do hand off request to next cam
                 print ("need hand off to left cam.")
+                return "LEFT"
+        else:
+            return "CALM"
 
     def periodic_tracking(self, graph):
 
@@ -600,8 +652,7 @@ class Hypervisor(object):
         framecnt = 0
         labels = []
 
-
-        encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), 90]
+        self.encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), 90]
         cap = cv2.VideoCapture(self.live)
 
         while cap.isOpened():
@@ -610,10 +661,11 @@ class Hypervisor(object):
             if frame is None:
                 break
             frame = cv2.resize(frame, (self.width, self.height))
+            self.curframe = frame
             img = self.pre_process_image(frame)
             rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             prev_time, fps = self.getfps(prev_time)
-            #print("estimated video fps {0}".format(fps))
+            print("estimated video fps {0}".format(fps))
             positions = []
 
             if self.counter % self.frame_skips ==0:
@@ -627,8 +679,6 @@ class Hypervisor(object):
                 # Deserialize the output into a python dictionary
                 output_dict = deserialize_output.ssd(output, self.confidence_threshold, frame.shape)
                 
-                # self.tracker_direction(frame, output_dict) # only tracks human! nothing else
-                #numobj = (output_dict['num_detections'])
 
                 for i in range(0, output_dict['num_detections']):
                     if output_dict['detection_scores_' + str(i)] > self.confidence_threshold :
@@ -657,7 +707,7 @@ class Hypervisor(object):
                         #cv2.imwrite ("frame"+str(self.counter)+".jpg", frame)
 
             else:
-                for tracker in self.trackers: # it does not remove anything from this list, thats why ..
+                for tracker in self.trackers: 
                     tracker.update(rgb)
                     pos = tracker.get_position()
                     startX = int(pos.left())
@@ -674,9 +724,7 @@ class Hypervisor(object):
 
                     #print ("Tracking " + str(startX) + " " + str(startY))
             
-            #print("positions: ", positions)
             objects = self.ct.update(positions)
-            #print("number of objects to track: ", len(objects))
 
             for (objectID, centroid) in objects.items():
                 to = self.trobs.get(objectID, None)
@@ -695,21 +743,38 @@ class Hypervisor(object):
                     if not to.counted:
                         #print("centroid (x,y): ", centroid[0], centroid[1])
                         self.checkboundary(centroid, objectID)
-                        #print("boundary: ", self.boundary[objectID])
+                        print("boundary: ", self.boundary)
 
                         self.checkdir(dirX, dirY, objectID)
-                        #print("objstatus: ", self.objstatus[objectID])
+                        print("objstatus: ", self.objstatus)
 
-                        self.checkhandoff(objectID)
+                        where = self.checkhandoff(objectID)
+                        # send hand off msg here
+                        if(where == "RIGHT"):
+                            print("we need to send msg to right")
+                            print("just throw in the cropped img template")
+                            print("upon receiving the cropped img, do the template matching & add to tracking dlib queue")
+                            jsonified_data = MessageBus.create_message_list_numpy_handoff(croppedimg, self.encode_param, self.device_name, self.timegap)
+                            #self.msg_bus.send_message_str(self.right_device_ip_ext self.right_device_port, jsonified_data)
+                            
+                        elif (where == "LEFT"):
+                            print("we need to send msg to left")
+                            #jsonified_data = MessageBus.create_message_list_numpy_handoff(croppedimg, encode_param, self.device_name, self.timegap)
+                            #self.msg_bus.send_message_str(self.right_device_ip_ext self.right_device_port, jsonified_data)
+                        elif (where == "TOP"):
+                            print("we need to send msg to top")
+                        elif (where == "BOTTOM"):
+                            print("we need to send msg to bottom")
+                        else:
+                            print("Nothing is happening")
 
-                                
 
 
-                    
+                 
 
                 self.trobs[objectID] = to
                 text = "ID {}".format(objectID)
-                cv2.putText(frame, text, (centroid[0]-10, centroid[1]-10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (111,111,111),2)
+                cv2.putText(frame, text, (centroid[0]-10, centroid[1]-10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255,255,255),2)
 
             self.counter += 1
 #            cv2.imwrite('frame'+str(self.counter)+'.jpg', frame)
@@ -720,23 +785,7 @@ class Hypervisor(object):
 #            time.sleep(1)
         cap.release()
 
-    # add detected objects into self.trackers
-    def tracker_direction(self,rgb, output_dict):
-        #self.trackers = []
-        for i in np.arange(0, output_dict['num_detections']):
-            if output_dict['detection_scores_' + str(i)] > self.confidence_threshold :
-                if output_dict ['detection_classes_'+str(i)] != 15: # skip if not human
-                    continue
 
-                #print("%3.1f%%\t" % output_dict['detection_scores_' + str(i)] + self.labels[int(output_dict['detection_classes_' + str(i)])] + ": Top Left: " + str(output_dict['detection_boxes_' + str(i)][0]) + " Bottom Right: " + str(output_dict['detection_boxes_' + str(i)][1]))
-                (startY, startX) = output_dict.get('detection_boxes_' + str(i))[0]
-                (endY, endX) = output_dict.get('detection_boxes_' + str(i))[1]
-                #print("detected " + str(output_dict['detection_classes_'+str(i)]) + str(startX)+" "+str(startY))
-                # but how do we know that they are the same?
-                tracker = dlib.correlation_tracker() # initialize a new object to track
-                rect = dlib.rectangle(startX, startY, endX, endY)
-                tracker.start_track(rgb,rect)
-                self.trackers.append(tracker)
 
 
 
