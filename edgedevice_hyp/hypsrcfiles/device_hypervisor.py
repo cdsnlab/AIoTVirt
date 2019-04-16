@@ -409,16 +409,15 @@ class Hypervisor(object):
         graph = load_graph(self.graph_file, device)
 
         # Main loop: Capture live stream & send frames to NCS
-        if self.live == 1:
+        if self.live == str(1):
             self.camera = cv2.VideoCapture(0)
             while (True):
                 ret, frame = self.camera.read()
-                #### get fps
-                
+                #### get fps                
                 prev_time, fps = self.getfps(prev_time)
                 print("estimated live fps {0}".format(fps))
-                img = self.pre_process_image(frame)
-                smallerimg = cv2.resize(img, (self.width, self.height))
+#                img = self.pre_process_image(frame)
+                smallerimg = cv2.resize(frame, (self.width, self.height))
                 cpu = psutil.cpu_percent()
                 ram = psutil.virtual_memory()
                 # log here.
