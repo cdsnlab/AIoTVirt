@@ -57,7 +57,7 @@ class Rec(object):
         devicename = socket.gethostname()
         now = datetime.datetime.now()
         strnow = now.strftime("%H:%M")
-        finalname = devicename + "_" + strnow + "_" + str(self.resolution) + "_" + str(self.recordtime) +".mkv"
+        finalname = str(devicename) + "_" + strnow.replace(":", "") + "_" + str(self.resolution) + "_" + str(self.recordtime) +".mkv"
         print(finalname)
         return finalname
 
