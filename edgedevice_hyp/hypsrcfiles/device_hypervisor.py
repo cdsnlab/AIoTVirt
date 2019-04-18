@@ -65,7 +65,7 @@ class Hypervisor(object):
         self.live = live
         self.tr_method = tr_method
         self.labels = None
-        self.confidence_threshold = 0.70
+        self.confidence_threshold = 0.0
         self.redis_db = None
         self.display = 'off'
         self.graph_file = ''
@@ -89,7 +89,7 @@ class Hypervisor(object):
         self.tm_op4 = cv2.TM_CCORR
         self.tm_op5 = cv2.TM_SQDIFF_NORMED
         self.tm_op6 = cv2.TM_SQDIFF
-        self.frame_skips = 30 # how many frames should be skipped before detection 
+        self.frame_skips = 10 # how many frames should be skipped before detection 
         self.ct = None # centroid tracker
         self.trackers = [] 
         self.trobs = {} # tracking objects
@@ -684,6 +684,7 @@ class Hypervisor(object):
                     if output_dict['detection_scores_' + str(i)] > self.confidence_threshold :
                         if output_dict ['detection_classes_'+str(i)] != 15: # skip if not human
                             continue
+                        print("%3.1f%%\t" % output_dict['detection_scores_' + str(i)] + self.labels[int(output_dict['detection_classes_' + str(i)])] + ": Top Left: " + str(output_dict['detection_boxes_' + str(i)][0]) + " Bottom Right: " + str(output_dict['detection_boxes_' + str(i)][1]))
                   
                         (y1, x1) = output_dict.get('detection_boxes_' + str(i))[0]
                         (y2, x2) = output_dict.get('detection_boxes_' + str(i))[1]
@@ -754,7 +755,7 @@ class Hypervisor(object):
                             print("we need to send msg to right")
                             print("just throw in the cropped img template")
                             print("upon receiving the cropped img, do the template matching & add to tracking dlib queue")
-                            jsonified_data = MessageBus.create_message_list_numpy_handoff(croppedimg, self.encode_param, self.device_name, self.timegap)
+                            #jsonified_data = MessageBus.create_message_list_numpy_handoff(croppedimg, self.encode_param, self.device_name, self.timegap)
                             #self.msg_bus.send_message_str(self.right_device_ip_ext self.right_device_port, jsonified_data)
                             
                         elif (where == "LEFT"):
