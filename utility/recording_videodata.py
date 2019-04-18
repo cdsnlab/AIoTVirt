@@ -48,7 +48,7 @@ class Rec(object):
         self.cmd.append(res_conv)
         self.outputfilename = self.createoutfilename()
         self.cmd.append(self.outputfilename)
-        
+        print (self.cmd)
         subprocess.call(self.cmd)
         #print(self.commandline +" "+ fr +" "+ str(self.inputfps) +" "+ ct +" "+ ct_conv +" "+ res +" "+ res_conv +" "+ self.outputfilename)
         #os.system(self.commandline +" "+ fr +" "+ str(self.inputfps) +" "+ ct +" "+ ct_conv +" "+ res +" "+ res_conv +" "+ self.outputfilename)
@@ -57,7 +57,7 @@ class Rec(object):
         devicename = socket.gethostname()
         now = datetime.datetime.now()
         strnow = now.strftime("%H:%M")
-        finalname = str(devicename) + "_" + strnow.replace(":", "") + "_" + str(self.resolution) + "_" + str(self.recordtime) +".mkv"
+        finalname = str(devicename) + "_" + strnow.replace(":", "") + "_" + str(self.resolution) + "_" + str(self.recordtime) +".mp4"
         print(finalname)
         return finalname
 
@@ -67,7 +67,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="recording test videos.")
     parser.add_argument('-t', '--recordtime', type=int, default = 60, help = 'length of the recording video in seconds')
     parser.add_argument('-o', '--output', type=str, default = 'cam_vid.mkv', help = 'name of the output file')
-    parser.add_argument('-fps', '--inputfps', type=int, default = 30, help = ' frame rate of the input video')
+    parser.add_argument('-fps', '--inputfps', type=int, default = 24, help = ' frame rate of the input video')
     parser.add_argument('-r', '--resolution', type=int, default = 720, help = ' video resolution. type in vertical metric 720 or 480 (e.g. 1080p --> 1920x1080, 720p --> 1280x720, 480p --> 858x480, 360p --> 480x360)')
 
     ARGS = parser.parse_args()
