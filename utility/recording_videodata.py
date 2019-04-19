@@ -23,7 +23,7 @@ class Rec(object):
         fr = "-framerate" # frame rate
         ct = "-t" # capture time
         res = "-video_size" #resolution 
-
+        bitrate = "-b:v" # bitrate
         ct_conv = str(datetime.timedelta(seconds=self.recordtime)) # converted time
         if(self.resolution == 1080):
             res_conv = "1920x1080"
@@ -36,16 +36,19 @@ class Rec(object):
         else:
             print ("invalid option")
         
-        self.startrecord(fr, ct, res, ct_conv, res_conv)
+        self.startrecord(fr, ct, res, ct_conv, res_conv, bitrate)
 
-    def startrecord(self, fr, ct, res, ct_conv, res_conv):
+    def startrecord(self, fr, ct, res, ct_conv, res_conv, bitrate):
         print('running ffmpeg script...')
+        self.cmd.append(bitrate)
+        self.cmd.append(self.br_val)
         self.cmd.append(fr)
         self.cmd.append(str(self.inputfps))
         self.cmd.append(ct)
         self.cmd.append(ct_conv)
         self.cmd.append(res)
         self.cmd.append(res_conv)
+
         self.outputfilename = self.createoutfilename()
         self.cmd.append(self.outputfilename)
         print (self.cmd)
@@ -67,16 +70,17 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="recording test videos.")
     parser.add_argument('-t', '--recordtime', type=int, default = 60, help = 'length of the recording video in seconds')
     parser.add_argument('-o', '--output', type=str, default = 'cam_vid.mkv', help = 'name of the output file')
-    parser.add_argument('-fps', '--inputfps', type=int, default = 24, help = ' frame rate of the input video')
+    parser.add_argument('-fps', '--inputfps', type=int, default = 30, help = ' frame rate of the input video')
     parser.add_argument('-r', '--resolution', type=int, default = 720, help = ' video resolution. type in vertical metric 720 or 480 (e.g. 1080p --> 1920x1080, 720p --> 1280x720, 480p --> 858x480, 360p --> 480x360)')
-
+    parser.add_argument('-b', '--bitrate_value', type=str, default = "1M", help = ' desired bitrate. ')
+    
     ARGS = parser.parse_args()
     rec = Rec()
     rec.recordtime = ARGS.recordtime
     rec.outputfilename = ARGS.output
     rec.inputfps = ARGS.inputfps
     rec.resolution = ARGS.resolution
-
+    rec.br_val = ARGS.bitrate_value
     rec.createcommandline()
 
 
