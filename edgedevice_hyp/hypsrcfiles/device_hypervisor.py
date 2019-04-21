@@ -134,6 +134,7 @@ class Hypervisor(object):
                 if item['device_name'] == self.device_name:
                     continue
                 else:
+                    # adding a node info that i am not aware of...
                     print(' - adding a new node_info: ', item['device_name'])
                     self.msg_bus.node_table.add_entry(item['device_name'], item['ip'], item['port'], item['location'], item['capability'])
 
@@ -183,7 +184,7 @@ class Hypervisor(object):
         # Create a join message based on NIC information.
 
         print("connecting to edge server")
-        join_msg = dict(type='join', device_name=device_name, ip=self.device_ip_ext, port=self.device_port_ext,
+        join_msg = dict(type='join', device_name=self.device_name, ip=self.device_ip_ext, port=self.device_port_ext,
                         location='N1_823_1', capability='no')
         self.msg_bus.send_message_json(self.controller_ip, self.controller_port, join_msg)
         
