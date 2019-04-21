@@ -591,52 +591,54 @@ class Hypervisor(object):
             self.periodic_tracking(graph)
 
     def checkboundary(self, centroid, objectID):
-        if(centroid[0]<self.framethr):
-            if(centroid[1]<self.framethr):
+        if(centroid[0]<=self.framethr):
+            if(centroid[1]<=self.framethr):
                 self.boundary[objectID] = "TL"
-            elif(centroid[1]>self.framethr and centroid[1] < (self.height-self.framethr)):
+            elif(centroid[1]>self.framethr and centroid[1] <= (self.height-self.framethr)):
                 self.boundary[objectID] = "CL"
             elif(centroid[1]>(self.width-self.framethr)):
                 self.boundary[objectID] = "BL"
-        elif (centroid[0]>self.framethr and centroid[0] < (self.width - self.framethr)):
-            if(centroid[1] < self.framethr):
+        elif (centroid[0]>self.framethr and centroid[0] <= (self.width - self.framethr)):
+            if(centroid[1] <= self.framethr):
                 self.boundary[objectID] = "TC"
-            elif(centroid[1]>self.framethr and centroid[1] < (self.height-self.framethr)):
+            elif(centroid[1]>self.framethr and centroid[1] <= (self.height-self.framethr)):
                 self.boundary[objectID] = "CC"
             elif(centroid[1]>(self.width-self.framethr)):
                 self.boundary[objectID] = "BC"
         elif (centroid[0] > (self.width - self.framethr)):
-            if(centroid[1] < self.framethr):
+            if(centroid[1] <= self.framethr):
                 self.boundary[objectID] = "TR"
-            elif(centroid[1]>self.framethr and centroid[1] < (self.height-self.framethr)):
+            elif(centroid[1]>self.framethr and centroid[1] <= (self.height-self.framethr)):
                 self.boundary[objectID] = "CR"
             elif(centroid[1]>(self.width-self.framethr)):
                 self.boundary[objectID] = "BR"
         
-    def checkdir(self, dirX, dirY,objectID): # this -2, 2 must also be adjusted depending on the tracked objects
-        if dirY < -2:
-            if dirX < -2:
+    def checkdir(self, dirX, dirY, objectID): # this -2, 2 must also be adjusted depending on the tracked objects
+        print(dirX, dirY, objectID)
+        if dirY <= -2.0:
+            if dirX <= -2.0:
                 self.objstatus[objectID] = "NW"
-            elif dirX < 2 and dirX > -2:
+            elif dirX <= 2.0 and dirX > -2.0:
                 self.objstatus[objectID] = "N"
-            elif dirX > 2:
+            elif dirX > 2.0:
                 self.objstatus[objectID] = "NE"
                             
-        elif dirY < 2 and dirY > -2:
-            if dirX < -2:
+        elif dirY <= 2.0 and dirY > -2.0:
+            if dirX <= -2.0:
                 self.objstatus[objectID] = "W"
-            elif dirX < 2 and dirX > -2:
+            elif dirX <= 2.0 and dirX > -2.0:
                 self.objstatus[objectID] = "-"
-            elif dirX > 2:
+            elif dirX > 2.0:
                 self.objstatus[objectID] = "E"
 
-        elif dirY > 2:
-            if dirX < -2:
+        elif dirY > 2.0:
+            if dirX <= -2.0:
                 self.objstatus[objectID] = "SW"
-            elif dirX < 2 and dirX > -2:
+            elif dirX <= 2.0 and dirX > -2.0:
                 self.objstatus[objectID] = "S"
-            elif dirX > 2:
+            elif dirX > 2.0:
                 self.objstatus[objectID] = "SE"
+        print (self.objstatus[objectID])
 
     def checkhandoff(self, objectID):
         if(self.boundary[objectID] == "TL" or self.boundary[objectID] == "TC" or self.boundary[objectID] == "TR"):
@@ -756,10 +758,10 @@ class Hypervisor(object):
                     if not to.counted:
                         #print("centroid (x,y): ", centroid[0], centroid[1])
                         self.checkboundary(centroid, objectID)
-                        #print("boundary: ", self.boundary)
+                        print("loc of object in frame: ", self.boundary)
 
                         self.checkdir(dirX, dirY, objectID)
-                        #print("objstatus: ", self.objstatus)
+                        print("moving direction of the object: ", self.objstatus)
 
                         where = self.checkhandoff(objectID)
                         # send hand off msg here
