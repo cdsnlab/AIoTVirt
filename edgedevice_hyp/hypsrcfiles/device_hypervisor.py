@@ -57,6 +57,7 @@ class Hypervisor(object):
         self.controller_port = controller_port
 
         self.msg_bus = MessageBus(name, port, 'camera')
+        self.msg_bus.register_callback('join', self.handle_message)
         self.msg_bus.register_callback('device_list', self.handle_message)
         self.msg_bus.register_callback('handoff_request', self.handle_message)
         signal.signal(signal.SIGINT, self.signal_handler)
@@ -124,7 +125,9 @@ class Hypervisor(object):
 
     def handle_message(self, msg_dict):
         print('[Hypervisor] handle_message: %s' % msg_dict['type'])
-        if msg_dict['type'] == 'device_list':
+        if msg_dict['type'] == 'join':
+            self.handle_join(msg_dict)
+        elif msg_dict['type'] == 'device_list':
             # print(msg_dict)
             device_list = json.loads(msg_dict['devices'])
             for item in device_list:
@@ -136,6 +139,7 @@ class Hypervisor(object):
 
         elif msg_dict['type'] == 'handoff_request':
             self.process_cropped_image_tracking(msg_dict)
+            #self.findobj==True
             # add the image to trackable list... but we don't know the coordinates...!
 
         else:
@@ -151,10 +155,9 @@ class Hypervisor(object):
         tracking_template = cv2.imdecode(imgarray, cv2.IMREAD_COLOR)
         for meth in self.tm_methods:
             res = cv2.matchTemplate(self.curframe, tracking_template, meth)
+            print(res)
             min_val,max_val,min_loc, max_loc = cv2.minMaxLoc(res) # max_val is the matching threshold
-            print (meth, max_val)
-
-
+            
             if method in [cv2.TM_SQDIFF, cv2.TM_SQDIFF_NORMED]:
                 top_left = min_loc
             else:
@@ -162,17 +165,19 @@ class Hypervisor(object):
 
             bottom_right = (top_left[0]+w,top_left[1]+h)
             cv2.rectangle(self.curframe, top_left, bottom_right,255,5)
+            cv2.imshow("lets track", frame)
 
 
         localNow = datetime.utcnow()+self.timegap
         curTime = datetime.utcnow().strftime('%H:%M:%S.%f') # string forma
         curdatetime = datetime.strptime(curTime, '%H:%M:%S.%f')
         sentdatetime = datetime.strptime(msg_dict['time'], '%H:%M:%S.%f')
-
+        '''
         self.imgq.put(decimg) # keep chugging
         self.timerq.put(curdatetime)
         self.framecntq.put(str(msg_dict['framecnt']))
         self.framecnt = str(msg_dict['framecnt'])
+        '''
 
     def join(self):
         # Create a join message based on NIC information.
@@ -184,7 +189,7 @@ class Hypervisor(object):
         
         # We might not need to join other cameras, just sent handoff-message!
 
-        '''
+        
         if self.device_name == "camera02": #if this devices is center device
             print("connecting to left cam")
             join_msg = dict(type='join', device_name=device_name, ip=self.device_ip_ext, port=self.device_port_ext,
@@ -200,10 +205,12 @@ class Hypervisor(object):
             join_msg = dict(type='join', device_name=device_name, ip=self.device_ip_ext, port=self.device_port_ext,
                         location='N1_823_1', capability='no')
             self.msg_bus.send_message_json(self.center_device_ip_int, self.center_device_port, join_msg)
+            '''
             print("connecting to right cam")
             join_msg = dict(type='join', device_name=device_name, ip=self.device_ip_ext, port=self.device_port_ext,
                         location='N1_823_1', capability='no')
             self.msg_bus.send_message_json(self.right_device_ip_int, self.right_device_port, join_msg)
+
 
         elif self.device_name == "camera03": # if this device is the right device
             print("connecting to left cam")
@@ -214,7 +221,17 @@ class Hypervisor(object):
             join_msg = dict(type='join', device_name=device_name, ip=self.device_ip_ext, port=self.device_port_ext,
                         location='N1_823_1', capability='no')
             self.msg_bus.send_message_json(self.center_device_ip_int, self.center_device_port, join_msg)
-        '''
+            '''
+    def handle_join(self, msg_dict):
+        node_table = self.msg_bus.node_table
+        node_table.add_entry(msg_dict['device_name'], msg_dict['ip'], int(msg_dict['port']), msg_dict['location'], msg_dict['capability'])
+        print('@@Table: ', self.msg_bus.node_table.table)
+
+        # Send node_table
+        device_list_json = {"type": "device_list", "devices": self.msg_bus.node_table.get_list_str()}
+        for node_name in node_table.table.keys():
+            node_info = node_table.table[node_name]
+            self.msg_bus.send_message_json(node_info.ip, int(node_info.port), device_list_json)
 
     def connect_redis_db(self, redis_port):
         self.redis_db = redis.Redis(host='localhost', port=redis_port, db=0)
@@ -668,8 +685,9 @@ class Hypervisor(object):
             cpu = psutil.cpu_percent()
             ram = psutil.virtual_memory()
             if self.findobj == True:
-                print('looking for objects in frame')
+                print('looking for objects in frame...')
                 res = cv2.matchTemplate(frame, self.template, self.tm_op1)
+                print(res)
                 min_val, max_val, min_loc, max_loc = cv2.minMaxLoc (res)
                 w, h = self.template.shape[::-1]
                 br = (min_loc[0] + w, min_loc[1] +h)
@@ -754,7 +772,7 @@ class Hypervisor(object):
                             #print("t: ", t) # centroid
                             cv2.rectangle(frame, (p[0], p[1]), (p[2], p[3]), (255,0,0),2)
                             #croppedimg = frame[y1:y2, x1: x2]
-                            #jsonified_data = MessageBus.create_message_list_numpy_handoff(croppedimg, self.encode_param, self.device_name, self.timegap)
+                            jsonified_data = MessageBus.create_message_list_numpy_handoff(croppedimg, self.encode_param, self.device_name, self.timegap)
                             self.msg_bus.send_message_str(self.center_device_ip_ext, self.center_device_port, jsonified_data)
                             
                         elif (where == "LEFT"):
@@ -852,9 +870,7 @@ if __name__ == '__main__':
     device_port = config['message_bus']['left_device_port']
     device_ip_ext = config['message_bus']['left_device_ip_ext']
     device_port_ext = config['message_bus']['left_device_port_ext']
-
     hyp = Hypervisor(device_name, device_port, device_ip_ext, device_port_ext, ARGS.iface, controller_ip, controller_port, ARGS.videofile, ARGS.transmission)
-    hyp.join()
 
     #connection to other cameras
     hyp.center_device_name = config['message_bus']['center_device_name']
@@ -862,12 +878,14 @@ if __name__ == '__main__':
     hyp.center_device_ip_int = config['message_bus']['center_device_ip_int']
     hyp.center_device_ip_ext = config['message_bus']['center_device_ip_ext']
 
-    '''
+    
     hyp.right_device_name = config['message_bus']['right_device_name']
     hyp.right_device_port = config['message_bus']['right_device_port']
     hyp.right_device_ip_int = config['message_bus']['right_device_ip_int']
     hyp.right_device_ip_ext = config['message_bus']['right_device_ip_ext']
-    '''
+    
+
+    hyp.join()
     # Camera-related settings
 
     hyp.display = ARGS.display
