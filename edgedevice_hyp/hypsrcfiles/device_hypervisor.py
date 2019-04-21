@@ -190,7 +190,7 @@ class Hypervisor(object):
         
         # We might not need to join other cameras, just sent handoff-message!
 
-        
+        '''
         if self.device_name == "camera02": #if this devices is center device
             print("connecting to left cam")
             join_msg = dict(type='join', device_name=device_name, ip=self.device_ip_ext, port=self.device_port_ext,
@@ -206,7 +206,7 @@ class Hypervisor(object):
             join_msg = dict(type='join', device_name=device_name, ip=self.device_ip_ext, port=self.device_port_ext,
                         location='N1_823_1', capability='no')
             self.msg_bus.send_message_json(self.center_device_ip_int, self.center_device_port, join_msg)
-            '''
+            
             print("connecting to right cam")
             join_msg = dict(type='join', device_name=device_name, ip=self.device_ip_ext, port=self.device_port_ext,
                         location='N1_823_1', capability='no')
@@ -773,10 +773,10 @@ class Hypervisor(object):
                             #t = self.ct.objects[objectID]  #centroid x, y
                             #print("type p: ", type(p)) # rect
                             #print("t: ", t) # centroid
-                            cv2.rectangle(frame, (p[0], p[1]), (p[2], p[3]), (255,0,0),2)
+                            #cv2.rectangle(frame, (p[0], p[1]), (p[2], p[3]), (255,0,0),2)
                             #croppedimg = frame[y1:y2, x1: x2]
-                            jsonified_data = MessageBus.create_message_list_numpy_handoff(croppedimg, self.encode_param, self.device_name, self.timegap)
-                            self.msg_bus.send_message_str(self.center_device_ip_ext, self.center_device_port, jsonified_data)
+                            #jsonified_data = MessageBus.create_message_list_numpy_handoff(croppedimg, self.encode_param, self.device_name, self.timegap)
+                            #self.msg_bus.send_message_str(self.center_device_ip_ext, self.center_device_port, jsonified_data)
                             
                         elif (where == "LEFT"):
                             print("we need to send msg to left")
