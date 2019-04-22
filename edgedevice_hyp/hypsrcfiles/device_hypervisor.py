@@ -577,6 +577,7 @@ class Hypervisor(object):
         # Main loop: Capture live stream & send frames to NCS
         if self.live == str(1):
             # wtf haha
+
             self.periodic_tracking(graph)
         else:
             # detects objects every 10 frames, tracks every frames.
@@ -664,7 +665,10 @@ class Hypervisor(object):
         labels = []
 
         self.encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), 99]
-        cap = cv2.VideoCapture(self.live)
+        if self.live == str(1):
+            cap = cv2.VideoCapture(0)
+        else: # if its a file
+            cap = cv2.VideoCapture(self.live)
 
         while cap.isOpened():
             curr_time_str = datetime.utcnow().strftime('%H:%M:%S.%f')[:-3]
