@@ -432,16 +432,20 @@ class Hypervisor(object):
                 if (ret!=1):
                     self.logfile.close()
                     sys.exit(0)
-                #### get fps                
+
+                if(self.width == None and self.height == None):
+                    self.width = frame.shape[1]
+                    self.height = frame.shape[0]
+                frame = cv2.resize(frame, (self.width, self.height))
                 prev_time, fps = self.getfps(prev_time)
                 print("estimated live fps {0}".format(fps))
 #                img = self.pre_process_image(frame)
-                smallerimg = cv2.resize(frame, (self.width, self.height))
+                
                 cpu = psutil.cpu_percent()
                 ram = psutil.virtual_memory()
                 # log here.
-                self.logfile.write(str(framecnt)+"\t"+str(sys.getsizeof(smallerimg))+"\t"+str(cpu)+"\n")
-                jsonified_data = MessageBus.create_message_list_numpy(smallerimg, framecnt, self.encode_param, self.device_name,self.timegap)
+                self.logfile.write(str(framecnt)+"\t"+str(sys.getsizeof(frame))+"\t"+str(cpu)+"\n")
+                jsonified_data = MessageBus.create_message_list_numpy(frame, framecnt, self.encode_param, self.device_name,self.timegap)
                 self.msg_bus.send_message_str(self.controller_ip, self.controller_port, jsonified_data)
                 framecnt += 1
 
@@ -464,17 +468,21 @@ class Hypervisor(object):
                 if (ret!=1):
                     self.logfile.close()
                     sys.exit(0)
+                if(self.width == None and self.height == None):
+                    self.width = frame.shape[1]
+                    self.height = frame.shape[0]
+                frame = cv2.resize(frame, (self.width, self.height))
+
                 prev_time, fps = self.getfps(prev_time)
                 print("estimated transmission fps {0}".format(fps))
 #                img = self.pre_process_image(frame)
                 #result, encimg = cv2.imencode('.jpg', smallerimg, self.encode_param)
             
-                smallerimg = cv2.resize(frame, (self.width, self.height))
                 cpu = psutil.cpu_percent()
                 ram = psutil.virtual_memory()
                 # log here.
-                self.logfile.write(str(framecnt)+"\t"+str(sys.getsizeof(smallerimg))+"\t"+str(cpu)+"\n")
-                jsonified_data = MessageBus.create_message_list_numpy(smallerimg, framecnt, self.encode_param, self.device_name,self.timegap)
+                self.logfile.write(str(framecnt)+"\t"+str(sys.getsizeof(frame))+"\t"+str(cpu)+"\n")
+                jsonified_data = MessageBus.create_message_list_numpy(frame, framecnt, self.encode_param, self.device_name,self.timegap)
                 self.msg_bus.send_message_str(self.controller_ip, self.controller_port, jsonified_data)
                 framecnt += 1
 
@@ -501,7 +509,10 @@ class Hypervisor(object):
                 ret, frame = self.camera.read()
                 #### get fps
                 prev_time, fps = self.getfps(prev_time)
-
+                if(self.width == None and self.height == None):
+                    self.width = frame.shape[1]
+                    self.height = frame.shape[0]
+                frame = cv2.resize(frame, (self.width, self.height))
                 print("estimated live fps {0}".format(fps))
                 img = self.pre_process_image(frame)
                 # this is spencers code for infering fps.
@@ -521,8 +532,10 @@ class Hypervisor(object):
             while cap.isOpened():
                 curr_time_str = datetime.utcnow().strftime('%H:%M:%S.%f')[:-3]
                 ret, frame = cap.read()  # ndarray
-                #smallerimg = cv2.resize(frame, (self.width, self.height))
-                # result, encimg = cv2.imencode('.jpg', smallerimg, encode_param)
+                if(self.width == None and self.height == None):
+                    self.width = frame.shape[1]
+                    self.height = frame.shape[0]
+                frame = cv2.resize(frame, (self.width, self.height))
 
 
                 # TODO: Capture contexts.
@@ -658,10 +671,12 @@ class Hypervisor(object):
             ret, frame = cap.read()  # ndarray
             if frame is None:
                 break
-            self.width = frame.shape[1]
-            self.height = frame.shape[0]
+            print(self.width, self.height)
+            if(self.width == None and self.height == None):
+                self.width = frame.shape[1]
+                self.height = frame.shape[0]
             #print(self.width, self.height)
-            #frame = cv2.resize(frame, (self.width, self.height))
+            frame = cv2.resize(frame, (self.width, self.height))
             self.curframe = frame
             img = self.pre_process_image(frame)
             rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
@@ -755,7 +770,7 @@ class Hypervisor(object):
                             #t = self.ct.objects[objectID]  #centroid x, y
                             #print("type p: ", type(p)) # rect
                             #print("t: ", t) # centroid
-                            #cv2.rectangle(frame, (p[0], p[1]), (p[2], p[3]), (255,0,0),2)
+                            cv2.rectangle(frame, (p[0], p[1]), (p[2], p[3]), (255,0,0),2)
                             #croppedimg = frame[y1:y2, x1: x2]
                             #jsonified_data = MessageBus.create_message_list_numpy_handoff(croppedimg, self.encode_param, self.device_name, self.timegap)
                             #self.msg_bus.send_message_str(self.center_device_ip_ext, self.center_device_port, jsonified_data)
@@ -792,9 +807,6 @@ class Hypervisor(object):
         cap.release()
 
 
-
-
-
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(
         description="IoT Camera (device) of Chameleon.")
@@ -811,10 +823,10 @@ if __name__ == '__main__':
                         default="e1",
                         help="frame transmission options (proposed=p, existing_1=e1, ...)")
     parser.add_argument('-w', '--width', type=int,
-                        default="600",
+                        
                         help="width of the capturing videos.")
     parser.add_argument('-hi', '--height', type=int,
-                        default="400",
+                        
                         help="height of the capturing videos.")
     parser.add_argument('-vf', '--videofile', type=str,
                         default="1",
