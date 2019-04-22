@@ -424,71 +424,41 @@ class Hypervisor(object):
         device = self.open_ncs_device()
         graph = load_graph(self.graph_file, device)
 
-        # Main loop: Capture live stream & send frames to NCS
+        self.encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), 99]
+
         if self.live == str(1):
-            self.camera = cv2.VideoCapture(0)
-            while (True):
-                ret, frame = self.camera.read()
-                if (ret!=1):
-                    self.logfile.close()
-                    sys.exit(0)
-
-                if(self.width == None and self.height == None):
-                    self.width = frame.shape[1]
-                    self.height = frame.shape[0]
-                frame = cv2.resize(frame, (self.width, self.height))
-                prev_time, fps = self.getfps(prev_time)
-                print("estimated live fps {0}".format(fps))
-#                img = self.pre_process_image(frame)
-                
-                cpu = psutil.cpu_percent()
-                ram = psutil.virtual_memory()
-                # log here.
-                self.logfile.write(str(framecnt)+"\t"+str(sys.getsizeof(frame))+"\t"+str(cpu)+"\n")
-                jsonified_data = MessageBus.create_message_list_numpy(frame, framecnt, self.encode_param, self.device_name,self.timegap)
-                self.msg_bus.send_message_str(self.controller_ip, self.controller_port, jsonified_data)
-                framecnt += 1
-
-                # Display the frame for 5ms, and close the window so that the next
-                # frame can be displayed. Close the window if 'q' or 'Q' is pressed.
-                
-                if (cv2.waitKey(1) & 0xFF == ord('q')):
-                    break
-
-            self.close_ncs_device(device, graph)
-        # sy: read video from file
+            cap = cv2.VideoCapture(0)
         else:
-            self.encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), 99]
             cap = cv2.VideoCapture(self.live)
 
-            while cap.isOpened():
-#                curTime = datetime.utcnow().strftime('%H:%M:%S.%f')[:-3]
-                curTime=datetime.utcnow().strftime('%H:%M:%S.%f')
-                ret, frame = cap.read()  # ndarray
-                if (ret!=1):
-                    self.logfile.close()
-                    sys.exit(0)
-                if(self.width == None and self.height == None):
-                    self.width = frame.shape[1]
-                    self.height = frame.shape[0]
-                frame = cv2.resize(frame, (self.width, self.height))
 
-                prev_time, fps = self.getfps(prev_time)
-                print("estimated transmission fps {0}".format(fps))
-#                img = self.pre_process_image(frame)
-                #result, encimg = cv2.imencode('.jpg', smallerimg, self.encode_param)
+        while cap.isOpened():
+            curTime=datetime.utcnow().strftime('%H:%M:%S.%f')
+            ret, frame = cap.read()  # ndarray
+            if (ret!=1):
+                self.logfile.close()
+                sys.exit(0)
+            if(self.width == None and self.height == None):
+                self.width = frame.shape[1]
+                self.height = frame.shape[0]
+            frame = cv2.resize(frame, (self.width, self.height))
+
+            prev_time, fps = self.getfps(prev_time)
+            print("estimated transmission fps {0}".format(fps))
             
-                cpu = psutil.cpu_percent()
-                ram = psutil.virtual_memory()
+            cpu = psutil.cpu_percent()
+            ram = psutil.virtual_memory()
                 # log here.
-                self.logfile.write(str(framecnt)+"\t"+str(sys.getsizeof(frame))+"\t"+str(cpu)+"\n")
-                jsonified_data = MessageBus.create_message_list_numpy(frame, framecnt, self.encode_param, self.device_name,self.timegap)
-                self.msg_bus.send_message_str(self.controller_ip, self.controller_port, jsonified_data)
-                framecnt += 1
+            self.logfile.write(str(framecnt)+"\t"+str(sys.getsizeof(frame))+"\t"+str(cpu)+"\n")
+            jsonified_data = MessageBus.create_message_list_numpy(frame, framecnt, self.encode_param, self.device_name,self.timegap)
+            self.msg_bus.send_message_str(self.controller_ip, self.controller_port, jsonified_data)
+            framecnt += 1
 
-                if (cv2.waitKey(3) & 0xFF == ord('q')):
-                    break
-#            cap.release()
+            if self.display == "on":
+                cv2.imshow('NCS live inference', frame)
+
+            if (cv2.waitKey(3) & 0xFF == ord('q')):
+                break
 
 #
 # existing work e2
@@ -502,54 +472,30 @@ class Hypervisor(object):
         device = self.open_ncs_device()
         graph = load_graph(self.graph_file, device)
 
-        # Main loop: Capture live stream & send frames to NCS
         if self.live == str(1):
-            self.camera = cv2.VideoCapture(0)
-            while (True):
-                ret, frame = self.camera.read()
-                #### get fps
-                prev_time, fps = self.getfps(prev_time)
-                if(self.width == None and self.height == None):
-                    self.width = frame.shape[1]
-                    self.height = frame.shape[0]
-                frame = cv2.resize(frame, (self.width, self.height))
-                print("estimated live fps {0}".format(fps))
-                img = self.pre_process_image(frame)
-                # this is spencers code for infering fps.
-                self.infer_image_fps(graph, img, frame, fps)
-
-                # Display the frame for 5ms, and close the window so that the next
-                # frame can be displayed. Close the window if 'q' or 'Q' is pressed.
-                if (cv2.waitKey(1) & 0xFF == ord('q')):
-                    break
-
-            self.close_ncs_device(device, graph)
-
+            cap = cv2.VideoCapture(0)
         else:
-            self.encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), 99]
             cap = cv2.VideoCapture(self.live)
 
-            while cap.isOpened():
-                curr_time_str = datetime.utcnow().strftime('%H:%M:%S.%f')[:-3]
-                ret, frame = cap.read()  # ndarray
-                if(self.width == None and self.height == None):
-                    self.width = frame.shape[1]
-                    self.height = frame.shape[0]
-                frame = cv2.resize(frame, (self.width, self.height))
+        self.encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), 99]
 
+        while cap.isOpened():
+            curr_time_str = datetime.utcnow().strftime('%H:%M:%S.%f')[:-3]
+            ret, frame = cap.read()  # ndarray
+            if(self.width == None and self.height == None):
+                self.width = frame.shape[1]
+                self.height = frame.shape[0]
+            frame = cv2.resize(frame, (self.width, self.height))
 
-                # TODO: Capture contexts.
-                #### get fps
-                prev_time, fps = self.getfps(prev_time)
-                print("estimated video fps {0}".format(fps))
-                img = self.pre_process_image(frame)
-                self.infer_image_fps(graph, img, frame, fps)
+            prev_time, fps = self.getfps(prev_time)
+            print("estimated video fps {0}".format(fps))
+            img = self.pre_process_image(frame)
+            self.infer_image_fps(graph, img, frame, fps)
 
-                self.img_ssd_send_metadata(framecnt)
-                framecnt += 1
-                if (cv2.waitKey(3) & 0xFF == ord('q')):
-                    break
-#            cap.release()
+            self.img_ssd_send_metadata(framecnt)
+            framecnt += 1
+            if (cv2.waitKey(3) & 0xFF == ord('q')):
+                break
 
     def img_ssd_send_metadata(self, framecnt):
 #        print('[Hypervisor] Existing work 2: load and send metadata')
