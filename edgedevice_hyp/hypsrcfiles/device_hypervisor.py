@@ -70,11 +70,11 @@ class Hypervisor(object):
         self.redis_db = None
         self.display = 'off'
         self.graph_file = ''
-        self.width = 600
-        self.height = 400
+        self.width = 0
+        self.height = 0
         self.counter = 0
         self.color_mode = 'bgr'
-        self.dimensions = [224, 224]
+        self.dimensions = [0, 0]
         self.mean = [127.5, 127.5, 127.5]
         self.scale = 0.00789
         self.starttime = time.time()
@@ -429,6 +429,9 @@ class Hypervisor(object):
             self.camera = cv2.VideoCapture(0)
             while (True):
                 ret, frame = self.camera.read()
+                if (ret!=1):
+                    self.logfile.close()
+                    sys.exit(0)
                 #### get fps                
                 prev_time, fps = self.getfps(prev_time)
                 print("estimated live fps {0}".format(fps))
@@ -442,7 +445,6 @@ class Hypervisor(object):
                 self.msg_bus.send_message_str(self.controller_ip, self.controller_port, jsonified_data)
                 framecnt += 1
 
-
                 # Display the frame for 5ms, and close the window so that the next
                 # frame can be displayed. Close the window if 'q' or 'Q' is pressed.
                 
@@ -452,22 +454,22 @@ class Hypervisor(object):
             self.close_ncs_device(device, graph)
         # sy: read video from file
         else:
-            self.encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), 90]
+            self.encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), 99]
             cap = cv2.VideoCapture(self.live)
 
             while cap.isOpened():
 #                curTime = datetime.utcnow().strftime('%H:%M:%S.%f')[:-3]
                 curTime=datetime.utcnow().strftime('%H:%M:%S.%f')
                 ret, frame = cap.read()  # ndarray
-                prev_time, fps = self.getfps(prev_time)
-                print("estimated transmission fps {0}".format(fps))
-                img = self.pre_process_image(frame)
-                #result, encimg = cv2.imencode('.jpg', smallerimg, self.encode_param)
                 if (ret!=1):
                     self.logfile.close()
                     sys.exit(0)
+                prev_time, fps = self.getfps(prev_time)
+                print("estimated transmission fps {0}".format(fps))
+#                img = self.pre_process_image(frame)
+                #result, encimg = cv2.imencode('.jpg', smallerimg, self.encode_param)
             
-                smallerimg = cv2.resize(img, (self.width, self.height))
+                smallerimg = cv2.resize(frame, (self.width, self.height))
                 cpu = psutil.cpu_percent()
                 ram = psutil.virtual_memory()
                 # log here.
@@ -479,7 +481,6 @@ class Hypervisor(object):
                 if (cv2.waitKey(3) & 0xFF == ord('q')):
                     break
 #            cap.release()
-
 
 #
 # existing work e2
@@ -514,13 +515,13 @@ class Hypervisor(object):
             self.close_ncs_device(device, graph)
 
         else:
-            self.encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), 90]
+            self.encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), 99]
             cap = cv2.VideoCapture(self.live)
 
             while cap.isOpened():
                 curr_time_str = datetime.utcnow().strftime('%H:%M:%S.%f')[:-3]
                 ret, frame = cap.read()  # ndarray
-                smallerimg = cv2.resize(frame, (self.width, self.height))
+                #smallerimg = cv2.resize(frame, (self.width, self.height))
                 # result, encimg = cv2.imencode('.jpg', smallerimg, encode_param)
 
 
@@ -528,8 +529,8 @@ class Hypervisor(object):
                 #### get fps
                 prev_time, fps = self.getfps(prev_time)
                 print("estimated video fps {0}".format(fps))
-                img = self.pre_process_image(smallerimg)
-                self.infer_image_fps(graph, img, smallerimg, fps)
+                img = self.pre_process_image(frame)
+                self.infer_image_fps(graph, img, frame, fps)
 
                 self.img_ssd_send_metadata(framecnt)
                 framecnt += 1
@@ -547,8 +548,6 @@ class Hypervisor(object):
         save.update({'framecnt': framecnt})
         save.update({'time': curTime})
         print(save)
-#            contexts = {'a': 'a'}
-
             
 #            curr_time_str = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
         print(' -', curTime)
@@ -558,39 +557,20 @@ class Hypervisor(object):
 
     @threaded
     def tracking_objects(self):
-        framecnt = 0
-        prev_time = 0
-
-        # make ncs connection
+                # make ncs connection
         device = self.open_ncs_device()
         graph = load_graph(self.graph_file, device)
 
         # Main loop: Capture live stream & send frames to NCS
         if self.live == str(1):
-            while (True):
-                ret, frame = self.camera.read()
-                #### get fps
-                prev_time, fps = getfps(prev_time)
-
-                print("estimated live fps {0}".format(fps))
-                img = self.pre_process_image(frame)
-                # this is spencers code for infering fps.
-                # self.infer_image_fps(graph, img, frame, fps)
-                self.periodic_tracking(graph)
-
-                # Display the frame for 5ms, and close the window so that the next
-                # frame can be displayed. Close the window if 'q' or 'Q' is pressed.
-                if (cv2.waitKey(1) & 0xFF == ord('q')):
-                    break
-
-            self.close_ncs_device(device, graph)
-
+            # wtf haha
+            self.periodic_tracking(graph)
         else:
-
             # detects objects every 10 frames, tracks every frames.
             self.periodic_tracking(graph)
 
     def checkboundary(self, centroid, objectID):
+        #print(centroid)
         if(centroid[0]<=self.framethr):
             if(centroid[1]<=self.framethr):
                 self.boundary[objectID] = "TL"
@@ -614,7 +594,7 @@ class Hypervisor(object):
                 self.boundary[objectID] = "BR"
         
     def checkdir(self, dirX, dirY, objectID): # this -2, 2 must also be adjusted depending on the tracked objects
-        print(dirX, dirY, objectID)
+        #print(dirX, dirY, objectID)
         if dirY <= -2.0:
             if dirX <= -2.0:
                 self.objstatus[objectID] = "NW"
@@ -638,7 +618,7 @@ class Hypervisor(object):
                 self.objstatus[objectID] = "S"
             elif dirX > 2.0:
                 self.objstatus[objectID] = "SE"
-        print (self.objstatus[objectID])
+        #print (self.objstatus[objectID])
 
     def checkhandoff(self, objectID):
         if(self.boundary[objectID] == "TL" or self.boundary[objectID] == "TC" or self.boundary[objectID] == "TR"):
@@ -670,7 +650,7 @@ class Hypervisor(object):
         prev_time = 0
         labels = []
 
-        self.encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), 90]
+        self.encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), 99]
         cap = cv2.VideoCapture(self.live)
 
         while cap.isOpened():
@@ -678,7 +658,10 @@ class Hypervisor(object):
             ret, frame = cap.read()  # ndarray
             if frame is None:
                 break
-            frame = cv2.resize(frame, (self.width, self.height))
+            self.width = frame.shape[1]
+            self.height = frame.shape[0]
+            #print(self.width, self.height)
+            #frame = cv2.resize(frame, (self.width, self.height))
             self.curframe = frame
             img = self.pre_process_image(frame)
             rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
@@ -722,7 +705,6 @@ class Hypervisor(object):
                         rect = dlib.rectangle(x1, y1, x2, y2)
                         tracker.start_track(rgb,rect)
                         self.trackers.append(tracker)
-
 
             else:
                 for tracker in self.trackers: 
@@ -842,7 +824,7 @@ if __name__ == '__main__':
                         help="load from video file.")
     parser.add_argument('-D', '--dim', type=int,
                         nargs='+',
-                        default=[224, 224],
+                        default=[300, 300],
                         help="Image dimensions. ex. -D 224 224")
     parser.add_argument('-c', '--colormode', type=str,
                         default="bgr",
@@ -857,7 +839,7 @@ if __name__ == '__main__':
                         default=20,
                         help="number of frames until frame is regarded as disappeared from tracking list.")
     parser.add_argument('-bt', '--boundary_thr', type=int,
-                        default=80,
+                        default=100,
                         help="boundary to regard as the object is leaving the frame.")
 
     ARGS = parser.parse_args()
