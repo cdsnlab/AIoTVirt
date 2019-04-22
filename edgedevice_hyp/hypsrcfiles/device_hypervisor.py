@@ -156,7 +156,7 @@ class Hypervisor(object):
         tracking_template = cv2.imdecode(imgarray, cv2.IMREAD_COLOR)
         for meth in self.tm_methods:
             res = cv2.matchTemplate(self.curframe, tracking_template, meth)
-            print(res)
+            print(res) # i don't think it will get the right position...
             min_val,max_val,min_loc, max_loc = cv2.minMaxLoc(res) # max_val is the matching threshold
             
             if method in [cv2.TM_SQDIFF, cv2.TM_SQDIFF_NORMED]:
@@ -181,8 +181,6 @@ class Hypervisor(object):
         '''
 
     def join(self):
-        # Create a join message based on NIC information.
-
         print("connecting to edge server")
         join_msg = dict(type='join', device_name=self.device_name, ip=self.device_ip_ext, port=self.device_port_ext,
                         location='N1_823_1', capability='no')
@@ -190,16 +188,16 @@ class Hypervisor(object):
         
         # We might not need to join other cameras, just sent handoff-message!
 
-        '''
+        
         if self.device_name == "camera02": #if this devices is center device
             print("connecting to left cam")
             join_msg = dict(type='join', device_name=device_name, ip=self.device_ip_ext, port=self.device_port_ext,
                         location='N1_823_1', capability='no')
             self.msg_bus.send_message_json(self.left_device_ip_int, self.left_device_port, join_msg)
-            print("connecting to right cam")
-            join_msg = dict(type='join', device_name=device_name, ip=self.device_ip_ext, port=self.device_port_ext,
-                        location='N1_823_1', capability='no')
-            self.msg_bus.send_message_json(self.right_device_ip_int, self.right_device_port, join_msg)
+            #print("connecting to right cam")
+            #join_msg = dict(type='join', device_name=device_name, ip=self.device_ip_ext, port=self.device_port_ext,
+            #            location='N1_823_1', capability='no')
+            #self.msg_bus.send_message_json(self.right_device_ip_int, self.right_device_port, join_msg)
 
         elif self.device_name == "camera01": # if this devices is the left device
             print("connecting to center cam")
@@ -207,12 +205,12 @@ class Hypervisor(object):
                         location='N1_823_1', capability='no')
             self.msg_bus.send_message_json(self.center_device_ip_int, self.center_device_port, join_msg)
             
-            print("connecting to right cam")
-            join_msg = dict(type='join', device_name=device_name, ip=self.device_ip_ext, port=self.device_port_ext,
-                        location='N1_823_1', capability='no')
-            self.msg_bus.send_message_json(self.right_device_ip_int, self.right_device_port, join_msg)
+            #print("connecting to right cam")
+            #join_msg = dict(type='join', device_name=device_name, ip=self.device_ip_ext, port=self.device_port_ext,
+            #            location='N1_823_1', capability='no')
+            #self.msg_bus.send_message_json(self.right_device_ip_int, self.right_device_port, join_msg)
 
-
+            '''
         elif self.device_name == "camera03": # if this device is the right device
             print("connecting to left cam")
             join_msg = dict(type='join', device_name=device_name, ip=self.device_ip_ext, port=self.device_port_ext,
@@ -223,6 +221,7 @@ class Hypervisor(object):
                         location='N1_823_1', capability='no')
             self.msg_bus.send_message_json(self.center_device_ip_int, self.center_device_port, join_msg)
             '''
+            
     def handle_join(self, msg_dict):
         node_table = self.msg_bus.node_table
         node_table.add_entry(msg_dict['device_name'], msg_dict['ip'], int(msg_dict['port']), msg_dict['location'], msg_dict['capability'])
@@ -621,7 +620,7 @@ class Hypervisor(object):
             ret, frame = cap.read()  # ndarray
             if frame is None:
                 break
-            print(self.width, self.height)
+            #print(self.width, self.height)
             if(self.width == None and self.height == None):
                 self.width = frame.shape[1]
                 self.height = frame.shape[0]
@@ -772,11 +771,9 @@ if __name__ == '__main__':
     parser.add_argument('-tr', '--transmission', type=str,
                         default="e1",
                         help="frame transmission options (proposed=p, existing_1=e1, ...)")
-    parser.add_argument('-w', '--width', type=int,
-                        
+    parser.add_argument('-w', '--width', type=int,                        
                         help="width of the capturing videos.")
-    parser.add_argument('-hi', '--height', type=int,
-                        
+    parser.add_argument('-hi', '--height', type=int,                        
                         help="height of the capturing videos.")
     parser.add_argument('-vf', '--videofile', type=str,
                         default="1",
@@ -808,22 +805,29 @@ if __name__ == '__main__':
 
     # Read 'camera.ini'
     config = configparser.ConfigParser()
-    config.read('../../resource/config/camera_823_main.ini')
+    config.read('../../resource/config/camera_823_left.ini')
+    #config.read('../../resource/config/camera_823_main.ini')
 
     # Hypervisor initialization and connection
     controller_ip = config['message_bus']['controller_ip']
     controller_port = config['message_bus']['controller_port']
-    device_name = config['message_bus']['left_device_name']
-    device_port = config['message_bus']['left_device_port']
-    device_ip_ext = config['message_bus']['left_device_ip_ext']
-    device_port_ext = config['message_bus']['left_device_port_ext']
+    device_name = config['message_bus']['device_name']
+    device_port = config['message_bus']['device_port']
+    device_ip_ext = config['message_bus']['device_ip_ext']
+    device_port_ext = config['message_bus']['device_port_ext']
     hyp = Hypervisor(device_name, device_port, device_ip_ext, device_port_ext, ARGS.iface, controller_ip, controller_port, ARGS.videofile, ARGS.transmission)
 
-    #connection to other cameras
-    hyp.center_device_name = config['message_bus']['center_device_name']
-    hyp.center_device_port = config['message_bus']['center_device_port']
-    hyp.center_device_ip_int = config['message_bus']['center_device_ip_int']
-    hyp.center_device_ip_ext = config['message_bus']['center_device_ip_ext']
+    #connection to other cameras 
+    if(device_name == "camera01"):
+        hyp.center_device_name = config['message_bus']['center_device_name']
+        hyp.center_device_port = config['message_bus']['center_device_port']
+        hyp.center_device_ip_int = config['message_bus']['center_device_ip_int']
+        hyp.center_device_ip_ext = config['message_bus']['center_device_ip_ext']
+    elif(device_name == "camera02"):
+        hyp.left_device_name = config['message_bus']['left_device_name']
+        hyp.left_device_port = config['message_bus']['left_device_port']
+        hyp.left_device_ip_int = config['message_bus']['left_device_ip_int']
+        hyp.left_device_ip_ext = config['message_bus']['left_device_ip_ext']    
 
     
     hyp.right_device_name = config['message_bus']['right_device_name']
