@@ -14,7 +14,7 @@ class Rec(object):
         self.recordtime = None
         self.outputfilename = None
         #self.commandline = "ffmpeg -f v4l2 -input_format mjpeg -i /dev/video0 -preset faster -pix_fmt yuv420p"
-        self.cmd = ['ffmpeg', '-f', 'v4l2', '-input_format', 'mjpeg', '-i', '/dev/video0', '-preset', 'faster', '-pix_fmt', 'yuv420p']
+        self.cmd = ['ffmpeg', '-f', 'v4l2', '-input_format', 'mjpeg', '-i', '/dev/video0', '-preset', 'faster', '-pix_fmt', 'yuv422p']
         self.resolution = None
         self.inputfps = 0
 
@@ -27,12 +27,16 @@ class Rec(object):
         ct_conv = str(datetime.timedelta(seconds=self.recordtime)) # converted time
         if(self.resolution == 1080):
             res_conv = "1920x1080"
+            subprocess.call(['v4l2-ctl', '--set-fmt-video=width=1920,height=1080,pixelformat=YUV422p'])
         elif(self.resolution == 720):
             res_conv = "1280x720"
+            subprocess.call(['v4l2-ctl', '--set-fmt-video=width=1280,height=720,pixelformat=YUV422p'])
         elif(self.resolution == 480):
             res_conv = "858x480"
+            subprocess.call(['v4l2-ctl', '--set-fmt-video=width=858,height=480,pixelformat=YUV422p'])
         elif(self.resolution == 360):
             res_conv = "480x360"
+            subprocess.call(['v4l2-ctl', '--set-fmt-video=width=480,height=360,pixelformat=YUV422p'])
         else:
             print ("invalid option")
         

@@ -35,6 +35,10 @@ class CentroidTracker:
                         print("Object ID:", i, self.objects[i])
                         print("Object ID:", i, self.objectsrect[i])
 
+        def checknumberofexisting(self):
+                return (len(self.actualindex))
+
+
         def get_object_rect_by_id (self, objectID):
                 return self.objectsrect[objectID]
 
