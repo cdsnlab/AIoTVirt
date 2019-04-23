@@ -36,6 +36,7 @@ class Controller(object):
         self.msg_bus.register_callback('join', self.handle_message)
         self.msg_bus.register_callback('img', self.handle_message)
         self.msg_bus.register_callback('img_metadata', self.handle_message)
+        self.msg_bus.register_callback('img_tracking', self.handle_message)
         self.model = None
         signal.signal(signal.SIGINT, self.signal_handler)
         self.logfile = None

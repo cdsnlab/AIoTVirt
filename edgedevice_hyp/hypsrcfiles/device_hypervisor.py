@@ -60,6 +60,7 @@ class Hypervisor(object):
         self.msg_bus.register_callback('join', self.handle_message)
         self.msg_bus.register_callback('device_list', self.handle_message)
         self.msg_bus.register_callback('handoff_request', self.handle_message)
+        self.msg_bus.register_callback('img_tracking', self.handle_message)
         signal.signal(signal.SIGINT, self.signal_handler)
 
         self.camera = None  # OpenCV camera object
@@ -101,6 +102,7 @@ class Hypervisor(object):
         self.sumframebytes = 0
         self.findobj = False # if handoff request is recieved it needs ot find the object in the frame
         self.template =None # cropped image of the object
+        self.movingdelta = None
 
         self.frameq = queue.Queue()
 
@@ -201,7 +203,7 @@ class Hypervisor(object):
             print("connecting to center cam")
             join_msg = dict(type='join', device_name=device_name, ip=self.device_ip_ext, port=self.device_port_ext,
                         location='N1_823_1', capability='no')
-            self.msg_bus.send_message_json(self.center_device_ip_int, self.center_device_port, join_msg)
+            #self.msg_bus.send_message_json(self.center_device_ip_int, self.center_device_port, join_msg)
             
             #print("connecting to right cam")
             #join_msg = dict(type='join', device_name=device_name, ip=self.device_ip_ext, port=self.device_port_ext,
@@ -446,7 +448,7 @@ class Hypervisor(object):
             ram = psutil.virtual_memory()
                 # log here.
             self.logfile.write(str(framecnt)+"\t"+str(sys.getsizeof(frame))+"\t"+str(cpu)+"\n")
-            jsonified_data = MessageBus.create_message_list_numpy(frame, framecnt, self.encode_param, self.device_name,self.timegap)
+            jsonified_data = self.msg_bus.create_message_list_numpy(frame, framecnt, self.encode_param, self.device_name,self.timegap)
             self.msg_bus.send_message_str(self.controller_ip, self.controller_port, jsonified_data)
             framecnt += 1
 
@@ -546,28 +548,28 @@ class Hypervisor(object):
         
     def checkdir(self, dirX, dirY, objectID): # this -2, 2 must also be adjusted depending on the tracked objects
         #print(dirX, dirY, objectID)
-        if dirY <= -2.0:
-            if dirX <= -2.0:
+        if dirY <= -(self.movingdelta):
+            if dirX <= -(self.movingdelta):
                 self.objstatus[objectID] = "NW"
-            elif dirX <= 2.0 and dirX > -2.0:
+            elif dirX <= (self.movingdelta) and dirX > -(self.movingdelta):
                 self.objstatus[objectID] = "N"
-            elif dirX > 2.0:
+            elif dirX > (self.movingdelta):
                 self.objstatus[objectID] = "NE"
                             
-        elif dirY <= 2.0 and dirY > -2.0:
-            if dirX <= -2.0:
+        elif dirY <= (self.movingdelta) and dirY > -(self.movingdelta):
+            if dirX <= -(self.movingdelta):
                 self.objstatus[objectID] = "W"
-            elif dirX <= 2.0 and dirX > -2.0:
+            elif dirX <= (self.movingdelta) and dirX > -(self.movingdelta):
                 self.objstatus[objectID] = "-"
-            elif dirX > 2.0:
+            elif dirX > (self.movingdelta):
                 self.objstatus[objectID] = "E"
 
-        elif dirY > 2.0:
-            if dirX <= -2.0:
+        elif dirY > (self.movingdelta):
+            if dirX <= -(self.movingdelta):
                 self.objstatus[objectID] = "SW"
-            elif dirX <= 2.0 and dirX > -2.0:
+            elif dirX <= (self.movingdelta) and dirX > -(self.movingdelta):
                 self.objstatus[objectID] = "S"
-            elif dirX > 2.0:
+            elif dirX > (self.movingdelta):
                 self.objstatus[objectID] = "SE"
         #print (self.objstatus[objectID])
 
@@ -636,22 +638,14 @@ class Hypervisor(object):
                 w = self.tracking_template.shape[0]
                 h = self.tracking_template.shape[1]
                 print(self.tracking_template.shape[0], self.tracking_template.shape[1])
-                res = cv2.matchTemplate(self.curframe, self.tracking_template, cv2.TM_CCOEFF_NORMED)
+                res = cv2.matchTemplate(frame, self.tracking_template, cv2.TM_CCOEFF_NORMED)
+                min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(res)
+                top_left = max_loc
+                bottom_right = (top_left[0]+w, top_left[1]+h)
+                cv2.rectangle(frame, top_left, bottom_right, 255,2)
                 # need to put this into main tracking part.
-                loc = np.where(res >= self.confidence_threshold)
-                for pt in zip(*loc[::-1]):
-                    cv2.rectangle(self.curframe, pt, (pt[0] + w, pt[1]+h),(0,0,255),2)
-                    time.sleep(0.2)
-                cv2.imshow("curframe", self.curframe)
+                cv2.imwrite(str(self.counter)+".jpg", frame)
                 self.findobj = False
-                '''
-                res = cv2.matchTemplate(frame, self.template, self.tm_op1)
-                print(res)
-                min_val, max_val, min_loc, max_loc = cv2.minMaxLoc (res)
-                w, h = self.template.shape[::-1]
-                br = (min_loc[0] + w, min_loc[1] +h)
-                cv2.rectangle(frame, min_loc[0], br, 255,2)
-                '''
 
             if self.counter % self.frame_skips ==0:
                 self.trackers = []
@@ -695,8 +689,10 @@ class Hypervisor(object):
             #self.ct.getall()
             if self.ct.checknumberofexisting():
                 #send to mars
-                jsonified_data = MessageBus.create_message_list_numpy_tracking(frame, self.counter, self.encode_param, self.device_name,self.timegap)
-                #self.msg_bus.send_message_str(self.controller_ip, self.controller_port, jsonified_data)
+                k = MessageBus.create_message_list_numpy_tracking(frame, self.counter, self.encode_param, self.device_name,self.timegap)
+                #print(jsonified_data)
+                self.msg_bus.send_message_str(self.controller_ip, self.controller_port, k)
+
 
             for (objectID, centroid) in objects.items():
                 to = self.trobs.get(objectID, None)
@@ -719,10 +715,10 @@ class Hypervisor(object):
                     if not to.counted:
                         #print("centroid (x,y): ", centroid[0], centroid[1])
                         self.checkboundary(centroid, objectID)
-                        print("loc of object in frame: ", objectID, self.boundary[objectID])
+                        #print("loc of object in frame: ", objectID, self.boundary[objectID])
 
                         self.checkdir(dirX, dirY, objectID)
-                        print("moving direction of the object: ", objectID, self.objstatus[objectID])
+                        #print("moving direction of the object: ", objectID, self.objstatus[objectID])
 
                         self.where[objectID] = self.checkhandoff(objectID)
                         # send hand off msg here
@@ -738,7 +734,7 @@ class Hypervisor(object):
                             #croppedimg = frame[y1:y2, x1: x2]
                             croppedimg = frame[p[1]:p[3], p[0]:p[2]]
                             jsonified_data = MessageBus.create_message_list_numpy_handoff(croppedimg, self.encode_param, self.device_name, self.timegap)
-                            self.msg_bus.send_message_str(self.center_device_ip_int, self.center_device_port, jsonified_data)
+                            #self.msg_bus.send_message_str(self.center_device_ip_int, self.center_device_port, jsonified_data)
 
                             
                         elif (self.where[objectID]== "LEFT"):
@@ -767,8 +763,8 @@ class Hypervisor(object):
             self.logfile.write(str(self.counter)+"\t") 
             self.logfile.write(str(cpu)+"\t"+str("{0:.2f}".format(fps))+"\t"+str(self.ct.checknumberofexisting())+"\t"+str(self.sumframebytes/1000000)) 
             self.logfile.write("\n")
-            print(str(self.ct.checknumberofexisting()))
-            print (str(self.sumframebytes/1000000))
+            #print(str(self.ct.checknumberofexisting()))
+            #print (str(self.sumframebytes/1000000))
       
             
         cap.release()
@@ -800,7 +796,7 @@ class Hypervisor(object):
             frame = cv2.resize(frame, (self.width, self.height))
 
             prev_time, fps = self.getfps(prev_time)
-            print("[VIDEOSOURCE] estimated video enqueue fps {0}".format(fps))
+            #print("[VIDEOSOURCE] estimated video enqueue fps {0}".format(fps))
             
             # enqueue here
             self.frameq.put(frame) # keep chuggggggging 
@@ -858,22 +854,19 @@ class Hypervisor(object):
                     w = self.tracking_template.shape[0]
                     h = self.tracking_template.shape[1]
                     print(self.tracking_template.shape[0], self.tracking_template.shape[1])
-                    res = cv2.matchTemplate(self.curframe, self.tracking_template, cv2.TM_CCOEFF_NORMED)
-                # need to put this into main tracking part.
-                    loc = np.where(res >= self.confidence_threshold)
-                    for pt in zip(*loc[::-1]):
-                        cv2.rectangle(self.curframe, pt, (pt[0] + w, pt[1]+h),(0,0,255),2)
-                        time.sleep(0.2)
-                    cv2.imshow("curframe", self.curframe)
+                    res = cv2.matchTemplate(frame, self.tracking_template, cv2.TM_CCOEFF_NORMED)
+                    min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(res)
+                    top_left = max_loc
+                    bottom_right = (top_left[0]+w, top_left[1]+h)
+                    cv2.rectangle(frame, top_left, bottom_right, 255,2)
+                    cv2.imwrite(str(self.counter)+".jpg", frame)
+                    '''
+                    tracker = dlib.rectangle(top_left[0], top_left[1], bottom_right[0], bottom_right[1])
+                    tracker.start_track(rgb, rect)
+                    self.trackers.append(tracker)
+                    '''
                     self.findobj = False
-                    '''
-                    res = cv2.matchTemplate(frame, self.template, self.tm_op1)
-                    print(res)
-                    min_val, max_val, min_loc, max_loc = cv2.minMaxLoc (res)
-                    w, h = self.template.shape[::-1]
-                    br = (min_loc[0] + w, min_loc[1] +h)
-                    cv2.rectangle(frame, min_loc[0], br, 255,2)
-                    '''
+
 
                 if self.counter % self.frame_skips ==0:
                     self.trackers = []
@@ -916,8 +909,8 @@ class Hypervisor(object):
                 #self.ct.getall()
                 if self.ct.checknumberofexisting():
                     #send to mars
-                    jsonified_data = MessageBus.create_message_list_numpy_tracking(frame, self.counter, self.encode_param, self.device_name,self.timegap)
-                    #self.msg_bus.send_message_str(self.controller_ip, self.controller_port, jsonified_data)
+                    k = MessageBus.create_message_list_numpy_tracking(frame, self.counter, self.encode_param, self.device_name,self.timegap)
+                    self.msg_bus.send_message_str(self.controller_ip, self.controller_port, k)
 
 
                 for (objectID, centroid) in objects.items():
@@ -940,10 +933,10 @@ class Hypervisor(object):
                         if not to.counted:
                         #print("centroid (x,y): ", centroid[0], centroid[1])
                             self.checkboundary(centroid, objectID)
-                            print("loc of object in frame: ", objectID, self.boundary[objectID])
+                            #print("loc of object in frame: ", objectID, self.boundary[objectID])
 
                             self.checkdir(dirX, dirY, objectID)
-                            print("moving direction of the object: ", objectID, self.objstatus[objectID])
+                            #print("moving direction of the object: ", objectID, self.objstatus[objectID])
 
                             self.where[objectID] = self.checkhandoff(objectID)
                             # send hand off msg here
@@ -959,7 +952,7 @@ class Hypervisor(object):
                                 #croppedimg = frame[y1:y2, x1: x2]
                                 croppedimg = frame[p[1]:p[3], p[0]:p[2]]
                                 jsonified_data = MessageBus.create_message_list_numpy_handoff(croppedimg, self.encode_param, self.device_name, self.timegap)
-                                self.msg_bus.send_message_str(self.center_device_ip_int, self.center_device_port, jsonified_data)
+                                #self.msg_bus.send_message_str(self.center_device_ip_int, self.center_device_port, jsonified_data)
 
                             
                             elif (self.where[objectID]== "LEFT"):
@@ -988,8 +981,8 @@ class Hypervisor(object):
                 self.logfile.write(str(self.counter)+"\t") 
                 self.logfile.write(str(cpu)+"\t"+str("{0:.2f}".format(fps))+"\t"+str(self.ct.checknumberofexisting())+"\t"+str(self.sumframebytes/1000000)) 
                 self.logfile.write("\n")
-                print(str(self.ct.checknumberofexisting()))
-                print (str(self.sumframebytes/1000000))
+                #print(str(self.ct.checknumberofexisting()))
+                #print (str(self.sumframebytes/1000000))
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(
@@ -1035,6 +1028,9 @@ if __name__ == '__main__':
     parser.add_argument('-bt', '--boundary_thr', type=int,
                         default=100,
                         help="boundary to regard as the object is leaving the frame.")
+    parser.add_argument('-md', '--movingdelta', type=float,
+                        default=5.0,
+                        help="delta of moving object value.")
 
     ARGS = parser.parse_args()
 
@@ -1088,6 +1084,7 @@ if __name__ == '__main__':
     hyp.logfile = open(ARGS.logname, 'w')
     hyp.frame_skips = ARGS.skipcount
     hyp.framethr = ARGS.boundary_thr
+    hyp.movingdelta = ARGS.movingdelta
     hyp.ct = centroidtracker.CentroidTracker(maxDisappeared=ARGS.disappear_thr, maxDistance =50)
     # running in background to chug frames to queue
     print("[Hypervisor] Start Chugging frames!")

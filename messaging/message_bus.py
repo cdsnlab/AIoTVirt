@@ -65,7 +65,7 @@ class MessageBus(object):
     def send_message_str(self, target_ip, target_port, msg_str):
         sock = self.ctx.socket(zmq.REQ)
         sock.connect('tcp://{}:{}'.format(target_ip, target_port))
-        # print('[MESSAGING] sending msg to {}:{}'.format(target_ip, target_port))
+        #print('[MESSAGING] sending msg to {}:{}'.format(target_ip, target_port))
         sock.send_string(msg_str)
         rep = sock.recv().decode()
         # print(' - Reply from receiver: {}'.format(rep))
