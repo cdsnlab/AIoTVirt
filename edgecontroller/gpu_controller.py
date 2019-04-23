@@ -105,6 +105,8 @@ class Controller(object):
             self.handle_join(msg_dict)
         elif msg_dict['type'] == 'img': # image raw data
             self.process_raw_image(msg_dict)
+        elif msg_dict['type'] == 'img_tracking': # image raw data
+            self.process_raw_tracking(msg_dict)
         elif msg_dict['type'] == 'img_metadata': # image raw data
             self.process_image_metadata(msg_dict)
         else:
@@ -121,6 +123,22 @@ class Controller(object):
         for node_name in node_table.table.keys():
             node_info = node_table.table[node_name]
             self.msg_bus.send_message_json(node_info.ip, int(node_info.port), device_list_json)
+
+    def process_raw_tracking(self, msg_dict):
+        print(' - tracking image')
+        decstr = base64.b64decode(msg_dict['img_string'])
+        imgarray = np.fromstring(decstr, dtype=np.uint8)
+        decimg = cv2.imdecode(imgarray, cv2.IMREAD_COLOR)
+        localNow = datetime.utcnow()+self.timegap
+
+        curTime = datetime.utcnow().strftime('%H:%M:%S.%f') # string forma
+        curdatetime = datetime.strptime(curTime, '%H:%M:%S.%f')
+        sentdatetime = datetime.strptime(msg_dict['time'], '%H:%M:%S.%f')
+
+        self.imgq.put(decimg) # keep chugging
+        self.timerq.put(curdatetime)
+        self.framecntq.put(str(msg_dict['framecnt']))
+        self.dev_nameq.put(str(msg_dict['device_name']))
 
     def process_raw_image(self, msg_dict):
         print(' - raw image')
@@ -159,9 +177,11 @@ class Controller(object):
                 continue
             else:
                 cnt = self.framecntq.get()
+                dev = self.dev_nameq.get()
                 if self.cuda:
-                    #print("using gpu")
-                    self.detection_gpu(self.model, self.imgq.get(), cnt)
+                    
+                    #self.detection_gpu(self.model, self.imgq.get(), cnt)
+                    thing = self.detection_gpu_return(self.model, self.imgq.get(), cnt)
                 else: # no GPU enabled
                     self.detection(self.imgq.get())
                 curT = datetime.utcnow().strftime('%H:%M:%S.%f') # string format
@@ -173,13 +193,28 @@ class Controller(object):
                 prev_time = curr_time
                 fps = 1/ (sec)
 #                print("fps: ", fps)
-                self.logfile2.write(str(cnt)+"\t"+str(fps)+"\t"+str(decay.total_seconds())+"\n")
+                self.logfile2.write(str(cnt)+"\t"+str(dev)+"\t"+str(thing)+str(decay.total_seconds())+"\n")
 
     def setup_before_detection_gpu(self):
         self.input_size = [int(self.model.net_info['height']), int(self.model.net_info['width'])]
         self.colors = pkl.load(open("pallete", "rb"))
         self.classes = self.load_classes ("data/coco.names")
         self.colors = [self.colors[1]]
+
+
+    def detection_gpu_return(self, model, frame, cnt):
+#        print('Detecting...')
+        start_time = time.time()
+        frame_tensor = cv_image2tensor(frame, self.input_size).unsqueeze(0)
+        frame_tensor = Variable(frame_tensor)
+
+        if self.cuda:
+            frame_tensor = frame_tensor.cuda()
+
+        detections = self.model(frame_tensor, self.cuda).cpu()
+        detections = process_result(detections, self.confidence, self.nms_thresh)
+        print("number of detected objects: ", len(detections))
+        return len(detections)
 
     def detection_gpu(self, model, frame, cnt):
 #        print('Detecting...')
@@ -210,6 +245,7 @@ class Controller(object):
 #        cv2.imwrite('frame'+cnt+'.jpg', frame)
         end_time = time.time()
         print("[INFO] detection done. It took "+str(end_time-start_time)+" seconds")
+        # self.logfile3.write(str(cnt)+"\t"+str(len(detections))+"\t"+str(a)+"\t"+str(end_time-start_time)+"\n")
         self.logfile3.write(str(cnt)+"\t"+str(len(detections))+"\t"+str(a)+"\t"+str(end_time-start_time)+"\n")
 
     def detection(self, frame):

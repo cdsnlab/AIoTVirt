@@ -23,6 +23,7 @@ import signal
 import ntplib
 import trackableobject 
 import centroidtracker
+import queue
 #
 # Reads a graph file into a buffer
 #
@@ -100,6 +101,8 @@ class Hypervisor(object):
         self.sumframebytes = 0
         self.findobj = False # if handoff request is recieved it needs ot find the object in the frame
         self.template =None # cropped image of the object
+
+        self.frameq = queue.Queue()
 
 
     def gettimegap(self):
@@ -695,6 +698,10 @@ class Hypervisor(object):
             objects = self.ct.update(positions)
             # prints all existing indexes.
             #self.ct.getall()
+            if self.ct.checknumberofexisting():
+                #send to mars
+                jsonified_data = MessageBus.create_message_list_numpy_tracking(frame, self.counter, self.encode_param, self.device_name,self.timegap)
+                self.msg_bus.send_message_str(self.controller_ip, self.controller_port, jsonified_data)
 
             for (objectID, centroid) in objects.items():
                 to = self.trobs.get(objectID, None)
@@ -712,6 +719,7 @@ class Hypervisor(object):
                     dirY = centroid[1] - np.mean(y)
                     dirX = centroid[0] - np.mean(x)
                     to.centroids.append(centroid)
+
                     
                     if not to.counted:
                         #print("centroid (x,y): ", centroid[0], centroid[1])
@@ -770,6 +778,218 @@ class Hypervisor(object):
             
         cap.release()
 
+    # should be running in background to start chugging new frames
+    @threaded
+    def src_to_frame_enqueue(self, vf):
+        time.sleep(1)
+        framecnt = 0
+        prev_time = 0
+
+        if vf == str(1):
+            cap = cv2.VideoCapture(0)
+        else:
+            cap = cv2.VideoCapture(vf)
+
+        while cap.isOpened():
+            #curr_time_str = datetime.utcnow().strftime('%H:%M:%S.%f')[:-3]
+            if(framecnt %10 == 0):
+                start_time = time.time()
+            ret, frame = cap.read()  # ndarray
+            if frame is None:
+                print('no more frames from the src..! quitting :D')
+                sys.exit(0)
+                break
+            if(self.width == None and self.height == None):
+                self.width = frame.shape[1]
+                self.height = frame.shape[0]
+            frame = cv2.resize(frame, (self.width, self.height))
+
+            prev_time, fps = self.getfps(prev_time)
+            print("[VIDEOSOURCE] estimated video enqueue fps {0}".format(fps))
+            
+            # enqueue here
+            self.frameq.put(frame) # keep chuggggggging 
+            if(framecnt % 10 ==0 ): #10fps
+                wait_time = time.time()
+                sleeptime = 1-(wait_time - start_time)
+                # sleep until next second.
+                time.sleep(sleeptime)
+                framecnt = 0
+                start_time=0
+
+            framecnt += 1
+    
+    @threaded
+    def tracking_objects_dequeue(self):
+        # make ncs connection
+        endcnt = 0
+        prev_time = 0
+        device = self.open_ncs_device()
+        graph = load_graph(self.graph_file, device)
+
+        while (True):
+            if (self.frameq.empty()):
+                if(endcnt >= 600):
+                    #self.logfile.close()
+                    #self.logfile2.close()
+                    print("byebye")
+                    sys.exit(0)
+                else: #keep checking queue
+                    time.sleep(1)
+                    endcnt += 1
+
+                continue
+            else:
+                curr_time_str = datetime.utcnow().strftime('%H:%M:%S.%f')[:-3]
+                frame = self.frameq.get()
+                if(self.width == None and self.height == None):
+                    self.width = frame.shape[1]
+                    self.height = frame.shape[0]
+            
+                #frame = cv2.resize(frame, (self.width, self.height))
+                self.curframe = frame
+                img = self.pre_process_image(frame)
+                rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                prev_time, fps = self.getfps(prev_time)
+                print("estimated tracking fps {0}".format(fps))
+                positions = []
+                cpu = psutil.cpu_percent()
+                ram = psutil.virtual_memory()
+                if self.findobj == True:
+                    print('looking for objects in frame...')
+                    decstr = base64.b64decode(self.msg_dict['img_string'])
+                    imgarray = np.fromstring(decstr, dtype=np.uint8)
+                    self.tracking_template = cv2.imdecode(imgarray, cv2.IMREAD_COLOR)
+                    w = self.tracking_template.shape[0]
+                    h = self.tracking_template.shape[1]
+                    print(self.tracking_template.shape[0], self.tracking_template.shape[1])
+                    res = cv2.matchTemplate(self.curframe, self.tracking_template, cv2.TM_CCOEFF_NORMED)
+                # need to put this into main tracking part.
+                    loc = np.where(res >= self.confidence_threshold)
+                    for pt in zip(*loc[::-1]):
+                        cv2.rectangle(self.curframe, pt, (pt[0] + w, pt[1]+h),(0,0,255),2)
+                        time.sleep(0.2)
+                    cv2.imshow("curframe", self.curframe)
+                    self.findobj = False
+                    '''
+                    res = cv2.matchTemplate(frame, self.template, self.tm_op1)
+                    print(res)
+                    min_val, max_val, min_loc, max_loc = cv2.minMaxLoc (res)
+                    w, h = self.template.shape[::-1]
+                    br = (min_loc[0] + w, min_loc[1] +h)
+                    cv2.rectangle(frame, min_loc[0], br, 255,2)
+                    '''
+
+                if self.counter % self.frame_skips ==0:
+                    self.trackers = []
+                    graph.LoadTensor(img, 'user object')
+
+                    # Get the results from NCS
+                    output, userobj = graph.GetResult()
+                    inference_time = graph.GetGraphOption(mvnc.GraphOption.TIME_TAKEN)
+
+                    # Deserialize the output into a python dictionary
+                    output_dict = deserialize_output.ssd(output, self.confidence_threshold, frame.shape)
+                
+                    for i in range(0, output_dict['num_detections']):
+                        if output_dict['detection_scores_' + str(i)] > self.confidence_threshold :
+                            if output_dict ['detection_classes_'+str(i)] != 15: # skip if not human
+                                continue
+                            print("%3.1f%%\t" % output_dict['detection_scores_' + str(i)] + self.labels[int(output_dict['detection_classes_' + str(i)])] + ": Top Left: " + str(output_dict['detection_boxes_' + str(i)][0]) + " Bottom Right: " + str(output_dict['detection_boxes_' + str(i)][1]))
+                  
+                            (y1, x1) = output_dict.get('detection_boxes_' + str(i))[0]
+                            (y2, x2) = output_dict.get('detection_boxes_' + str(i))[1]
+                            #print("centroid X Y", (x1+x2) / 2.0, (y1+y2)/2.0)
+                            # add to tracking objects
+                            tracker = dlib.correlation_tracker()
+                            rect = dlib.rectangle(x1, y1, x2, y2)
+                            tracker.start_track(rgb,rect)
+                            self.trackers.append(tracker)
+
+                else:
+                    for tracker in self.trackers: 
+                        tracker.update(rgb)
+                        pos = tracker.get_position()
+                        startX = int(pos.left())
+                        startY = int(pos.top())
+                        endX = int(pos.right())
+                        endY = int(pos.bottom())
+                        positions.append((startX, startY, endX, endY))
+            
+                objects = self.ct.update(positions)
+                # prints all existing indexes.
+                #self.ct.getall()
+
+                for (objectID, centroid) in objects.items():
+                    to = self.trobs.get(objectID, None)
+                    #self.ct.getall()
+                    if (self.ct.checknumberofexisting()):
+                        self.sumframebytes+=sys.getsizeof(frame)
+
+                    if to == None:
+                        to = trackableobject.TrackableObject(objectID, centroid)
+                    else:
+
+                        cv2.circle(frame, (centroid[0],centroid[1]),4,(255,255,255),-1)
+                        y = [c[1] for c in to.centroids]
+                        x = [c[0] for c in to.centroids]
+                        dirY = centroid[1] - np.mean(y)
+                        dirX = centroid[0] - np.mean(x)
+                        to.centroids.append(centroid)
+                    
+                        if not to.counted:
+                        #print("centroid (x,y): ", centroid[0], centroid[1])
+                            self.checkboundary(centroid, objectID)
+                            print("loc of object in frame: ", objectID, self.boundary[objectID])
+
+                            self.checkdir(dirX, dirY, objectID)
+                            print("moving direction of the object: ", objectID, self.objstatus[objectID])
+
+                            self.where[objectID] = self.checkhandoff(objectID)
+                            # send hand off msg here
+                            if(self.where[objectID] == "RIGHT"):
+                                print("we need to send msg to right")
+                                #print("just throw in the cropped img template")
+                                #print("upon receiving the cropped img, do the template matching & add to tracking dlib queue")
+                                p = self.ct.get_object_rect_by_id(objectID) # x1, y1, x2, y2
+                                #t = self.ct.objects[objectID]  #centroid x, y
+                                #print("type p: ", type(p)) # rect
+                                #print("t: ", t) # centroid
+                                cv2.rectangle(frame, (p[0], p[1]), (p[2], p[3]), (255,0,0),2)
+                                #croppedimg = frame[y1:y2, x1: x2]
+                                croppedimg = frame[p[1]:p[3], p[0]:p[2]]
+                                jsonified_data = MessageBus.create_message_list_numpy_handoff(croppedimg, self.encode_param, self.device_name, self.timegap)
+                                self.msg_bus.send_message_str(self.center_device_ip_int, self.center_device_port, jsonified_data)
+
+                            
+                            elif (self.where[objectID]== "LEFT"):
+                                print("we need to send msg to left")
+                                #jsonified_data = MessageBus.create_message_list_numpy_handoff(croppedimg, encode_param, self.device_name, self.timegap)
+                                #self.msg_bus.send_message_str(self.right_device_ip_ext self.right_device_port, jsonified_data)
+                            elif (self.where[objectID]== "TOP"):
+                                print("we need to send msg to top")
+                            elif (self.where[objectID]== "BOTTOM"):
+                                print("we need to send msg to bottom")
+                            else:
+                                print("")
+                                #print("Nothing is happening")
+
+                    self.trobs[objectID] = to
+                    text = "ID {}".format(objectID)
+                    cv2.putText(frame, text, (centroid[0]-10, centroid[1]-10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255,255,255),2) # ID of the object 
+                sendablecnt = 0
+                self.counter += 1
+    #            cv2.imwrite('frame'+str(self.counter)+'.jpg', frame)
+                if self.display == "on":
+                    cv2.imshow('NCS live inference', frame)
+                if(cv2.waitKey(3) & 0xFF == ord('q')):
+                    break
+                #save = {"CPU": str(cpu), "fps": str("{0:.2f}".format(fps)), "cur_tracking_count": str(len(self.trackers)), "totalbytes": str(self.sumframebytes)}
+                self.logfile.write(str(self.counter)+"\t") 
+                self.logfile.write(str(cpu)+"\t"+str("{0:.2f}".format(fps))+"\t"+str(self.ct.checknumberofexisting())+"\t"+str(self.sumframebytes/1000000)) 
+                self.logfile.write("\n")
+                print(str(self.ct.checknumberofexisting()))
+                print (str(self.sumframebytes/1000000))
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(
@@ -869,7 +1089,9 @@ if __name__ == '__main__':
     hyp.frame_skips = ARGS.skipcount
     hyp.framethr = ARGS.boundary_thr
     hyp.ct = centroidtracker.CentroidTracker(maxDisappeared=ARGS.disappear_thr, maxDistance =50)
-
+    # running in background to chug frames to queue
+    print("[Hypervisor] Start Chugging frames!")
+    hyp.src_to_frame_enqueue(ARGS.videofile)
     # Operations based on scheme options
     if ARGS.transmission == 'p':
         print('[Hypervisor] running our proposed scheme.')
@@ -892,5 +1114,9 @@ if __name__ == '__main__':
         print('[Hypervisor] tracking objects.')
         hyp.tracking_objects()
         #hyp.logfile.close()
+    elif ARGS.transmission == 'td':
+        print('[Hypervisor] tracking objects with dequeuing technique.')
+        hyp.tracking_objects_dequeue()
+
     else:
         print('[Hypervisor] Error: invalid option for the scheme.')
