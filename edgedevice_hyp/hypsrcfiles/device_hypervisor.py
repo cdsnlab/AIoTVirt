@@ -517,14 +517,9 @@ class Hypervisor(object):
         graph = load_graph(self.graph_file, device)
 
         # Main loop: Capture live stream & send frames to NCS
-        if self.live == str(1):
-            # wtf haha
-
-            self.periodic_tracking(graph)
-        else:
-            # detects objects every 10 frames, tracks every frames.
-            self.periodic_tracking(graph)
-
+    
+        self.periodic_tracking(graph)
+        
     def checkboundary(self, centroid, objectID):
         #print(centroid)
         if(centroid[0]<=self.framethr):
@@ -701,7 +696,7 @@ class Hypervisor(object):
             if self.ct.checknumberofexisting():
                 #send to mars
                 jsonified_data = MessageBus.create_message_list_numpy_tracking(frame, self.counter, self.encode_param, self.device_name,self.timegap)
-                self.msg_bus.send_message_str(self.controller_ip, self.controller_port, jsonified_data)
+                #self.msg_bus.send_message_str(self.controller_ip, self.controller_port, jsonified_data)
 
             for (objectID, centroid) in objects.items():
                 to = self.trobs.get(objectID, None)
@@ -919,6 +914,11 @@ class Hypervisor(object):
                 objects = self.ct.update(positions)
                 # prints all existing indexes.
                 #self.ct.getall()
+                if self.ct.checknumberofexisting():
+                    #send to mars
+                    jsonified_data = MessageBus.create_message_list_numpy_tracking(frame, self.counter, self.encode_param, self.device_name,self.timegap)
+                    #self.msg_bus.send_message_str(self.controller_ip, self.controller_port, jsonified_data)
+
 
                 for (objectID, centroid) in objects.items():
                     to = self.trobs.get(objectID, None)

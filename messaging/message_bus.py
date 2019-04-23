@@ -110,6 +110,9 @@ class MessageBus(object):
                 elif msg_dict['type'] == 'handoff_request':
                     for handler in self.handlers.get('handoff_request', []):
                         handler(msg_dict)
+                elif msg_dict['type'] == 'img_tracking':
+                    for handler in self.handlers.get('img_tracking', []):
+                        handler(msg_dict)
                 else:
                     pass
             else:
