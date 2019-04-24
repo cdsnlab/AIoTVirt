@@ -2,9 +2,13 @@
 from scipy.spatial import distance as dist
 from collections import OrderedDict
 import numpy as np
+import queue
+import streamQueue
 
 class CentroidTracker:
-        def __init__(self, maxDisappeared=50, maxDistance=50):
+        def __init__(self, maxDisappeared=50, maxDistance=50, queuesize = 10):
+                # queuesize --> how many centroid locations are we going to look at?
+
                 # initialize the next unique object ID along with two ordered
                 # dictionaries used to keep track of mapping a given object
                 # ID to its centroid and number of consecutive frames it has
@@ -24,10 +28,12 @@ class CentroidTracker:
                 # distance we'll start to mark the object as "disappeared"
                 self.maxDistance = maxDistance
                 
-
-
                 # store the actual index of existing objects 
                 self.actualindex = []
+                self.queuesize = queuesize
+                self.lqx = {}
+                self.lqy = {}
+ 
 
         def getall(self):
                 # prints all existing object indexs 
@@ -48,6 +54,25 @@ class CentroidTracker:
                 self.objects[self.nextObjectID] = centroid
                 self.actualindex.append(self.nextObjectID)
                 self.disappeared[self.nextObjectID] = 0
+                self.lqx[self.nextObjectID] = (streamQueue.streamQueue(self.queuesize))
+                self.lqy[self.nextObjectID] = (streamQueue.streamQueue(self.queuesize))
+                self.lqx[self.nextObjectID].enqueue(centroid[0])
+                self.lqy[self.nextObjectID].enqueue(centroid[1])
+
+
+        def predict(self, objectID, next_spot=30):
+                #predict next x,y of this object after next_spot number of frames
+                xsize = self.lqx[objectID].queue.qsize()
+                ysize = self.lqy[objectID].queue.qsize()
+                
+                disx = self.lqx[objectID].queue.queue[xsize-1] - self.lqx[objectID].queue.queue[0]
+                disy = self.lqy[objectID].queue.queue[ysize-1] - self.lqy[objectID].queue.queue[0]
+
+                #print((disx / self.queuesize * next_spot) + self.lqx[objectID].queue.queue[xsize-1])
+                #print((disy / self.queuesize * next_spot) + self.lqy[objectID].queue.queue[ysize-1])
+                return (((disx / self.queuesize * next_spot) + self.lqx[objectID].queue.queue[xsize-1]), ((disy / self.queuesize * next_spot) + self.lqy[objectID].queue.queue[ysize-1]))
+                #print(self.lqx[objectID].queue.queue[0])
+                #print(self.lqy[objectID].queue.queue[0])
 
 
         def register_rects(self, rects):
@@ -64,6 +89,8 @@ class CentroidTracker:
                 del self.disappeared[objectID]
                 del self.objectsrect[objectID]
                 self.actualindex.remove(objectID)
+                del self.lqx[objectID]
+                del self.lqy[objectID]
 
         def update(self, rects):
                 # check to see if the list of input bounding box rectangles
@@ -157,8 +184,11 @@ class CentroidTracker:
                                 # counter
                                 objectID = objectIDs[row]
                                 self.objects[objectID] = inputCentroids[col]
+                                #print(inputCentroids[col][0])
                                 self.objectsrect[objectID] = rects[col]
                                 self.disappeared[objectID] = 0
+                                self.lqx[objectID].enqueue(inputCentroids[col][0])
+                                self.lqy[objectID].enqueue(inputCentroids[col][1])
 
                                 # indicate that we have examined each of the row and
                                 # column indexes, respectively
@@ -195,8 +225,9 @@ class CentroidTracker:
                                 for col in unusedCols:
                                         self.register(inputCentroids[col])
                                         self.register_rects(rects[col])
-                                        # we can't just put rects here... 
-                                        #print("inputcentold: ", inputCentroids[col])
+                                        
+                                        
+
                                         
 
                 # return the set of trackable objects

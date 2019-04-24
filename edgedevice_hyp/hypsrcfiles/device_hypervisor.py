@@ -65,7 +65,7 @@ class Hypervisor(object):
 
         self.camera = None  # OpenCV camera object
         self.live = live
-        self.tr_method = tr_method
+        self.tr = tr_method
         self.labels = None
         self.confidence_threshold = 0.0
         self.redis_db = None
@@ -102,7 +102,8 @@ class Hypervisor(object):
         self.sumframebytes = 0
         self.findobj = False # if handoff request is recieved it needs ot find the object in the frame
         self.template =None # cropped image of the object
-        self.movingdelta = None
+        self.movingdelta = 0
+        self.futuresteps = 0
 
         self.frameq = queue.Queue()
 
@@ -545,6 +546,19 @@ class Hypervisor(object):
                 self.boundary[objectID] = "CR"
             elif(centroid[1]>(self.width-self.framethr)):
                 self.boundary[objectID] = "BR"
+
+    def checkboundary_dir(self, prex, prey):
+        #print(centroid)
+        if(prey <= 0 and prex > 0 and prex <= self.width):
+            return "U"
+        elif(prex > self.width and prey > 0 and prey <= self.height):
+            return "R"
+        elif(prex <= 0 and prey > 0 and prey <=self.height):
+            return "L"
+        elif(prey > self.height and prex > 0 and prex <= self.width):
+            return "D"
+        else: 
+            return "-"
         
     def checkdir(self, dirX, dirY, objectID): # this -2, 2 must also be adjusted depending on the tracked objects
         #print(dirX, dirY, objectID)
@@ -596,7 +610,7 @@ class Hypervisor(object):
                 return "LEFT"
         else:
             return "CALM"
-
+        
 
     def periodic_tracking(self, graph):
 
@@ -699,6 +713,7 @@ class Hypervisor(object):
                 #self.ct.getall()
                 if (self.ct.checknumberofexisting()):
                     self.sumframebytes+=sys.getsizeof(frame)
+                #self.ct.predict(objectID, 30)
 
                 if to == None:
                     to = trackableobject.TrackableObject(objectID, centroid)
@@ -750,7 +765,7 @@ class Hypervisor(object):
                             #print("Nothing is happening")
 
                 self.trobs[objectID] = to
-                text = "ID {}".format(objectID)
+                text = "ID {}".format(objectID) +" "+ str(centroid[0]) +" "+ str(centroid[1])
                 cv2.putText(frame, text, (centroid[0]-10, centroid[1]-10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255,255,255),2) # ID of the object 
             sendablecnt = 0
             self.counter += 1
@@ -931,44 +946,78 @@ class Hypervisor(object):
                         to.centroids.append(centroid)
                     
                         if not to.counted:
-                        #print("centroid (x,y): ", centroid[0], centroid[1])
-                            self.checkboundary(centroid, objectID)
-                            #print("loc of object in frame: ", objectID, self.boundary[objectID])
+                            
+                            if (self.tr == "dr"):
+                                prex, prey = self.ct.predict(objectID, 30)
+                                if(self.checkboundary_dir(prex, prey)=="R"):
+                                    print("we need to send msg to right")
+                                    p = self.ct.get_object_rect_by_id(objectID) # x1, y1, x2, y2
+                                    if (p[0]<=0 or p[1] <= 0 or p[2] <= 0 or p[3] <=0):
+                                        pass
+                                    else:
+                                        cv2.rectangle(frame, (p[0], p[1]), (p[2], p[3]), (255,0,0),2)
+                                        croppedimg = frame[p[1]:p[3], p[0]:p[2]]
+                                        jsonified_data = MessageBus.create_message_list_numpy_handoff(croppedimg, self.encode_param, self.device_name, self.timegap)
+                                        #self.msg_bus.send_message_str(self.center_device_ip_int, self.center_device_port, jsonified_data)
 
-                            self.checkdir(dirX, dirY, objectID)
-                            #print("moving direction of the object: ", objectID, self.objstatus[objectID])
+                                # sned mesg
+                                elif(self.checkboundary_dir(prex, prey)=="L"):
+                                    print("we need to send msg to left")
+                                    p = self.ct.get_object_rect_by_id(objectID) # x1, y1, x2, y2
+                                    if (p[0]<=0 or p[1] <= 0 or p[2] <= 0 or p[3] <=0):
+                                        pass
+                                    else:
+                                
+                                        cv2.rectangle(frame, (p[0], p[1]), (p[2], p[3]), (255,0,0),2)
+                                        croppedimg = frame[p[1]:p[3], p[0]:p[2]]
+                                        print((p[0], p[1]), (p[2], p[3]))
+                                        #cv2.imwrite(str(self.counter)+".jpg", croppedimg)
+                                        jsonified_data = MessageBus.create_message_list_numpy_handoff(croppedimg, self.encode_param, self.device_name, self.timegap)
+                                        #self.msg_bus.send_message_str(self.left_device_ip_int, self.left_device_port, jsonified_data)
 
-                            self.where[objectID] = self.checkhandoff(objectID)
-                            # send hand off msg here
-                            if(self.where[objectID] == "RIGHT"):
-                                print("we need to send msg to right")
-                                #print("just throw in the cropped img template")
-                                #print("upon receiving the cropped img, do the template matching & add to tracking dlib queue")
-                                p = self.ct.get_object_rect_by_id(objectID) # x1, y1, x2, y2
-                                #t = self.ct.objects[objectID]  #centroid x, y
-                                #print("type p: ", type(p)) # rect
-                                #print("t: ", t) # centroid
-                                cv2.rectangle(frame, (p[0], p[1]), (p[2], p[3]), (255,0,0),2)
-                                #croppedimg = frame[y1:y2, x1: x2]
-                                croppedimg = frame[p[1]:p[3], p[0]:p[2]]
-                                jsonified_data = MessageBus.create_message_list_numpy_handoff(croppedimg, self.encode_param, self.device_name, self.timegap)
-                                #self.msg_bus.send_message_str(self.center_device_ip_int, self.center_device_port, jsonified_data)
+                                elif(self.checkboundary_dir(prex, prey)=="D"):
+                                    print("we need to send msg to down")
+                                elif(self.checkboundary_dir(prex, prey)=="U"):
+                                    print("we need to send msg to up")
+
+                            elif (self.tr == "bc"):
+                                self.checkboundary(centroid, objectID)
+                                #print("loc of object in frame: ", objectID, self.boundary[objectID])
+
+                                self.checkdir(dirX, dirY, objectID)
+                                #print("moving direction of the object: ", objectID, self.objstatus[objectID])
+
+                                self.where[objectID] = self.checkhandoff(objectID)
+                                # send hand off msg here
+                                if(self.where[objectID] == "RIGHT"):
+                                    print("we need to send msg to right")
+                                    #print("just throw in the cropped img template")
+                                    #print("upon receiving the cropped img, do the template matching & add to tracking dlib queue")
+                                    p = self.ct.get_object_rect_by_id(objectID) # x1, y1, x2, y2
+                                    #t = self.ct.objects[objectID]  #centroid x, y
+                                    #print("type p: ", type(p)) # rect
+                                    #print("t: ", t) # centroid
+                                    cv2.rectangle(frame, (p[0], p[1]), (p[2], p[3]), (255,0,0),2)
+                                    #croppedimg = frame[y1:y2, x1: x2]
+                                    croppedimg = frame[p[1]:p[3], p[0]:p[2]]
+                                    jsonified_data = MessageBus.create_message_list_numpy_handoff(croppedimg, self.encode_param, self.device_name, self.timegap)
+                                    #self.msg_bus.send_message_str(self.center_device_ip_int, self.center_device_port, jsonified_data)
 
                             
-                            elif (self.where[objectID]== "LEFT"):
-                                print("we need to send msg to left")
-                                #jsonified_data = MessageBus.create_message_list_numpy_handoff(croppedimg, encode_param, self.device_name, self.timegap)
-                                #self.msg_bus.send_message_str(self.right_device_ip_ext self.right_device_port, jsonified_data)
-                            elif (self.where[objectID]== "TOP"):
-                                print("we need to send msg to top")
-                            elif (self.where[objectID]== "BOTTOM"):
-                                print("we need to send msg to bottom")
-                            else:
-                                print("")
-                                #print("Nothing is happening")
+                                elif (self.where[objectID]== "LEFT"):
+                                    print("we need to send msg to left")
+                                    #jsonified_data = MessageBus.create_message_list_numpy_handoff(croppedimg, encode_param, self.device_name, self.timegap)
+                                    #self.msg_bus.send_message_str(self.right_device_ip_ext self.right_device_port, jsonified_data)
+                                elif (self.where[objectID]== "TOP"):
+                                    print("we need to send msg to top")
+                                elif (self.where[objectID]== "BOTTOM"):
+                                    print("we need to send msg to bottom")
+                                else:
+                                    print("nothing is happinging")
+    
 
                     self.trobs[objectID] = to
-                    text = "ID {}".format(objectID)
+                    text = "ID {}".format(objectID) +" "+ str(centroid[0]) +" "+ str(centroid[1])
                     cv2.putText(frame, text, (centroid[0]-10, centroid[1]-10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255,255,255),2) # ID of the object 
                 sendablecnt = 0
                 self.counter += 1
@@ -983,6 +1032,7 @@ class Hypervisor(object):
                 self.logfile.write("\n")
                 #print(str(self.ct.checknumberofexisting()))
                 #print (str(self.sumframebytes/1000000))
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(
@@ -1019,18 +1069,23 @@ if __name__ == '__main__':
     parser.add_argument('-ln', '--logname', type=str,
                         default='logfile.txt',
                         help="your log filename name.")
+    ### for tracking.
     parser.add_argument('-sk', '--skipcount', type=int,
                         default=10,
                         help="number of skipping frames for object detection.")
     parser.add_argument('-dt', '--disappear_thr', type=int,
                         default=20,
                         help="number of frames until frame is regarded as disappeared from tracking list.")
+    ### for frame threshold based aproach
     parser.add_argument('-bt', '--boundary_thr', type=int,
                         default=100,
                         help="boundary to regard as the object is leaving the frame.")
     parser.add_argument('-md', '--movingdelta', type=float,
                         default=5.0,
                         help="delta of moving object value.")
+    ### for dead reckoning approach.
+    parser.add_argument('-fs', '--futuresteps', type=int,
+                        help="how many future steps are we going to look for dead reckoning?")
 
     ARGS = parser.parse_args()
 
@@ -1085,10 +1140,12 @@ if __name__ == '__main__':
     hyp.frame_skips = ARGS.skipcount
     hyp.framethr = ARGS.boundary_thr
     hyp.movingdelta = ARGS.movingdelta
-    hyp.ct = centroidtracker.CentroidTracker(maxDisappeared=ARGS.disappear_thr, maxDistance =50)
+    hyp.futuresteps = ARGS.futuresteps
+    #hyp.tr = ARGS.transmission
+    hyp.ct = centroidtracker.CentroidTracker(maxDisappeared=ARGS.disappear_thr, maxDistance =50, queuesize = 10)
     # running in background to chug frames to queue
-    print("[Hypervisor] Start Chugging frames!")
-    hyp.src_to_frame_enqueue(ARGS.videofile)
+    
+    
     # Operations based on scheme options
     if ARGS.transmission == 'p':
         print('[Hypervisor] running our proposed scheme.')
@@ -1108,11 +1165,13 @@ if __name__ == '__main__':
         print('[Hypervisor] running as an existing work 3.')
         hyp.logfile.close()
     elif ARGS.transmission == 'tracking':
-        print('[Hypervisor] tracking objects.')
+        print('[Hypervisor] tracking objects. @ full speed')
         hyp.tracking_objects()
         #hyp.logfile.close()
-    elif ARGS.transmission == 'td':
-        print('[Hypervisor] tracking objects with dequeuing technique.')
+    elif ARGS.transmission == 'bc' or ARGS.transmission == 'dr':
+        print("[Hypervisor] Start Chugging frames!")
+        hyp.src_to_frame_enqueue(ARGS.videofile)
+        print('[Hypervisor] tracking objects with dequeuing technique. 1) boundary checking 2) dead reckoning')
         hyp.tracking_objects_dequeue()
 
     else:

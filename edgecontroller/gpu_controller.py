@@ -205,6 +205,7 @@ class Controller(object):
 
     def detection_gpu_return(self, model, frame, cnt):
 #        print('Detecting...')
+        personcnt =0
         start_time = time.time()
         frame_tensor = cv_image2tensor(frame, self.input_size).unsqueeze(0)
         frame_tensor = Variable(frame_tensor)
@@ -214,8 +215,15 @@ class Controller(object):
 
         detections = self.model(frame_tensor, self.cuda).cpu()
         detections = process_result(detections, self.confidence, self.nms_thresh)
-        print("number of detected objects: ", len(detections))
-        return len(detections)
+        
+        if len(detections) != 0:
+            detections = transform_result(detections, [frame], self.input_size)
+#            for detection in detections:
+            for idx, detection in enumerate(detections):
+                if(self.classes[int(detection[-1])]=="person"):
+                    personcnt +=1
+        print(personcnt)
+        return personcnt
 
     def detection_gpu(self, model, frame, cnt):
 #        print('Detecting...')
