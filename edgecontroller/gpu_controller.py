@@ -22,6 +22,9 @@ from darknet import Darknet
 import pickle as pkl
 import math
 import ntplib
+import trackableobject
+import centroidtracker
+import dlib
 
 def threaded(fn):
     def wrapper(*args, **kwargs):
@@ -56,11 +59,30 @@ class Controller(object):
         self.nms_thresh = None
         self.net = None # load caffe model
         self.framecnt = 0
+        self.counter = 0
+        self.gettimegap()
+        self.tr = "dr"
+
         self.imgq = queue.Queue() # q for image.
         self.timerq = queue.Queue() # q for image wait time
         self.framecntq = queue.Queue() # q for frame cnt
+        self.dev_nameq = queue.Queue() # q for devnames
+        self.typeq= queue.Queue() # q for type of msg
         self.image_dequeue_proc()
-        self.gettimegap()
+        
+
+        self.ct = centroidtracker.CentroidTracker(maxDisappeared=ARGS.disappear_thr, maxDistance =50, queuesize = 10)
+        self.frame_skips = None # how many frames should be skipped before detection 
+        self.trackers = []
+        self.trobs = {}
+        self.boundary ={}
+        self.objstatus ={}
+        self.where={}
+        self.framethr = 50
+        self.sumframebytes = 0
+        self.movingdelta = 0
+        self.futuresteps = 0
+
 
     def gettimegap(self):
         starttime = datetime.now()
@@ -136,6 +158,7 @@ class Controller(object):
         curdatetime = datetime.strptime(curTime, '%H:%M:%S.%f')
         sentdatetime = datetime.strptime(msg_dict['time'], '%H:%M:%S.%f')
 
+        self.typeq.put(str(msg_dict['type'])) # type
         self.imgq.put(decimg) # keep chugging
         self.timerq.put(curdatetime)
         self.framecntq.put(str(msg_dict['framecnt']))
@@ -154,6 +177,7 @@ class Controller(object):
         sentdatetime = datetime.strptime(msg_dict['time'], '%H:%M:%S.%f')
         self.logfile.write(str(msg_dict['framecnt'])+"\t"+str((curdatetime - sentdatetime).total_seconds())+"\t"+str(sys.getsizeof(decimg))+'\t'+str(self.cpuusage())+'\n')
 
+        self.typeq.put(str(msg_dict['type'])) # type
         self.imgq.put(decimg) # keep chugging
         self.timerq.put(curdatetime)
         self.framecntq.put(str(msg_dict['framecnt']))
@@ -162,10 +186,12 @@ class Controller(object):
 
     @threaded
     def image_dequeue_proc(self):
+        framecnt = 0
         prev_time= 0
         endcnt =0 # if idle for 2 minutes, save and quit.
+        frame_start_time = time.time()
         while (True):
-            if (self.imgq.empty()):
+             if (self.imgq.empty()):
                 if(endcnt >= 120):
                     self.logfile.close()
                     self.logfile2.close()
@@ -176,25 +202,191 @@ class Controller(object):
                     endcnt += 1
 
                 continue
-            else:
-                cnt = self.framecntq.get()
+             else:
                 dev = self.dev_nameq.get()
+                self.counter = self.framecntq.get()
+
                 if self.cuda:
+                    if self.typeq.get() == 'img': # just detection, nothing else
+                        self.detection_gpu(self.model, self.imgq.get(), cnt)
+
+                    elif self.typeq.get() == 'img_tracking':# for tracking
+                        frame = self.imgq.get()
+                        rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                        if self.counter % self.frame_skip == 0:
+                            self.trackers = []
+                            frame_tensor = cv_image2tensor(frame, self.input_size).unsqueeze(0)
+                            frame_tensor = Variable(frame_tensor)
+
+                            if self.cuda:
+                                frame_tensor = frame_tensor.cuda()
+
+                            detections = self.model(frame_tensor, self.cuda).cpu()
+                            detections = process_result(detections, self.confidence, self.nms_thresh)
+        
+                            if len(detections) != 0:
+                                detections = transform_result(detections, [frame], self.input_size)
+                            #for detection in detections:
+                                for idx, detection in enumerate(detections):
+                                    if (self.classes[int(detection[-1])]=="person"):
+                                        if float(detection[6]) > self.confidence:
+                                            pre_score = (float(detection[6])) # prediction score
+                                            pre_class = (self.classes[int(detection[-1])]) # prediction class
+                                            pre_x1 = (int(detection[1])) # x1
+                                            pre_y1 = (int(detection[2])) # y1
+                                            pre_x2 = (int(detection[3])) # x2 
+                                            pre_y2 = (int(detection[4])) # y2
+
+                                            #self.draw_bbox([frame], detection, self.colors, self.classes)
+                                            tracker = dlib.correlation_tracker()
+                                            rect = dlib.rectangle(pre_x1, pre_y1, pre_x2, pre_y2)
+                                            tracker.start_track(rgb, rect)
+                                            self.trackers.append(tracker)
+                        else: 
+                            for tracker in self.trackers: 
+                                tracker.update(rgb)
+                                pos = tracker.get_position()
+                                startX = int(pos.left())
+                                startY = int(pos.top())
+                                endX = int(pos.right())
+                                endY = int(pos.bottom())
+                                positions.append((startX, startY, endX, endY))
+
+                        objects = self.ct.update(positions)
+
+                        for (objectID, centroid) in objects.items():
+                            to = self.trobs.get(objectID, None)
+                            #self.ct.getall()
+                            if (self.ct.checknumberofexisting()):
+                                self.sumframebytes+=sys.getsizeof(frame)
+                            #self.ct.predict(objectID, 30)
+
+                            if to == None:
+                                to = trackableobject.TrackableObject(objectID, centroid)
+                            else:
+
+                                cv2.circle(frame, (centroid[0],centroid[1]),4,(255,255,255),-1)
+                                y = [c[1] for c in to.centroids]
+                                x = [c[0] for c in to.centroids]
+                                dirY = centroid[1] - np.mean(y)
+                                dirX = centroid[0] - np.mean(x)
+                                to.centroids.append(centroid)
                     
-                    #self.detection_gpu(self.model, self.imgq.get(), cnt)
-                    thing = self.detection_gpu_return(self.model, self.imgq.get(), cnt)
+                                if not to.counted:
+                                    if (self.tr == "dr"):
+                                        prex, prey = self.ct.predict(objectID, 30)
+                                        print("predicted obj movement..x,y: ", prex, prey)
+                                        if(self.checkboundary_dir(prex, prey)=="R"):
+                                            print("we need to send msg to right")
+                                            p = self.ct.get_object_rect_by_id(objectID) # x1, y1, x2, y2
+                                            if (p[0]<=0 or p[1] <= 0 or p[2] <= 0 or p[3] <=0):
+                                                pass
+                                            else:
+                                                cv2.rectangle(frame, (p[0], p[1]), (p[2], p[3]), (255,0,0),2)
+                                                croppedimg = frame[p[1]:p[3], p[0]:p[2]]
+                                                jsonified_data = MessageBus.create_message_list_numpy_handoff(croppedimg, self.encode_param, self.device_name, self.timegap)
+                                                #self.msg_bus.send_message_str(self.center_device_ip_int, self.center_device_port, jsonified_data)
+
+                                        # sned mesg
+                                        elif(self.checkboundary_dir(prex, prey)=="L"):
+                                            print("we need to send msg to left")
+                                            p = self.ct.get_object_rect_by_id(objectID) # x1, y1, x2, y2
+                                            if (p[0]<=0 or p[1] <= 0 or p[2] <= 0 or p[3] <=0):
+                                                pass
+                                            else:
+                                
+                                                cv2.rectangle(frame, (p[0], p[1]), (p[2], p[3]), (255,0,0),2)
+                                                croppedimg = frame[p[1]:p[3], p[0]:p[2]]
+                                                print((p[0], p[1]), (p[2], p[3]))
+                                                #cv2.imwrite(str(self.counter)+".jpg", croppedimg)
+                                                jsonified_data = MessageBus.create_message_list_numpy_handoff(croppedimg, self.encode_param, self.device_name, self.timegap)
+                                                #self.msg_bus.send_message_str(self.left_device_ip_int, self.left_device_port, jsonified_data)
+
+                                        elif(self.checkboundary_dir(prex, prey)=="D"):
+                                            print("we need to send msg to down")
+                                        elif(self.checkboundary_dir(prex, prey)=="U"):
+                                            print("we need to send msg to up")
+
+                                    elif (self.tr == "bc"):
+                                        self.checkboundary(centroid, objectID)
+                                        #print("loc of object in frame: ", objectID, self.boundary[objectID])
+
+                                        self.checkdir(dirX, dirY, objectID)
+                                        #print("moving direction of the object: ", objectID, self.objstatus[objectID])
+
+                                        self.where[objectID] = self.checkhandoff(objectID)
+                                        # send hand off msg here
+                                        if(self.where[objectID] == "RIGHT"):
+                                            print("we need to send msg to right")
+                                            #print("just throw in the cropped img template")
+                                            #print("upon receiving the cropped img, do the template matching & add to tracking dlib queue")
+                                            p = self.ct.get_object_rect_by_id(objectID) # x1, y1, x2, y2
+                                            #t = self.ct.objects[objectID]  #centroid x, y
+                                            #print("type p: ", type(p)) # rect
+                                            #print("t: ", t) # centroid
+                                            cv2.rectangle(frame, (p[0], p[1]), (p[2], p[3]), (255,0,0),2)
+                                            #croppedimg = frame[y1:y2, x1: x2]
+                                            croppedimg = frame[p[1]:p[3], p[0]:p[2]]
+                                            jsonified_data = MessageBus.create_message_list_numpy_handoff(croppedimg, self.encode_param, self.device_name, self.timegap)
+                                            self.msg_bus.send_message_str(self.center_device_ip_int, self.center_device_port, jsonified_data)
+
+                            
+                                        elif (self.where[objectID]== "LEFT"):
+                                            print("we need to send msg to left")
+                                            p = self.ct.get_object_rect_by_id(objectID) # x1, y1, x2, y2
+                                            #t = self.ct.objects[objectID]  #centroid x, y
+                                            #print("type p: ", type(p)) # rect
+                                            #print("t: ", t) # centroid
+                                            cv2.rectangle(frame, (p[0], p[1]), (p[2], p[3]), (255,0,0),2)
+                                            #croppedimg = frame[y1:y2, x1: x2]
+                                            croppedimg = frame[p[1]:p[3], p[0]:p[2]]
+                                            jsonified_data = MessageBus.create_message_list_numpy_handoff(croppedimg, self.encode_param, self.device_name, self.timegap)
+                                            #jsonified_data = MessageBus.create_message_list_numpy_handoff(croppedimg, encode_param, self.device_name, self.timegap)
+                                            self.msg_bus.send_message_str(self.right_device_ip_int, self.right_device_port, jsonified_data)
+                                        elif (self.where[objectID]== "TOP"):
+                                            print("we need to send msg to top")
+                                        elif (self.where[objectID]== "BOTTOM"):
+                                            print("we need to send msg to bottom")
+                                        else:
+                                            print("nothing is happinging")
+
+                            self.trobs[objectID] = to
+                            text = "ID {}".format(objectID) +" "+ str(centroid[0]) +" "+ str(centroid[1])
+                            cv2.putText(frame, text, (centroid[0]-10, centroid[1]-10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255,255,255),2) # ID of the object 
+                            
+                        sendablecnt = 0
+                        self.counter += 1
+            #            cv2.imwrite('frame'+str(self.counter)+'.jpg', frame)
+                        if self.display == "on":
+                            cv2.imshow('NCS live inference', frame)
+                        if(cv2.waitKey(3) & 0xFF == ord('q')):
+                            break
+                ###
+
+
+
+                                
+
+                    elif self.typeq.get() == 'img_tracking_check':# dummy here
+                        thing = self.detection_gpu_return(self.model, self.imgq.get(), cnt)
                 else: # no GPU enabled
-                    self.detection(self.imgq.get())
+                    if self.typeq.get() == 'img':
+                        self.detection(self.imgq.get())
+                    elif self.typeq.get() == 'img_tracking':
+                        print ("NOT IMP YET")
+                        # self.detection_tracking (self.model, self.imgq.get(), cnt)
+                    elif self.typeq.get() == 'img_tracking_check':
+                        print ("NOT IMP YET")
+                        # thing = self.detection_gpu_return(self.model, self.imgq.get(), cnt)
                 curT = datetime.utcnow().strftime('%H:%M:%S.%f') # string format
                 decay = datetime.strptime(curT, '%H:%M:%S.%f') - self.timerq.get()
-#                print(type(decay))
-#                print(decay.total_seconds())
-                curr_time = time.time()
-                sec = curr_time - prev_time
-                prev_time = curr_time
-                fps = 1/ (sec)
-#                print("fps: ", fps)
-                self.logfile2.write(str(cnt)+"\t"+str(dev)+"\t"+str(thing)+str(decay.total_seconds())+"\n")
+                framecnt +=1
+
+                frame_end_time = time.time()
+                cumlative_fps = framecnt / (frame_end_time - frame_start_time)
+                print("estimated dequeue speed: ", str(cumlative_fps)) # i don't think its needed here but in processing thread
+
+                #self.logfile2.write(str(cnt)+"\t"+str(dev)+"\t"+str(thing)+"\t"+str(decay.total_seconds())+"\n")
 
     def setup_before_detection_gpu(self):
         self.input_size = [int(self.model.net_info['height']), int(self.model.net_info['width'])]
