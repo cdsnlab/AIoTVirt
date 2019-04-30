@@ -59,19 +59,18 @@ class Controller(object):
         self.nms_thresh = None
         self.net = None # load caffe model
         self.framecnt = 0
-        self.counter = 0
         self.gettimegap()
-        self.tr = "dr"
+        self.tr = None
+        self.encode_param = None
 
-        self.imgq = queue.Queue() # q for image.
-        self.timerq = queue.Queue() # q for image wait time
-        self.framecntq = queue.Queue() # q for frame cnt
-        self.dev_nameq = queue.Queue() # q for devnames
-        self.typeq= queue.Queue() # q for type of msg
-        self.image_dequeue_proc()
-        
+        self.imgq = queue.Queue(2000) # q for image.
+        self.timerq = queue.Queue(2000) # q for image wait time
+        self.framecntq = queue.Queue(2000) # q for frame cnt
+        self.dev_nameq = queue.Queue(2000) # q for devnames
+        self.typeq= queue.Queue(2000) # q for type of msg
+        #self.image_dequeue_proc()
 
-        self.ct = centroidtracker.CentroidTracker(maxDisappeared=ARGS.disappear_thr, maxDistance =50, queuesize = 10)
+        self.ct = centroidtracker.CentroidTracker(50, maxDistance =50, queuesize = 10)
         self.frame_skips = None # how many frames should be skipped before detection 
         self.trackers = []
         self.trobs = {}
@@ -82,6 +81,7 @@ class Controller(object):
         self.sumframebytes = 0
         self.movingdelta = 0
         self.futuresteps = 0
+        self.frame_skip = 10
 
 
     def gettimegap(self):
@@ -99,6 +99,7 @@ class Controller(object):
         return self.ram
 
     def signal_handler(self, sig, frame):
+        self.msg_bus.ctx.destroy()
         self.logfile.close()
         self.logfile2.close()
         self.logfile3.close()
@@ -121,9 +122,8 @@ class Controller(object):
         cv2.rectangle(img, p3, p4, color, -1)
         cv2.putText(img, label, p1, cv2.FONT_HERSHEY_SIMPLEX, 1, [225, 255, 255], 1)
 
-
     def handle_message(self, msg_dict):
-        print('[Controller] handle_message: %s' % msg_dict['type'])
+#        print('[Controller] handle_message: %s' % msg_dict['type'])
         if msg_dict['type'] == 'join':
             self.handle_join(msg_dict)
         elif msg_dict['type'] == 'img': # image raw data
@@ -147,8 +147,9 @@ class Controller(object):
             node_info = node_table.table[node_name]
             self.msg_bus.send_message_json(node_info.ip, int(node_info.port), device_list_json)
 
+#    @threaded
     def process_raw_tracking(self, msg_dict):
-        print(' - tracking image')
+#        print(' - tracking image')
         decstr = base64.b64decode(msg_dict['img_string'])
         imgarray = np.fromstring(decstr, dtype=np.uint8)
         decimg = cv2.imdecode(imgarray, cv2.IMREAD_COLOR)
@@ -164,8 +165,98 @@ class Controller(object):
         self.framecntq.put(str(msg_dict['framecnt']))
         self.dev_nameq.put(str(msg_dict['device_name']))
 
+    def checkboundary(self, centroid, objectID):
+        #print(centroid)
+        if(centroid[0]<=self.framethr):
+            if(centroid[1]<=self.framethr):
+                self.boundary[objectID] = "TL"
+            elif(centroid[1]>self.framethr and centroid[1] <= (self.height-self.framethr)):
+                self.boundary[objectID] = "CL"
+            elif(centroid[1]>(self.width-self.framethr)):
+                self.boundary[objectID] = "BL"
+        elif (centroid[0]>self.framethr and centroid[0] <= (self.width - self.framethr)):
+            if(centroid[1] <= self.framethr):
+                self.boundary[objectID] = "TC"
+            elif(centroid[1]>self.framethr and centroid[1] <= (self.height-self.framethr)):
+                self.boundary[objectID] = "CC"
+            elif(centroid[1]>(self.width-self.framethr)):
+                self.boundary[objectID] = "BC"
+        elif (centroid[0] > (self.width - self.framethr)):
+            if(centroid[1] <= self.framethr):
+                self.boundary[objectID] = "TR"
+            elif(centroid[1]>self.framethr and centroid[1] <= (self.height-self.framethr)):
+                self.boundary[objectID] = "CR"
+            elif(centroid[1]>(self.width-self.framethr)):
+                self.boundary[objectID] = "BR"
+
+    def checkboundary_dir(self, prex, prey):
+        #print(centroid)
+        if(prey <= 0 and prex > 0 and prex <= self.width):
+            return "U"
+        elif(prex > self.width and prey > 0 and prey <= self.height):
+            return "R"
+        elif(prex <= 0 and prey > 0 and prey <=self.height):
+            return "L"
+        elif(prey > self.height and prex > 0 and prex <= self.width):
+            return "D"
+        else: 
+            return "-"
+        
+    def checkdir(self, dirX, dirY, objectID): # this -2, 2 must also be adjusted depending on the tracked objects
+        #print(dirX, dirY, objectID)
+        if dirY <= -(self.movingdelta):
+            if dirX <= -(self.movingdelta):
+                self.objstatus[objectID] = "NW"
+            elif dirX <= (self.movingdelta) and dirX > -(self.movingdelta):
+                self.objstatus[objectID] = "N"
+            elif dirX > (self.movingdelta):
+                self.objstatus[objectID] = "NE"
+                            
+        elif dirY <= (self.movingdelta) and dirY > -(self.movingdelta):
+            if dirX <= -(self.movingdelta):
+                self.objstatus[objectID] = "W"
+            elif dirX <= (self.movingdelta) and dirX > -(self.movingdelta):
+                self.objstatus[objectID] = "-"
+            elif dirX > (self.movingdelta):
+                self.objstatus[objectID] = "E"
+
+        elif dirY > (self.movingdelta):
+            if dirX <= -(self.movingdelta):
+                self.objstatus[objectID] = "SW"
+            elif dirX <= (self.movingdelta) and dirX > -(self.movingdelta):
+                self.objstatus[objectID] = "S"
+            elif dirX > (self.movingdelta):
+                self.objstatus[objectID] = "SE"
+        #print (self.objstatus[objectID])
+
+    def checkhandoff(self, objectID):
+        if(self.boundary[objectID] == "TL" or self.boundary[objectID] == "TC" or self.boundary[objectID] == "TR"):
+            if (self.objstatus[objectID]=="NW" or self.objstatus[objectID]=="N" or self.objstatus[objectID]=="NE"):
+                # do hand off request to next cam
+                print ("need hand off to top cam.")
+                return "TOP"
+        elif(self.boundary[objectID] == "TR" or self.boundary[objectID] == "CR" or self.boundary[objectID] == "BR"):
+            if (self.objstatus[objectID]=="NE" or self.objstatus[objectID]=="E" or self.objstatus[objectID]=="SE"):
+                # do hand off request to next cam
+                print ("need hand off to right cam.")
+                return "RIGHT"
+        elif(self.boundary[objectID] == "BL" or self.boundary[objectID] == "BC" or self.boundary[objectID] == "BR"):
+            if (self.objstatus[objectID]=="SW" or self.objstatus[objectID]=="S" or self.objstatus[objectID]=="SE"):
+                # do hand off request to next cam
+                print ("need hand off to bottom cam.")
+                return "BOTTOM"
+        elif(self.boundary[objectID] == "TL" or self.boundary[objectID] == "CL" or self.boundary[objectID] == "BL"):
+            if (self.objstatus[objectID]=="NW" or self.objstatus[objectID]=="W" or self.objstatus[objectID]=="SW"):
+                # do hand off request to next cam
+                print ("need hand off to left cam.")
+                return "LEFT"
+        else:
+            return "CALM"
+        
+
+
     def process_raw_image(self, msg_dict):
-        print(' - raw image')
+#       print(' - raw image')
         decstr = base64.b64decode(msg_dict['img_string'])
         imgarray = np.fromstring(decstr, dtype=np.uint8)
         decimg = cv2.imdecode(imgarray, cv2.IMREAD_COLOR)
@@ -183,13 +274,12 @@ class Controller(object):
         self.framecntq.put(str(msg_dict['framecnt']))
         self.framecnt = str(msg_dict['framecnt'])
     
-
     @threaded
     def image_dequeue_proc(self):
         framecnt = 0
-        prev_time= 0
         endcnt =0 # if idle for 2 minutes, save and quit.
         frame_start_time = time.time()
+        self.encode_param = [int(cv2.IMWRITE_JPEG_QUALITY),99]
         while (True):
              if (self.imgq.empty()):
                 if(endcnt >= 120):
@@ -198,22 +288,24 @@ class Controller(object):
                     print("byebye")
                     sys.exit(0)
                 else:
+                    print('nothing in q, sleeping..')
                     time.sleep(1)
                     endcnt += 1
 
-                continue
              else:
-                dev = self.dev_nameq.get()
-                self.counter = self.framecntq.get()
-
+                device_name = self.dev_nameq.get()
+                counter = int(self.framecntq.get())
+                frame = self.imgq.get()
                 if self.cuda:
                     if self.typeq.get() == 'img': # just detection, nothing else
-                        self.detection_gpu(self.model, self.imgq.get(), cnt)
+                        self.detection_gpu(self.model, frame, cnt)
 
                     elif self.typeq.get() == 'img_tracking':# for tracking
-                        frame = self.imgq.get()
+                        self.width = frame.shape[0]
+                        self.height = frame.shape[1]
                         rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                        if self.counter % self.frame_skip == 0:
+                        positions = []
+                        if int(counter) % self.frame_skip == 0:
                             self.trackers = []
                             frame_tensor = cv_image2tensor(frame, self.input_size).unsqueeze(0)
                             frame_tensor = Variable(frame_tensor)
@@ -230,6 +322,7 @@ class Controller(object):
                                 for idx, detection in enumerate(detections):
                                     if (self.classes[int(detection[-1])]=="person"):
                                         if float(detection[6]) > self.confidence:
+                                            print("foound!")
                                             pre_score = (float(detection[6])) # prediction score
                                             pre_class = (self.classes[int(detection[-1])]) # prediction class
                                             pre_x1 = (int(detection[1])) # x1
@@ -284,7 +377,7 @@ class Controller(object):
                                             else:
                                                 cv2.rectangle(frame, (p[0], p[1]), (p[2], p[3]), (255,0,0),2)
                                                 croppedimg = frame[p[1]:p[3], p[0]:p[2]]
-                                                jsonified_data = MessageBus.create_message_list_numpy_handoff(croppedimg, self.encode_param, self.device_name, self.timegap)
+                                                jsonified_data = MessageBus.create_message_list_numpy_handoff(croppedimg, self.encode_param, device_name, self.timegap)
                                                 #self.msg_bus.send_message_str(self.center_device_ip_int, self.center_device_port, jsonified_data)
 
                                         # sned mesg
@@ -298,8 +391,8 @@ class Controller(object):
                                                 cv2.rectangle(frame, (p[0], p[1]), (p[2], p[3]), (255,0,0),2)
                                                 croppedimg = frame[p[1]:p[3], p[0]:p[2]]
                                                 print((p[0], p[1]), (p[2], p[3]))
-                                                #cv2.imwrite(str(self.counter)+".jpg", croppedimg)
-                                                jsonified_data = MessageBus.create_message_list_numpy_handoff(croppedimg, self.encode_param, self.device_name, self.timegap)
+                                                #cv2.imwrite(str(counter)+".jpg", croppedimg)
+                                                jsonified_data = MessageBus.create_message_list_numpy_handoff(croppedimg, self.encode_param, device_name, self.timegap)
                                                 #self.msg_bus.send_message_str(self.left_device_ip_int, self.left_device_port, jsonified_data)
 
                                         elif(self.checkboundary_dir(prex, prey)=="D"):
@@ -327,7 +420,7 @@ class Controller(object):
                                             cv2.rectangle(frame, (p[0], p[1]), (p[2], p[3]), (255,0,0),2)
                                             #croppedimg = frame[y1:y2, x1: x2]
                                             croppedimg = frame[p[1]:p[3], p[0]:p[2]]
-                                            jsonified_data = MessageBus.create_message_list_numpy_handoff(croppedimg, self.encode_param, self.device_name, self.timegap)
+                                            jsonified_data = MessageBus.create_message_list_numpy_handoff(croppedimg, self.encode_param, device_name, self.timegap)
                                             self.msg_bus.send_message_str(self.center_device_ip_int, self.center_device_port, jsonified_data)
 
                             
@@ -340,8 +433,8 @@ class Controller(object):
                                             cv2.rectangle(frame, (p[0], p[1]), (p[2], p[3]), (255,0,0),2)
                                             #croppedimg = frame[y1:y2, x1: x2]
                                             croppedimg = frame[p[1]:p[3], p[0]:p[2]]
-                                            jsonified_data = MessageBus.create_message_list_numpy_handoff(croppedimg, self.encode_param, self.device_name, self.timegap)
-                                            #jsonified_data = MessageBus.create_message_list_numpy_handoff(croppedimg, encode_param, self.device_name, self.timegap)
+                                            jsonified_data = MessageBus.create_message_list_numpy_handoff(croppedimg, self.encode_param, device_name, self.timegap)
+                                            #jsonified_data = MessageBus.create_message_list_numpy_handoff(croppedimg, encode_param, device_name, self.timegap)
                                             self.msg_bus.send_message_str(self.right_device_ip_int, self.right_device_port, jsonified_data)
                                         elif (self.where[objectID]== "TOP"):
                                             print("we need to send msg to top")
@@ -355,23 +448,17 @@ class Controller(object):
                             cv2.putText(frame, text, (centroid[0]-10, centroid[1]-10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255,255,255),2) # ID of the object 
                             
                         sendablecnt = 0
-                        self.counter += 1
-            #            cv2.imwrite('frame'+str(self.counter)+'.jpg', frame)
+#                        cv2.imwrite('frame'+str(counter)+'.jpg', frame)
                         if self.display == "on":
                             cv2.imshow('NCS live inference', frame)
                         if(cv2.waitKey(3) & 0xFF == ord('q')):
                             break
-                ###
-
-
-
-                                
 
                     elif self.typeq.get() == 'img_tracking_check':# dummy here
-                        thing = self.detection_gpu_return(self.model, self.imgq.get(), cnt)
+                        thing = self.detection_gpu_return(self.model, frame, cnt)
                 else: # no GPU enabled
                     if self.typeq.get() == 'img':
-                        self.detection(self.imgq.get())
+                        self.detection(frame)
                     elif self.typeq.get() == 'img_tracking':
                         print ("NOT IMP YET")
                         # self.detection_tracking (self.model, self.imgq.get(), cnt)
@@ -380,13 +467,13 @@ class Controller(object):
                         # thing = self.detection_gpu_return(self.model, self.imgq.get(), cnt)
                 curT = datetime.utcnow().strftime('%H:%M:%S.%f') # string format
                 decay = datetime.strptime(curT, '%H:%M:%S.%f') - self.timerq.get()
-                framecnt +=1
 
                 frame_end_time = time.time()
-                cumlative_fps = framecnt / (frame_end_time - frame_start_time)
+                cumlative_fps = int(counter) / (frame_end_time - frame_start_time)
                 print("estimated dequeue speed: ", str(cumlative_fps)) # i don't think its needed here but in processing thread
-
+                print(str(counter)+"\t"+str(device_name)+"\t"+str(decay.total_seconds()))
                 #self.logfile2.write(str(cnt)+"\t"+str(dev)+"\t"+str(thing)+"\t"+str(decay.total_seconds())+"\n")
+
 
     def setup_before_detection_gpu(self):
         self.input_size = [int(self.model.net_info['height']), int(self.model.net_info['width'])]
@@ -497,6 +584,8 @@ if __name__ == '__main__':
     parser.add_argument('-ln3', '--logfilename3', type=str, default='logfilecontext.txt', help="logfile name for context related things.")
     parser.add_argument("--confidence", dest = "confidence", help = "Object Confidence to filter predictions", default = 0.7)
     parser.add_argument("--nms_thresh", dest = "nms_thresh", help = "NMS Threshhold", default = 0.5)
+    parser.add_argument('-dis', '--display', type=str, default = 'off', help = "enable display")
+    parser.add_argument('-tr', '--tr_op', type=str, default = 'dr', help = "dead reckoning, boundary check")
     ARGS = parser.parse_args()
     # Read 'master.ini'
     config = configparser.ConfigParser()
@@ -513,6 +602,7 @@ if __name__ == '__main__':
 
     ctrl.confidence = ARGS.confidence
     ctrl.nms_thresh = ARGS.nms_thresh
+    ctrl.display = ARGS.display
     ctrl.model = Darknet("cfg/yolov3.cfg")
     ctrl.model.load_weights('yolov3.weights')
     ctrl.cuda = torch.cuda.is_available()
@@ -525,5 +615,7 @@ if __name__ == '__main__':
     ctrl.logfile2 = open(ARGS.logfilename2, 'w')
     ctrl.logfile3 = open(ARGS.logfilename3, 'w')
     ctrl.label_path = label_path
+    ctrl.tr = ARGS.tr_op
     print("[INFO] Finished setup!")
-
+    if ARGS.tr_op == "dr" or ARGS.tr_op == "bc":
+        ctrl.image_dequeue_proc()
