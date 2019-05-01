@@ -978,7 +978,7 @@ if __name__ == '__main__':
     hyp.framethr = ARGS.boundary_thr
     hyp.movingdelta = ARGS.movingdelta
     hyp.futuresteps = ARGS.futuresteps
-    hyp.tracking_scheme = ARGS.ts
+    hyp.trackingscheme= ARGS.trackingscheme
     #hyp.tr = ARGS.transmission
     hyp.ct = centroidtracker.CentroidTracker(maxDisappeared=ARGS.disappear_thr, maxDistance =50, queuesize = 10)
     # running in background to chug frames to queue

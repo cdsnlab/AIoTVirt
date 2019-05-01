@@ -62,22 +62,17 @@ class Controller(object):
         self.framecnt = 0
         self.gettimegap()
         self.tr = None
+        self.ts = None
         self.trackingscheme = None
         self.encode_param = None
         self.q_list = {} # this tracks which devices are sending frames.
         self.d_list =[] # this tracks the name of sent devices. 
         self.numberofcameras = 0
         self.cur_tar_dev = None # tells which device has the target currently.
-        '''     
-        self.imgq = queue.Queue(2000) # q for image.
-        self.timerq = queue.Queue(2000) # q for image wait time
-        self.framecntq = queue.Queue(2000) # q for frame cnt
-        self.dev_nameq = queue.Queue(2000) # q for devnames
-        self.typeq= queue.Queue(2000) # q for type of msg
-        '''
+
         self.imgq ={}
         self.timerq = {}
-        self.framecnt ={}
+        self.framecntq ={}
         self.dev_nameq ={}
         self.typeq = {}
 
@@ -180,11 +175,11 @@ class Controller(object):
             self.framecntq[self.numberofcameras] = queue.Queue(2000)
             self.dev_nameq[self.numberofcameras] = queue.Queue(2000)
 
-            self.typeq[i].put(str(msg_dict['type']))
-            self.imgq[i].put(decimg)
-            self.timerq[i].put(curdatetime)
-            self.framecntq[i].put(str(msg_dict['framecnt']))
-            self.dev_nameq[i].put(str(msg_dict['device_name']))
+            self.typeq[self.numberofcameras].put(str(msg_dict['type']))
+            self.imgq[self.numberofcameras].put(decimg)
+            self.timerq[self.numberofcameras].put(curdatetime)
+            self.framecntq[self.numberofcameras].put(str(msg_dict['framecnt']))
+            self.dev_nameq[self.numberofcameras].put(str(msg_dict['device_name']))
 
             self.d_list.append(msg_dict['device_name'])
             self.numberofcameras+=1
@@ -280,15 +275,17 @@ class Controller(object):
     @threaded
     def e1_1_proc_dequeue(self):
         framecnt = 0
+        emptycount = 0
         endcnt =0 # if idle for 2 minutes, save and quit.
         frame_start_time = time.time()
         self.encode_param = [int(cv2.IMWRITE_JPEG_QUALITY),99]
         while (True):
-            for i in len(self.numberofcameras): # check if all queues are empty
+            for i in range(self.numberofcameras): # check if all queues are empty
                 if (self.imgq[i].empty()):
+                    print("number of camera", i)
                     emptycount +=1 # how the fuck do we check if all queues are empty at the same time???
 
-            if emptycount == len(self.numberofcameras): # all q are empty.. loop around until one is filled up.
+            if emptycount == self.numberofcameras: # all q are empty.. loop around until one is filled up.
                 if(endcnt >= 120):
                     self.logfile.close()
                     self.logfile2.close()
@@ -303,7 +300,7 @@ class Controller(object):
                     emptycount =0
             else: # not all q are empty... loop all queues until the target is found. 
                 while(self.cur_tar_dev==None):
-                    for i in len(self.numberofcameras):
+                    for i in range(self.numberofcameras):
                         if(self.imgq[i].empty()): # if i'th queue is empty, skip this queue stak. check other camera queue stack.
                             continue
                         cdevice_name = self.dev_nameq[i].get()
@@ -325,10 +322,10 @@ class Controller(object):
 
                             detections = self.model(frame_tensor, self.cuda).cpu()
                             detections = process_result(detections, self.confidence, self.nms_thresh)
-        
+                            
                             if len(detections) != 0:
                                 detections = transform_result(detections, [cframe], self.input_size)
-                            #for detection in detections:
+                                #for detection in detections:
                                 for idx, detection in enumerate(detections):
                                     if (self.classes[int(detection[-1])]=="person"):
                                         if float(detection[6]) > self.confidence:
@@ -344,14 +341,15 @@ class Controller(object):
 
                 # empty other queues while we only care about the cdevice_name queue
                 # find index of the cdevice_name queue
-                for i in len(self.numberofcameras):
-                        ftype = self.typeq[i].get()
-                        fdevice_name = self.dev_nameq[i].get()
-                        fcounter = self.framecntq[i].get()
-                        ftimer = self.timerq[i].get()
-                        fframe = self.imgq[i].get()
-                    if(fdevice_name == self.cur_tar_dev):
-                        print ("this queue is the right queue") # do tracking 
+                for i in range(self.numberofcameras):
+                    ftype = self.typeq[i].get()
+                    fdevice_name = self.dev_nameq[i].get()
+                    fcounter = self.framecntq[i].get()
+                    ftimer = self.timerq[i].get()
+                    fframe = self.imgq[i].get()
+                    
+                    if fdevice_name == self.cur_tar_dev:
+                        print ("this queue is the right queue") # do tracking
                         #  do tracking with this one.
                     else:
                         continue # drop other queues
@@ -707,19 +705,20 @@ if __name__ == '__main__':
 
     if ARGS.transmission == 'e1-1':
         print('[Controller] running as an existing work 1-1. receiving all frames and strart tracking')
-        sleep(1)
+        time.sleep(1)
+        ctrl.e1_1_proc_dequeue()
 
     elif ARGS.transmission == 'e1-2':
         print('[Controller] running as an existing work 1-2. (upon request)')
-        sleep(1)
+        time.sleep(1)
         
     elif ARGS.transmission == 'e2': # need imp
         print('[Controller] running as an existing work 2. (image metadata)') 
-        sleep(1)
+        time.sleep(1)
               
     elif ARGS.transmission == 'p':
         print('[Controller]  tracking objects with dequeuing technique. 1) boundary checking 2) dead reckoning')
-        sleep(1)
+        time.sleep(1)
         ctrl.p_proc_dequeue()
     else:
         print('[Controller]  Error: invalid option for the scheme.')
