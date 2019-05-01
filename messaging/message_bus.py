@@ -101,18 +101,25 @@ class MessageBus(object):
                 elif msg_dict['type'] == 'device_list':
                     for handler in self.handlers.get('device_list', []):
                         handler(msg_dict)
-                elif msg_dict['type'] == 'img':
-                    for handler in self.handlers.get('img', []):
+                elif msg_dict['type'] == 'img_e1-1':
+                    for handler in self.handlers.get('img_e1-1', []):
                         handler(msg_dict)
-                elif msg_dict['type'] == 'img_metadata':
-                    for handler in self.handlers.get('img_metadata', []):
+                elif msg_dict['type'] == 'img_e1-2':
+                    for handler in self.handlers.get('img_e1-2', []):
+                        handler(msg_dict)
+                elif msg_dict['type'] == 'img_e2':
+                    for handler in self.handlers.get('img_e2', []):
+                        handler(msg_dict)
+                elif msg_dict['type'] == 'img_p':
+                    for handler in self.handlers.get('img_p', []):
+                        handler(msg_dict)
+                elif msg_dict['type'] == 'controller_order':
+                    for handler in self.handlers.get('controller_order', []):
                         handler(msg_dict)
                 elif msg_dict['type'] == 'handoff_request':
                     for handler in self.handlers.get('handoff_request', []):
                         handler(msg_dict)
-                elif msg_dict['type'] == 'img_tracking':
-                    for handler in self.handlers.get('img_tracking', []):
-                        handler(msg_dict)
+
                 else:
                     pass
             else:
@@ -128,25 +135,36 @@ class MessageBus(object):
             return
 
     @staticmethod
-    def create_message_list_numpy(img, framecnt, encode_param, device_name,timegap=timedelta()):
+    def create_raw_message(img, framecnt, encode_param, device_name,timegap=timedelta()): # e1-1 (send frames no matter what)
         _, encimg = cv2.imencode('.jpg', img, encode_param)
         encstr = base64.b64encode(encimg).decode('ascii')
         now = datetime.utcnow()+timegap
         curTime = now.strftime('%H:%M:%S.%f') # string format
-        json_msg = {'type': 'img', 'img_string': encstr, 'time': curTime, 'framecnt': framecnt, 'device_name': device_name}
+        json_msg = {'type': 'img_e1-1', 'img_string': encstr, 'time': curTime, 'framecnt': framecnt, 'device_name': device_name}
         return json.dumps(json_msg)
 
     @staticmethod
-    def create_message_list_numpy_tracking(img, framecnt, encode_param, device_name,timegap=timedelta()):
+    def create_raw_req_message(img, framecnt, encode_param, device_name,timegap=timedelta()): # e1-2 (send frames upon request)
         _, encimg = cv2.imencode('.jpg', img, encode_param)
         encstr = base64.b64encode(encimg).decode('ascii')
         now = datetime.utcnow()+timegap
         curTime = now.strftime('%H:%M:%S.%f') # string format
-        json_msg = {'type': 'img_tracking', 'img_string': encstr, 'time': curTime, 'framecnt': framecnt, 'device_name': device_name}
+        json_msg = {'type': 'img_e1-2', 'img_string': encstr, 'time': curTime, 'framecnt': framecnt, 'device_name': device_name}
         return json.dumps(json_msg)
 
+
     @staticmethod
-    def create_message_list_numpy_handoff(img, encode_param, device_name,timegap=timedelta()):
+    def create_det_message(img, framecnt, encode_param, device_name,timegap=timedelta()): # e2 & p (send frame + rects)
+        _, encimg = cv2.imencode('.jpg', img, encode_param)
+        encstr = base64.b64encode(encimg).decode('ascii')
+        now = datetime.utcnow()+timegap
+        curTime = now.strftime('%H:%M:%S.%f') # string format
+        json_msg = {'type': 'img_e2', 'img_string': encstr, 'time': curTime, 'framecnt': framecnt, 'device_name': device_name}
+        return json.dumps(json_msg)
+
+
+    @staticmethod
+    def create_message_list_numpy_handoff(img, encode_param, device_name,timegap=timedelta()): # p (send template to next machine)
         _, encimg = cv2.imencode('.jpg', img, encode_param)
         encstr = base64.b64encode(encimg).decode('ascii')
         now = datetime.utcnow()+timegap

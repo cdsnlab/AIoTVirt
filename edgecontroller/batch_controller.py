@@ -37,10 +37,9 @@ class Controller(object):
     def __init__(self, name, port):
         self.msg_bus = MessageBus(name, port, 'controller')
         self.msg_bus.register_callback('join', self.handle_message)
-        self.msg_bus.register_callback('img_e1-1', self.handle_message)
-        self.msg_bus.register_callback('img_e1-2', self.handle_message)
-        self.msg_bus.register_callback('img_e2', self.handle_message)
-        self.msg_bus.register_callback('img_p', self.handle_message)
+        self.msg_bus.register_callback('img', self.handle_message)
+        self.msg_bus.register_callback('img_metadata', self.handle_message)
+        self.msg_bus.register_callback('img_tracking', self.handle_message)
         self.model = None
         signal.signal(signal.SIGINT, self.signal_handler)
         self.logfile = None
@@ -62,26 +61,15 @@ class Controller(object):
         self.framecnt = 0
         self.gettimegap()
         self.tr = None
-        self.trackingscheme = None
         self.encode_param = None
-        self.q_list = {} # this tracks which devices are sending frames.
-        self.d_list =[] # this tracks the name of sent devices. 
-        self.numberofcameras = 0
-        self.cur_tar_dev = None # tells which device has the target currently.
-        '''     
+
         self.imgq = queue.Queue(2000) # q for image.
         self.timerq = queue.Queue(2000) # q for image wait time
         self.framecntq = queue.Queue(2000) # q for frame cnt
         self.dev_nameq = queue.Queue(2000) # q for devnames
         self.typeq= queue.Queue(2000) # q for type of msg
-        '''
-        self.imgq ={}
-        self.timerq = {}
-        self.framecnt ={}
-        self.dev_nameq ={}
-        self.typeq = {}
+        #self.image_dequeue_proc()
 
-        # tracking related 
         self.ct = centroidtracker.CentroidTracker(50, maxDistance =50, queuesize = 10)
         self.frame_skips = None # how many frames should be skipped before detection 
         self.trackers = []
@@ -95,12 +83,20 @@ class Controller(object):
         self.futuresteps = 0
         self.frame_skip = 10
 
+
     def gettimegap(self):
         starttime = datetime.now()
         ntp_response = ntplib.NTPClient().request('2.kr.pool.ntp.org', version=3)
         returntime = datetime.now()
         self.timegap = datetime.fromtimestamp(ntp_response.tx_time) - starttime - (returntime - starttime) / 2
 
+    def cpuusage(self):
+        self.cpu = psutil.cpu_percent()
+        return self.cpu
+
+    def ramusage(self):
+        self.ram = psutil.virtual_memory()
+        return self.ram
 
     def signal_handler(self, sig, frame):
         self.msg_bus.ctx.destroy()
@@ -115,6 +111,7 @@ class Controller(object):
     def draw_bbox(self, imgs, bbox, colors, classes):
         img = imgs[int(bbox[0])]
         label = classes[int(bbox[-1])]
+        #print("label: ", label)
         p1 = tuple(bbox[1:3].int())
         p2 = tuple(bbox[3:5].int())
         color = random.choice(colors)
@@ -126,18 +123,15 @@ class Controller(object):
         cv2.putText(img, label, p1, cv2.FONT_HERSHEY_SIMPLEX, 1, [225, 255, 255], 1)
 
     def handle_message(self, msg_dict):
+#        print('[Controller] handle_message: %s' % msg_dict['type'])
         if msg_dict['type'] == 'join':
             self.handle_join(msg_dict)
-        elif msg_dict['type'] == 'img_e1-1': # image raw data
+        elif msg_dict['type'] == 'img': # image raw data
+            self.process_raw_image(msg_dict)
+        elif msg_dict['type'] == 'img_tracking': # image raw data
             self.process_raw_tracking(msg_dict)
-        elif msg_dict['type'] == 'img_e1-2': # image raw data
-            self.process_raw_tracking(msg_dict)
-        elif msg_dict['type'] == 'img_e2': # image raw data
-            self.process_raw_tracking(msg_dict)
-        elif msg_dict['type'] == 'img_p': # 
-            self.process_raw_tracking(msg_dict)
-        elif msg_dict['type'] == 'controller_order':
-            print("controller order")
+        elif msg_dict['type'] == 'img_metadata': # image raw data
+            self.process_image_metadata(msg_dict)
         else:
             # Invalid type.
             pass
@@ -165,29 +159,11 @@ class Controller(object):
         curdatetime = datetime.strptime(curTime, '%H:%M:%S.%f')
         sentdatetime = datetime.strptime(msg_dict['time'], '%H:%M:%S.%f')
 
-        if(msg_dict['device_name'] in self.d_list): # depending on the sent device, add them to the corresonding queue.
-            i = self.d_list.index(msg_dict['device_name'])
-            self.typeq[i].put(str(msg_dict['type']))
-            self.imgq[i].put(decimg)
-            self.timerq[i].put(curdatetime)
-            self.framecntq[i].put(str(msg_dict['framecnt']))
-            self.dev_nameq[i].put(str(msg_dict['device_name']))
-            
-        else: # create new queues for each camera if its new
-            self.typeq[self.numberofcameras] = queue.Queue(2000)
-            self.imgq[self.numberofcameras] = queue.Queue(2000)
-            self.timerq[self.numberofcameras] = queue.Queue(2000)
-            self.framecntq[self.numberofcameras] = queue.Queue(2000)
-            self.dev_nameq[self.numberofcameras] = queue.Queue(2000)
-
-            self.typeq[i].put(str(msg_dict['type']))
-            self.imgq[i].put(decimg)
-            self.timerq[i].put(curdatetime)
-            self.framecntq[i].put(str(msg_dict['framecnt']))
-            self.dev_nameq[i].put(str(msg_dict['device_name']))
-
-            self.d_list.append(msg_dict['device_name'])
-            self.numberofcameras+=1
+        self.typeq.put(str(msg_dict['type'])) # type
+        self.imgq.put(decimg) # keep chugging
+        self.timerq.put(curdatetime)
+        self.framecntq.put(str(msg_dict['framecnt']))
+        self.dev_nameq.put(str(msg_dict['device_name']))
 
     def checkboundary(self, centroid, objectID):
         #print(centroid)
@@ -276,91 +252,30 @@ class Controller(object):
                 return "LEFT"
         else:
             return "CALM"
+        
+
+
+    def process_raw_image(self, msg_dict):
+#       print(' - raw image')
+        decstr = base64.b64decode(msg_dict['img_string'])
+        imgarray = np.fromstring(decstr, dtype=np.uint8)
+        decimg = cv2.imdecode(imgarray, cv2.IMREAD_COLOR)
+#        cv2.imwrite(msg_dict['time']+'.jpg', decimg)
+#        print(' - saved img.')
+        localNow = datetime.utcnow()+self.timegap
+        curTime = datetime.utcnow().strftime('%H:%M:%S.%f') # string forma
+        curdatetime = datetime.strptime(curTime, '%H:%M:%S.%f')
+        sentdatetime = datetime.strptime(msg_dict['time'], '%H:%M:%S.%f')
+        self.logfile.write(str(msg_dict['framecnt'])+"\t"+str((curdatetime - sentdatetime).total_seconds())+"\t"+str(sys.getsizeof(decimg))+'\t'+str(self.cpuusage())+'\n')
+
+        self.typeq.put(str(msg_dict['type'])) # type
+        self.imgq.put(decimg) # keep chugging
+        self.timerq.put(curdatetime)
+        self.framecntq.put(str(msg_dict['framecnt']))
+        self.framecnt = str(msg_dict['framecnt'])
     
     @threaded
-    def e1_1_proc_dequeue(self):
-        framecnt = 0
-        endcnt =0 # if idle for 2 minutes, save and quit.
-        frame_start_time = time.time()
-        self.encode_param = [int(cv2.IMWRITE_JPEG_QUALITY),99]
-        while (True):
-            for i in len(self.numberofcameras): # check if all queues are empty
-                if (self.imgq[i].empty()):
-                    emptycount +=1 # how the fuck do we check if all queues are empty at the same time???
-
-            if emptycount == len(self.numberofcameras): # all q are empty.. loop around until one is filled up.
-                if(endcnt >= 120):
-                    self.logfile.close()
-                    self.logfile2.close()
-                    print("byebye")
-                    sys.exit(0)
-                    emptycount=0
-                    break
-                else:
-                    print('nothing in all q, sleeping..')
-                    time.sleep(1)
-                    endcnt += 1
-                    emptycount =0
-            else: # not all q are empty... loop all queues until the target is found. 
-                while(self.cur_tar_dev==None):
-                    for i in len(self.numberofcameras):
-                        if(self.imgq[i].empty()): # if i'th queue is empty, skip this queue stak. check other camera queue stack.
-                            continue
-                        cdevice_name = self.dev_nameq[i].get()
-                        ccounter = int(self.framecntq[i].get())
-                        cframe = self.imgq[i].get()
-                        ctype = self.typeq[i].get()
-                        ctimer = self.timerq[i].get()
-                        if self.cuda:
-                            # if self.typeq[i].get = 'img_e1-1':
-                            width = cframe.shape[0]
-                            height = cframe.shape[1]
-                            rgb = cv2.cvtColor(cframe, cv2.COLOR_BGR2RGB)
-
-                            frame_tensor = cv_image2tensor(cframe, self.input_size).unsqueeze(0)
-                            frame_tensor = Variable(frame_tensor)
-
-                            if self.cuda:
-                                frame_tensor = frame_tensor.cuda()
-
-                            detections = self.model(frame_tensor, self.cuda).cpu()
-                            detections = process_result(detections, self.confidence, self.nms_thresh)
-        
-                            if len(detections) != 0:
-                                detections = transform_result(detections, [cframe], self.input_size)
-                            #for detection in detections:
-                                for idx, detection in enumerate(detections):
-                                    if (self.classes[int(detection[-1])]=="person"):
-                                        if float(detection[6]) > self.confidence:
-                                            print("found on device", cdevice_name)
-                                            self.cur_tar_dev = cdevice_name
-
-                                        else:
-                                            print("low confidence found here on dev", cdevice_name)
-                                    else:
-                                        print("no human found here on dev", cdevice_name)
-                            else:
-                                print("no detection", cdevice_name)
-
-                # empty other queues while we only care about the cdevice_name queue
-                # find index of the cdevice_name queue
-                for i in len(self.numberofcameras):
-                        ftype = self.typeq[i].get()
-                        fdevice_name = self.dev_nameq[i].get()
-                        fcounter = self.framecntq[i].get()
-                        ftimer = self.timerq[i].get()
-                        fframe = self.imgq[i].get()
-                    if(fdevice_name == self.cur_tar_dev):
-                        print ("this queue is the right queue") # do tracking 
-                        #  do tracking with this one.
-                    else:
-                        continue # drop other queues
-
-
-
-   
-    @threaded
-    def p_proc_dequeue(self):
+    def image_dequeue_proc(self):
         framecnt = 0
         endcnt =0 # if idle for 2 minutes, save and quit.
         frame_start_time = time.time()
@@ -377,15 +292,16 @@ class Controller(object):
                     time.sleep(1)
                     endcnt += 1
 
-             else:
+             else: # lets get 10 to speed up the process. not now though...
                 device_name = self.dev_nameq.get()
                 counter = int(self.framecntq.get())
                 frame = self.imgq.get()
+                ty = self.typeq.get()
                 if self.cuda:
-                    if self.typeq.get() == 'img': # just detection, nothing else
+                    if ty  == 'img': # just detection, nothing else
                         self.detection_gpu(self.model, frame, cnt)
 
-                    elif self.typeq.get() == 'img_tracking':# for tracking
+                    elif ty == 'img_tracking':# for tracking
                         self.width = frame.shape[0]
                         self.height = frame.shape[1]
                         rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
@@ -451,7 +367,7 @@ class Controller(object):
                                 to.centroids.append(centroid)
                     
                                 if not to.counted:
-                                    if (self.ts == "dr"):
+                                    if (self.tr == "dr"):
                                         prex, prey = self.ct.predict(objectID, 30)
                                         print("predicted obj movement..x,y: ", prex, prey)
                                         if(self.checkboundary_dir(prex, prey)=="R"):
@@ -485,7 +401,7 @@ class Controller(object):
                                         elif(self.checkboundary_dir(prex, prey)=="U"):
                                             print("we need to send msg to up")
 
-                                    elif (self.ts == "bc"):
+                                    elif (self.tr == "bc"):
                                         self.checkboundary(centroid, objectID)
                                         #print("loc of object in frame: ", objectID, self.boundary[objectID])
 
@@ -539,15 +455,16 @@ class Controller(object):
                         if(cv2.waitKey(3) & 0xFF == ord('q')):
                             break
 
-                    elif self.typeq.get() == 'img_tracking_check':# dummy here
-                        thing = self.detection_gpu_return(self.model, frame, cnt)
+                    elif ty  == 'img_tracking_check':# dummy here
+                        #thing = self.detection_gpu_return(self.model, frame, cnt)
+                        print('not imp')
                 else: # no GPU enabled
-                    if self.typeq.get() == 'img':
+                    if ty == 'img':
                         self.detection(frame)
-                    elif self.typeq.get() == 'img_tracking':
+                    elif ty == 'img_tracking':
                         print ("NOT IMP YET")
                         # self.detection_tracking (self.model, self.imgq.get(), cnt)
-                    elif self.typeq.get() == 'img_tracking_check':
+                    elif ty  == 'img_tracking_check':
                         print ("NOT IMP YET")
                         # thing = self.detection_gpu_return(self.model, self.imgq.get(), cnt)
                 curT = datetime.utcnow().strftime('%H:%M:%S.%f') # string format
@@ -667,11 +584,10 @@ if __name__ == '__main__':
     parser.add_argument('-ln1', '--logfilename1', type=str, default='logfilecpu.txt', help="logfile name for cpu usage")
     parser.add_argument('-ln2', '--logfilename2', type=str, default='logfileframe.txt', help="logfile name for frame related things.")
     parser.add_argument('-ln3', '--logfilename3', type=str, default='logfilecontext.txt', help="logfile name for context related things.")
-    parser.add_argument("--confidence", dest = "confidence", help = "Object Confidence to filter predictions", default = 0.6)
+    parser.add_argument("--confidence", dest = "confidence", help = "Object Confidence to filter predictions", default = 0.7)
     parser.add_argument("--nms_thresh", dest = "nms_thresh", help = "NMS Threshhold", default = 0.5)
     parser.add_argument('-dis', '--display', type=str, default = 'off', help = "enable display")
-    parser.add_argument('-tr', '--transmission', type=str, default = 'dr', help = "e1-1, e1-2, e2, p")
-    parser.add_argument('-ts', '--trackingscheme', type=str, default = 'dr', help = "dead reckoning, boundary check")
+    parser.add_argument('-tr', '--tr_op', type=str, default = 'dr', help = "dead reckoning, boundary check")
     ARGS = parser.parse_args()
     # Read 'master.ini'
     config = configparser.ConfigParser()
@@ -701,26 +617,7 @@ if __name__ == '__main__':
     ctrl.logfile2 = open(ARGS.logfilename2, 'w')
     ctrl.logfile3 = open(ARGS.logfilename3, 'w')
     ctrl.label_path = label_path
-    ctrl.tr = ARGS.transmission
-    ctrl.ts = ARGS.trackingscheme
+    ctrl.tr = ARGS.tr_op
     print("[INFO] Finished setup!")
-
-    if ARGS.transmission == 'e1-1':
-        print('[Controller] running as an existing work 1-1. receiving all frames and strart tracking')
-        sleep(1)
-
-    elif ARGS.transmission == 'e1-2':
-        print('[Controller] running as an existing work 1-2. (upon request)')
-        sleep(1)
-        
-    elif ARGS.transmission == 'e2': # need imp
-        print('[Controller] running as an existing work 2. (image metadata)') 
-        sleep(1)
-              
-    elif ARGS.transmission == 'p':
-        print('[Controller]  tracking objects with dequeuing technique. 1) boundary checking 2) dead reckoning')
-        sleep(1)
-        ctrl.p_proc_dequeue()
-    else:
-        print('[Controller]  Error: invalid option for the scheme.')
-
+    if ARGS.tr_op == "dr" or ARGS.tr_op == "bc":
+        ctrl.image_dequeue_proc()
