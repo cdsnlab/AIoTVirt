@@ -41,11 +41,13 @@ class Controller(object):
         self.msg_bus.register_callback('img_e1-2', self.handle_message)
         self.msg_bus.register_callback('img_e2', self.handle_message)
         self.msg_bus.register_callback('img_p', self.handle_message)
+        self.msg_bus.register_callback('control_op', self.handle_message)
         self.model = None
         signal.signal(signal.SIGINT, self.signal_handler)
-        self.logfile = None
+        self.logfile1 = None
         self.logfile2 = None
         self.logfile3 = None
+        self.logfile4 = None
         self.dalgorithm = "yolo"
         self.starttime = 0.0
         self.endtime = 0.0
@@ -66,8 +68,11 @@ class Controller(object):
         self.trackingscheme = None
         self.encode_param = None
         self.q_list = {} # this tracks which devices are sending frames.
+        self.d_cam = {} # this tells if a camera queue is empty or not
+        self.dd_cam = {} # this tells if a camera queue is empty or not
         self.d_list =[] # this tracks the name of sent devices. 
         self.numberofcameras = 0
+        self.totalrecbytes = 0
         self.cur_tar_dev = None # tells which device has the target currently.
 
         self.imgq ={}
@@ -89,6 +94,7 @@ class Controller(object):
         self.movingdelta = 0
         self.futuresteps = 0
         self.frame_skip = 10
+        self.sumofframebytes = 0
 
     def gettimegap(self):
         starttime = datetime.now()
@@ -99,9 +105,10 @@ class Controller(object):
 
     def signal_handler(self, sig, frame):
         self.msg_bus.ctx.destroy()
-        self.logfile.close()
+        self.logfile1.close()
         self.logfile2.close()
         self.logfile3.close()
+        self.logfile4.close()
         print('closing logfile')
         torch.cuda.empty_cache()
         print('clearing cuda cache')
@@ -131,7 +138,7 @@ class Controller(object):
             self.process_raw_tracking(msg_dict)
         elif msg_dict['type'] == 'img_p': # 
             self.process_raw_tracking(msg_dict)
-        elif msg_dict['type'] == 'controller_order':
+        elif msg_dict['type'] == 'control_op':
             print("controller order")
         else:
             # Invalid type.
@@ -148,7 +155,7 @@ class Controller(object):
             node_info = node_table.table[node_name]
             self.msg_bus.send_message_json(node_info.ip, int(node_info.port), device_list_json)
 
-#    @threaded
+    @threaded
     def process_raw_tracking(self, msg_dict):
 #        print(' - tracking image')
         decstr = base64.b64decode(msg_dict['img_string'])
@@ -156,33 +163,38 @@ class Controller(object):
         decimg = cv2.imdecode(imgarray, cv2.IMREAD_COLOR)
         localNow = datetime.utcnow()+self.timegap
 
+        # use this for transmission time btw device n edge server
         curTime = datetime.utcnow().strftime('%H:%M:%S.%f') # string forma
         curdatetime = datetime.strptime(curTime, '%H:%M:%S.%f')
         sentdatetime = datetime.strptime(msg_dict['time'], '%H:%M:%S.%f')
+        simplecurtime = time.time()
 
-        if(msg_dict['device_name'] in self.d_list): # depending on the sent device, add them to the corresonding queue.
-            i = self.d_list.index(msg_dict['device_name'])
-            self.typeq[i].put(str(msg_dict['type']))
-            self.imgq[i].put(decimg)
-            self.timerq[i].put(curdatetime)
-            self.framecntq[i].put(str(msg_dict['framecnt']))
-            self.dev_nameq[i].put(str(msg_dict['device_name']))
-            
-        else: # create new queues for each camera if its new
-            self.typeq[self.numberofcameras] = queue.Queue(2000)
-            self.imgq[self.numberofcameras] = queue.Queue(2000)
-            self.timerq[self.numberofcameras] = queue.Queue(2000)
-            self.framecntq[self.numberofcameras] = queue.Queue(2000)
-            self.dev_nameq[self.numberofcameras] = queue.Queue(2000)
+        if(msg_dict['device_name'] in self.dd_cam.keys()): # depending on the sent device, add them to the corresonding queue.
+            self.typeq[msg_dict['device_name']].put(str(msg_dict['type']))
+            self.imgq[msg_dict['device_name']].put(decimg)
+            self.timerq[msg_dict['device_name']].put(simplecurtime)
+            self.framecntq[msg_dict['device_name']].put(str(msg_dict['framecnt']))
+            self.dev_nameq[msg_dict['device_name']].put(str(msg_dict['device_name']))
+            self.dd_cam[msg_dict['device_name']] = 'notempty'
+        else:
+            self.typeq[msg_dict['device_name']] = queue.Queue(2000)
+            self.imgq[msg_dict['device_name']] = queue.Queue(2000)
+            self.timerq[msg_dict['device_name']] = queue.Queue(2000)
+            self.framecntq[msg_dict['device_name']] = queue.Queue(2000)
+            self.dev_nameq[msg_dict['device_name']] = queue.Queue(2000)
 
-            self.typeq[self.numberofcameras].put(str(msg_dict['type']))
-            self.imgq[self.numberofcameras].put(decimg)
-            self.timerq[self.numberofcameras].put(curdatetime)
-            self.framecntq[self.numberofcameras].put(str(msg_dict['framecnt']))
-            self.dev_nameq[self.numberofcameras].put(str(msg_dict['device_name']))
+            self.typeq[msg_dict['device_name']].put(str(msg_dict['type']))
+            self.imgq[msg_dict['device_name']].put(decimg)
+            self.timerq[msg_dict['device_name']].put(simplecurtime)
+            self.framecntq[msg_dict['device_name']].put(str(msg_dict['framecnt']))
+            self.dev_nameq[msg_dict['device_name']].put(str(msg_dict['device_name']))
 
             self.d_list.append(msg_dict['device_name'])
+            self.dd_cam[msg_dict['device_name']] = 'notempty'
             self.numberofcameras+=1
+        self.d_cam = {k : v for k, v in self.dd_cam.items()}
+        self.totalrecbytes += sys.getsizeof(decimg)
+        self.logfile4.write(str(self.totalrecbytes / 1000000) + "\n")
 
     def checkboundary(self, centroid, objectID):
         #print(centroid)
@@ -280,14 +292,20 @@ class Controller(object):
         frame_start_time = time.time()
         self.encode_param = [int(cv2.IMWRITE_JPEG_QUALITY),99]
         while (True):
-            for i in range(self.numberofcameras): # check if all queues are empty
+            
+            for i in self.d_cam.keys():
+#                print(self.dev_nameq[i].qsize(), self.framecntq[i].qsize(), self.imgq[i].qsize(), self.typeq[i].qsize(), self.timerq[i].qsize())
+                print(i+" "+ self.d_cam[i])
                 if (self.imgq[i].empty()):
-                    print("number of camera", i)
-                    emptycount +=1 # how the fuck do we check if all queues are empty at the same time???
+                    self.d_cam[i] = 'empty'
+            # check if all d_cams are empty
+            for i in self.d_cam.keys():
+                if self.d_cam[i] == 'empty':
+                    emptycount += 1
 
             if emptycount == self.numberofcameras: # all q are empty.. loop around until one is filled up.
-                if(endcnt >= 120):
-                    self.logfile.close()
+                if(endcnt >= 600):
+                    self.logfile1.close()
                     self.logfile2.close()
                     print("byebye")
                     sys.exit(0)
@@ -295,65 +313,423 @@ class Controller(object):
                     break
                 else:
                     print('nothing in all q, sleeping..')
-                    time.sleep(1)
+                    time.sleep(0.5)
                     endcnt += 1
                     emptycount =0
+
             else: # not all q are empty... loop all queues until the target is found. 
                 while(self.cur_tar_dev==None):
-                    for i in range(self.numberofcameras):
+#                    for i in range(self.numberofcameras):
+                    for i in self.d_cam.keys():
                         if(self.imgq[i].empty()): # if i'th queue is empty, skip this queue stak. check other camera queue stack.
-                            continue
-                        cdevice_name = self.dev_nameq[i].get()
-                        ccounter = int(self.framecntq[i].get())
-                        cframe = self.imgq[i].get()
-                        ctype = self.typeq[i].get()
-                        ctimer = self.timerq[i].get()
-                        if self.cuda:
-                            # if self.typeq[i].get = 'img_e1-1':
-                            width = cframe.shape[0]
-                            height = cframe.shape[1]
-                            rgb = cv2.cvtColor(cframe, cv2.COLOR_BGR2RGB)
-
-                            frame_tensor = cv_image2tensor(cframe, self.input_size).unsqueeze(0)
-                            frame_tensor = Variable(frame_tensor)
-
+                            self.d_cam[i]='empty'
+                            emptycount+=1
+                            print("[finding..] "+ i +" q is empty, moving on to next q") 
+                            print(emptycount) 
+                            # continue
+                            pass
+                        else:
+                            print(self.dev_nameq[i].qsize(), self.framecntq[i].qsize(), self.imgq[i].qsize(), self.typeq[i].qsize(), self.timerq[i].qsize())
+                            # it does not skip, u just didn't catch if its not human or low threshold... dumb f... 
+                            emptycount =0
+                            self.d_cam[i] = 'notempty'
+                            cdevice_name = self.dev_nameq[i].get()
+                            ccounter = int(self.framecntq[i].get())
+                            cframe = self.imgq[i].get()
+                            ctype = self.typeq[i].get()
+                            ctimer = self.timerq[i].get()
+                            s = time.time()
                             if self.cuda:
+                                # if self.typeq[i].get = 'img_e1-1':
+                                width = cframe.shape[0]
+                                height = cframe.shape[1]
+                                crgb = cv2.cvtColor(cframe, cv2.COLOR_BGR2RGB)
+    
+                                frame_tensor = cv_image2tensor(cframe, self.input_size).unsqueeze(0)
+                                frame_tensor = Variable(frame_tensor)
+
+#                if self.cuda:
+#                                    frame_tensor = frame_tensor.cuda()
                                 frame_tensor = frame_tensor.cuda()
 
-                            detections = self.model(frame_tensor, self.cuda).cpu()
-                            detections = process_result(detections, self.confidence, self.nms_thresh)
+                                detections = self.model(frame_tensor, self.cuda).cpu()
+                                detections = process_result(detections, self.confidence, self.nms_thresh)
                             
-                            if len(detections) != 0:
-                                detections = transform_result(detections, [cframe], self.input_size)
-                                #for detection in detections:
-                                for idx, detection in enumerate(detections):
-                                    if (self.classes[int(detection[-1])]=="person"):
-                                        if float(detection[6]) > self.confidence:
-                                            print("found on device", cdevice_name)
-                                            self.cur_tar_dev = cdevice_name
+#                                print(self.dev_nameq[i].qsize(), self.framecntq[i].qsize(), self.imgq[i].qsize(), self.typeq[i].qsize(), self.timerq[i].qsize(), len(detections))
+                                if len(detections) != 0:
+                                    detections = transform_result(detections, [cframe], self.input_size)
+                                    #for detection in detections:
+                                    for idx, detection in enumerate(detections):
+                                        if (self.classes[int(detection[-1])]=="person"):
+                                            if float(detection[6]) > self.confidence:
+                                                print("[finding..] found person on device: ",ccounter, cdevice_name) # well u r supposed to match the person detect with the template, but for the time being we assume its a person. # sangwoo is on it thou
+                                                pre_score = (float(detection[6])) # prediction score
+                                                pre_class = (self.classes[int(detection[-1])]) # prediction class
+                                                pre_x1 = (int(detection[1])) # x1
+                                                pre_y1 = (int(detection[2])) # y1
+                                                pre_x2 = (int(detection[3])) # x2 
+                                                pre_y2 = (int(detection[4])) # y2
 
-                                        else:
-                                            print("low confidence found here on dev", cdevice_name)
-                                    else:
-                                        print("no human found here on dev", cdevice_name)
+                                                #self.draw_bbox([frame], detection, self.colors, self.classes)
+                                                tracker = dlib.correlation_tracker()
+                                                rect = dlib.rectangle(pre_x1, pre_y1, pre_x2, pre_y2)
+                                                tracker.start_track(crgb, rect)
+                                                self.trackers.append(tracker)
+                                                self.cur_tar_dev = cdevice_name
+                                                break
+                                            else:
+                                                print("[finding..] low confidence person", ccounter, cdevice_name)
+                                        else: 
+                                            print("[finding..] not a person", ccounter, cdevice_name)
+
+                                else:
+                                    print("[finding..] nothing detected: ", ccounter, cdevice_name)
+                            time_now = time.time()
+                            inf_time = time_now - s
+#print("decay time: ", time_now - ctimer)
+                            if cdevice_name == "camera01":
+                                if self.cur_tar_dev != None:
+                                    self.logfile1.write(str(ccounter) + "\t" + str(time_now - ctimer) + "\t" + "1" + "\t" + str(inf_time)+"\n")
+                                else:
+                                    self.logfile1.write(str(ccounter) + "\t" + str(time_now - ctimer) + "\t" + "0" + "\t" + str(inf_time)+"\n")
+                            elif cdevice_name == "camera02":
+                                if self.cur_tar_dev != None:
+                                    self.logfile2.write(str(ccounter) + "\t" + str(time_now - ctimer) + "\t" + "1" + "\t" + str(inf_time)+"\n")
+                                else:
+                                    self.logfile2.write(str(ccounter) + "\t" + str(time_now - ctimer) + "\t" + "0" + "\t" + str(inf_time)+"\n")
+
+                    if emptycount == self.numberofcameras:
+                        print('[finding..] still at search phase, all q empty, go back to waiting phase')
+                        
+                        break
+
+                for i in self.d_cam.keys():
+
+                    if emptycount == self.numberofcameras:
+                        print('[target found phase..] break from searching phase, all q empty, go back to waiting phase')
+                        self.d_cam[i] = 'empty' 
+                        emptycount =0
+                        self.cur_tar_dev=None
+                        break
+                    else: # there is smth here 
+                        emptycount =0
+                        self.d_cam[i] = 'notempty' 
+                        ftype = self.typeq[i].get()
+                        fdevice_name = self.dev_nameq[i].get()
+                        fcounter = self.framecntq[i].get()
+                        ftimer = self.timerq[i].get()
+                        fframe = self.imgq[i].get()
+                        rgb = cv2.cvtColor(fframe, cv2.COLOR_BGR2RGB)
+                        fpositions=[]
+                        s = time.time()
+                        if fdevice_name == self.cur_tar_dev:
+                            if(int(fcounter) % self.frame_skips == 0):
+                                self.trackers=[]
+                                if self.cuda:
+                                    width = fframe.shape[0]
+                                    height = fframe.shape[1]
+
+                                    frame_tensor = cv_image2tensor(fframe, self.input_size).unsqueeze(0)
+                                    frame_tensor = Variable(frame_tensor)
+
+                                    if self.cuda:
+                                        frame_tensor = frame_tensor.cuda()
+
+                                    detections = self.model(frame_tensor, self.cuda).cpu()
+                                    detections = process_result(detections, self.confidence, self.nms_thresh)
+                                    if len(detections) != 0:
+                                        detections = transform_result(detections, [cframe], self.input_size)
+                                    #for detection in detections:
+                                        for idx, detection in enumerate(detections):
+                                            if (self.classes[int(detection[-1])]=="person"):
+                                                if float(detection[6]) > self.confidence:
+                                                    print("[ target found phase ] person on device: ", cdevice_name) # well u r supposed to match the person detect with the template, but for the time being we assume its a person. # sangwoo is on it thou
+                                                    pre_score = (float(detection[6])) # prediction score
+                                                    pre_class = (self.classes[int(detection[-1])]) # prediction class
+                                                    pre_x1 = (int(detection[1])) # x1
+                                                    pre_y1 = (int(detection[2])) # y1
+                                                    pre_x2 = (int(detection[3])) # x2 
+                                                    pre_y2 = (int(detection[4])) # y2
+
+                                                #self.draw_bbox([frame], detection, self.colors, self.classes)
+                                                    tracker = dlib.correlation_tracker()
+                                                    rect = dlib.rectangle(pre_x1, pre_y1, pre_x2, pre_y2)
+                                                    tracker.start_track(rgb, rect)
+                                                    self.trackers.append(tracker)
+                                                    self.cur_tar_dev = cdevice_name
                             else:
-                                print("no detection", cdevice_name)
+                                for tracker in self.trackers: 
+                                    tracker.update(rgb)
+                                    fpos = tracker.get_position()
+                                    startX = int(fpos.left())
+                                    startY = int(fpos.top())
+                                    endX = int(fpos.right())
+                                    endY = int(fpos.bottom())
+                                    fpositions.append((startX, startY, endX, endY))
 
-                # empty other queues while we only care about the cdevice_name queue
-                # find index of the cdevice_name queue
-                for i in range(self.numberofcameras):
-                    ftype = self.typeq[i].get()
-                    fdevice_name = self.dev_nameq[i].get()
-                    fcounter = self.framecntq[i].get()
-                    ftimer = self.timerq[i].get()
-                    fframe = self.imgq[i].get()
-                    
-                    if fdevice_name == self.cur_tar_dev:
-                        print ("this queue is the right queue") # do tracking
-                        #  do tracking with this one.
-                    else:
-                        continue # drop other queues
+                            objects = self.ct.update(fpositions)
+                            # track well and if u miss out, go back to search phase
+                            if self.ct.checknumberofexisting():
+                                print("[target tracking phase ] donno but still here: ", fdevice_name)
+#                                self.sumframebytes+=sys.getsizeof(fframe)
+                            else: # break and find it now 
+                                self.cur_tar_dev = None
+                                emptycount= 0
+                                break
 
+								
+                            time_now = time.time()
+                            inf_time = time_now - s
+                            if cdevice_name == "camera01":
+                                if self.cur_tar_dev != None:
+                                    self.logfile1.write(str(fcounter) + "\t" + str(time_now - ftimer) + "\t" + "1" + "\t" + str(inf_time)+"\n")
+                                else:
+                                   self.logfile1.write(str(fcounter) + "\t" + str(time_now - ftimer) + "\t" + "0" + "\t" + str(inf_time))+"\n"
+                            elif cdevice_name == "camera02":
+                                if self.cur_tar_dev != None:
+                                    self.logfile2.write(str(fcounter) + "\t" + str(time_now - ftimer) + "\t" + "1" + "\t" + str(inf_time)+"\n")
+                                else:
+                                    self.logfile2.write(str(fcounter) + "\t" + str(time_now - ftimer) + "\t" + "0" + "\t" + str(inf_time)+"\n")
+
+
+                        else: # not cur_tar_dev, drop frames but log
+                            time_now = time.time()
+                            inf_time = time_now - s
+                            inf_time = 0
+                            if cdevice_name == "camera01":
+                                if self.cur_tar_dev != None:
+                                    self.logfile1.write(str(fcounter) + "\t" + str(time_now - ftimer) + "\t" + "1" + "\t" + str(inf_time)+"\n")
+                                else:
+                                    self.logfile1.write(str(fcounter) + "\t" + str(time_now - ftimer) + "\t" + "0" + "\t" + str(inf_time))+"\n"
+                            elif cdevice_name == "camera02":
+                                if self.cur_tar_dev != None:
+                                    self.logfile2.write(str(fcounter) + "\t" + str(time_now - ftimer) + "\t" + "1" + "\t" + str(inf_time)+"\n")
+                                else:
+                                    self.logfile2.write(str(fcounter) + "\t" + str(time_now - ftimer) + "\t" + "0" + "\t" + str(inf_time)+"\n")
+
+                            print("dropping frames from: ", fdevice_name)
+                            emptycount=0
+                            pass
+                        '''
+                        time_now = time.time()
+                        inf_time = time_now - s
+                        if cdevice_name == "camera01":
+                            if self.cur_tar_dev != None:
+                                self.logfile1.write(str(fcounter) + "\t" + str(time_now - ftimer) + "\t" + "1" + "\t" + str(inf_time)+"\n")
+                            else:
+                                self.logfile1.write(str(fcounter) + "\t" + str(time_now - ftimer) + "\t" + "0" + "\t" + str(inf_time))+"\n"
+                        elif cdevice_name == "camera02":
+                            if self.cur_tar_dev != None:
+                                self.logfile2.write(str(fcounter) + "\t" + str(time_now - ftimer) + "\t" + "1" + "\t" + str(inf_time)+"\n")
+                            else:
+                                self.logfile2.write(str(fcounter) + "\t" + str(time_now - ftimer) + "\t" + "0" + "\t" + str(inf_time)+"\n")
+                        '''
+
+    @threaded
+    def e1_2_proc_dequeue(self):
+        framecnt = 0
+        emptycount = 0
+        endcnt =0 # if idle for 2 minutes, save and quit.
+        frame_start_time = time.time()
+        self.encode_param = [int(cv2.IMWRITE_JPEG_QUALITY),99]
+        node_table = self.msg_bus.node_table
+        while (True):
+            
+            for i in self.d_cam.keys():
+                print(i+" "+ self.d_cam[i])
+                if (self.imgq[i].empty()):
+                    self.d_cam[i] = 'empty'
+            # check if all d_cams are empty
+            for i in self.d_cam.keys():
+                if self.d_cam[i] == 'empty':
+                    emptycount += 1
+
+            if emptycount == self.numberofcameras: # all q are empty.. loop around until one is filled up.
+                if(endcnt >= 600):
+                    self.logfile1.close()
+                    self.logfile2.close()
+                    print("byebye")
+                    sys.exit(0)
+                    emptycount=0
+                    break
+                else:
+                    print("[q all empty] waiting..")
+                    # send message to all cam devs to quit or start sending 
+                    for node_name in node_table.table.keys():
+                        node_info = node_table.table[node_name]
+                        op_json = {"type": "control_op", "onoff": "True"}
+                        print("[q all empty] telling "+node_info.device_name+" to start sending")
+                        self.msg_bus.send_message_json(node_info.ip, int(node_info.port), op_json) 
+
+                    time.sleep(0.5)
+                    endcnt += 1
+                    emptycount =0
+
+            else: # not all q are empty... loop all queues until the target is found. 
+                while(self.cur_tar_dev==None):
+                    for i in self.d_cam.keys():
+                        if(self.imgq[i].empty()): # if i'th queue is empty, skip this queue stak. check other camera queue stack.
+                            self.d_cam[i]='empty'
+                            emptycount+=1
+                            print("[finding..] "+ i +" q is empty, moving on to next q") 
+                            # continue
+                            pass
+                        else:
+                            print(self.dev_nameq[i].qsize(), self.framecntq[i].qsize(), self.imgq[i].qsize(), self.typeq[i].qsize(), self.timerq[i].qsize())
+                            s = time.time()
+                            emptycount =0
+                            cdevice_name = self.dev_nameq[i].get()
+                            ccounter = int(self.framecntq[i].get())
+                            cframe = self.imgq[i].get()
+                            ctype = self.typeq[i].get()
+                            ctimer = self.timerq[i].get()
+                            if self.cuda:
+
+                                width = cframe.shape[0]
+                                height = cframe.shape[1]
+                                crgb = cv2.cvtColor(cframe, cv2.COLOR_BGR2RGB)
+    
+                                frame_tensor = cv_image2tensor(cframe, self.input_size).unsqueeze(0)
+                                frame_tensor = Variable(frame_tensor)
+
+                                frame_tensor = frame_tensor.cuda()
+
+                                detections = self.model(frame_tensor, self.cuda).cpu()
+                                detections = process_result(detections, self.confidence, self.nms_thresh)
+                            
+#print(self.dev_nameq[i].qsize(), self.framecntq[i].qsize(), self.imgq[i].qsize(), self.typeq[i].qsize(), self.timerq[i].qsize(), len(detections))
+                                if len(detections) != 0:
+                                    detections = transform_result(detections, [cframe], self.input_size)
+                                    #for detection in detections:
+                                    for idx, detection in enumerate(detections):
+                                        if (self.classes[int(detection[-1])]=="person"):
+                                            if float(detection[6]) > self.confidence:
+                                                print("[finding..] found person on device: ",ccounter, cdevice_name) # well u r supposed to match the person detect with the template, but for the time being we assume its a person. # sangwoo is on it thou
+                                                # send message to all cam devs to quit or start sending 
+                                                for node_name in node_table.table.keys():
+                                                    node_info = node_table.table[node_name]
+                                                    if node_info.device_name == cdevice_name:
+                                                        op_json = {"type": "control_op", "onoff": "True"}
+                                                        print("[w] telling "+cdevice_name+" to start sending")
+                                                    else: # if its the target is not there, signal stop  
+                                                        op_json = {"type": "control_op", "onoff": "False"}
+                                                        print("[w] telling "+cdevice_name+" to stop sending")
+                                                    self.msg_bus.send_message_json(node_info.ip, int(node_info.port), op_json) 
+                                                pre_score = (float(detection[6])) # prediction score
+                                                pre_class = (self.classes[int(detection[-1])]) # prediction class
+                                                pre_x1 = (int(detection[1])) # x1
+                                                pre_y1 = (int(detection[2])) # y1
+                                                pre_x2 = (int(detection[3])) # x2 
+                                                pre_y2 = (int(detection[4])) # y2
+
+                                                #self.draw_bbox([frame], detection, self.colors, self.classes)
+                                                tracker = dlib.correlation_tracker()
+                                                rect = dlib.rectangle(pre_x1, pre_y1, pre_x2, pre_y2)
+                                                tracker.start_track(crgb, rect)
+                                                self.trackers.append(tracker)
+                                                self.cur_tar_dev = cdevice_name
+                                                break
+                                            else:
+                                                print("[finding..] low confidence person", ccounter, cdevice_name)
+                                        else: 
+                                            print("[finding..] not a person", ccounter, cdevice_name)
+
+                                else:
+                                    print("[finding..] nothing detected: ", ccounter, cdevice_name)
+                                    print(self.imgq[i].empty()) # true if empty
+                            e = time.time()
+                            print ("time for inf: ", e - s)
+                            print ("decay time: ", e - ctimer)
+                            print("log here")
+                             
+
+                    if emptycount == self.numberofcameras:
+                        print('[finding..] still at search phase, all q empty, go back to waiting phase')
+                        break
+
+                for i in self.d_cam.keys():
+
+                    if emptycount == self.numberofcameras:
+                        print('[found..] break from searching phase, all q empty, go back to waiting phase')
+                        emptycount =0
+                        self.cur_tar_dev=None
+                        break
+                    else: # there is smth here 
+                        emptycount =0
+                        ftype = self.typeq[i].get()
+                        fdevice_name = self.dev_nameq[i].get()
+                        fcounter = self.framecntq[i].get()
+                        ftimer = self.timerq[i].get()
+                        fframe = self.imgq[i].get()
+                        rgb = cv2.cvtColor(fframe, cv2.COLOR_BGR2RGB)
+                        fpositions=[]
+                        if fdevice_name == self.cur_tar_dev:
+                            if(int(fcounter) % self.frame_skips == 0):
+                                self.trackers=[]
+                                if self.cuda:
+                                    width = fframe.shape[0]
+                                    height = fframe.shape[1]
+
+                                    frame_tensor = cv_image2tensor(fframe, self.input_size).unsqueeze(0)
+                                    frame_tensor = Variable(frame_tensor)
+
+                                    if self.cuda:
+                                        frame_tensor = frame_tensor.cuda()
+
+                                    detections = self.model(frame_tensor, self.cuda).cpu()
+                                    detections = process_result(detections, self.confidence, self.nms_thresh)
+                                    if len(detections) != 0:
+                                        detections = transform_result(detections, [cframe], self.input_size)
+                                    #for detection in detections:
+                                        for idx, detection in enumerate(detections):
+                                            if (self.classes[int(detection[-1])]=="person"):
+                                                if float(detection[6]) > self.confidence:
+                                                    print("[found..] person on device: ", cdevice_name) # well u r supposed to match the person detect with the template, but for the time being we assume its a person. # sangwoo is on it thou
+                                                    pre_score = (float(detection[6])) # prediction score
+                                                    pre_class = (self.classes[int(detection[-1])]) # prediction class
+                                                    pre_x1 = (int(detection[1])) # x1
+                                                    pre_y1 = (int(detection[2])) # y1
+                                                    pre_x2 = (int(detection[3])) # x2 
+                                                    pre_y2 = (int(detection[4])) # y2
+
+                                                #self.draw_bbox([frame], detection, self.colors, self.classes)
+                                                    tracker = dlib.correlation_tracker()
+                                                    rect = dlib.rectangle(pre_x1, pre_y1, pre_x2, pre_y2)
+                                                    tracker.start_track(rgb, rect)
+                                                    self.trackers.append(tracker)
+                                                    self.cur_tar_dev = cdevice_name
+                            else:
+                                for tracker in self.trackers: 
+                                    tracker.update(rgb)
+                                    fpos = tracker.get_position()
+                                    startX = int(fpos.left())
+                                    startY = int(fpos.top())
+                                    endX = int(fpos.right())
+                                    endY = int(fpos.bottom())
+                                    fpositions.append((startX, startY, endX, endY))
+
+                            objects = self.ct.update(fpositions)
+                            # track well and if u miss out, go back to search phase
+                            if self.ct.checknumberofexisting():
+                                print("[found..] donno but still here: ", fdevice_name)
+                                self.sumframebytes+=sys.getsizeof(fframe)
+                            else: # break and find it now 
+                                self.cur_tar_dev = None
+                                break
+                        else:
+                            continue # drop other queues
+                        time_now = time.time()
+                        inf_time = time_now - s
+                        if cdevice_name == "camera01":
+                            if self.cur_tar_dev != None:
+                                self.logfile1.write(str(fcounter) + "\t" + str(time_now - ftimer) + "\t" + "1" + "\t" + str(inf_time)+"\n")
+                            else:
+                                self.logfile1.write(str(fcounter) + "\t" + str(time_now - ftimer) + "\t" + "0" + "\t" + str(inf_time))+"\n"
+                        elif cdevice_name == "camera02":
+                            if self.cur_tar_dev != None:
+                                self.logfile2.write(str(fcounter) + "\t" + str(time_now - ftimer) + "\t" + "1" + "\t" + str(inf_time)+"\n")
+                            else:
+                                self.logfile2.write(str(fcounter) + "\t" + str(time_now - ftimer) + "\t" + "0" + "\t" + str(inf_time)+"\n")
 
 
    
@@ -366,7 +742,7 @@ class Controller(object):
         while (True):
              if (self.imgq.empty()):
                 if(endcnt >= 120):
-                    self.logfile.close()
+                    self.logfile1.close()
                     self.logfile2.close()
                     print("byebye")
                     sys.exit(0)
@@ -662,14 +1038,16 @@ class Controller(object):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="IoT controller of Chameleon.")
-    parser.add_argument('-ln1', '--logfilename1', type=str, default='logfilecpu.txt', help="logfile name for cpu usage")
-    parser.add_argument('-ln2', '--logfilename2', type=str, default='logfileframe.txt', help="logfile name for frame related things.")
+    parser.add_argument('-ln1', '--logfilename1', type=str, default='logfiledev1.txt', help="logfile name for dev1")
+    parser.add_argument('-ln2', '--logfilename2', type=str, default='logfiledev2.txt', help="logfile name for dev2.")
     parser.add_argument('-ln3', '--logfilename3', type=str, default='logfilecontext.txt', help="logfile name for context related things.")
+    parser.add_argument('-ln4', '--logfilename4', type=str, default='logfilegpu.txt', help="logfile name for gpu.")
     parser.add_argument("--confidence", dest = "confidence", help = "Object Confidence to filter predictions", default = 0.6)
     parser.add_argument("--nms_thresh", dest = "nms_thresh", help = "NMS Threshhold", default = 0.5)
     parser.add_argument('-dis', '--display', type=str, default = 'off', help = "enable display")
     parser.add_argument('-tr', '--transmission', type=str, default = 'dr', help = "e1-1, e1-2, e2, p")
     parser.add_argument('-ts', '--trackingscheme', type=str, default = 'dr', help = "dead reckoning, boundary check")
+    parser.add_argument('-fs', '--frameskips', type=int, default = 10, help = "skip frame count")
     ARGS = parser.parse_args()
     # Read 'master.ini'
     config = configparser.ConfigParser()
@@ -695,12 +1073,14 @@ if __name__ == '__main__':
     ctrl.model.eval()
     ctrl.setup_before_detection_gpu()
 
-    ctrl.logfile = open(ARGS.logfilename1, 'w')
+    ctrl.logfile1 = open(ARGS.logfilename1, 'w')
     ctrl.logfile2 = open(ARGS.logfilename2, 'w')
     ctrl.logfile3 = open(ARGS.logfilename3, 'w')
+    ctrl.logfile4 = open(ARGS.logfilename4, 'w')
     ctrl.label_path = label_path
     ctrl.tr = ARGS.transmission
     ctrl.ts = ARGS.trackingscheme
+    ctrl.frame_skips = ARGS.frameskips
     print("[INFO] Finished setup!")
 
     if ARGS.transmission == 'e1-1':
@@ -711,6 +1091,7 @@ if __name__ == '__main__':
     elif ARGS.transmission == 'e1-2':
         print('[Controller] running as an existing work 1-2. (upon request)')
         time.sleep(1)
+        ctrl.e1_2_proc_dequeue()
         
     elif ARGS.transmission == 'e2': # need imp
         print('[Controller] running as an existing work 2. (image metadata)') 
