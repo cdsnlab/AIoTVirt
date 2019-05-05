@@ -113,13 +113,12 @@ class MessageBus(object):
                 elif msg_dict['type'] == 'img_p':
                     for handler in self.handlers.get('img_p', []):
                         handler(msg_dict)
-                elif msg_dict['type'] == 'controller_order':
-                    for handler in self.handlers.get('controller_order', []):
-                        handler(msg_dict)
                 elif msg_dict['type'] == 'handoff_request':
                     for handler in self.handlers.get('handoff_request', []):
                         handler(msg_dict)
-
+                elif msg_dict['type'] == 'control_op':
+                    for handler in self.handlers.get('control_op', []):
+                        handler(msg_dict)
                 else:
                     pass
             else:
@@ -140,6 +139,7 @@ class MessageBus(object):
         encstr = base64.b64encode(encimg).decode('ascii')
         now = datetime.utcnow()+timegap
         curTime = now.strftime('%H:%M:%S.%f') # string format
+        print(curTime)
         json_msg = {'type': 'img_e1-1', 'img_string': encstr, 'time': curTime, 'framecnt': framecnt, 'device_name': device_name}
         return json.dumps(json_msg)
 

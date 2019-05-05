@@ -62,12 +62,13 @@ class Hypervisor(object):
         self.msg_bus.register_callback('join', self.handle_message)
         self.msg_bus.register_callback('device_list', self.handle_message)
         self.msg_bus.register_callback('handoff_request', self.handle_message)
-        self.msg_bus.register_callback('controller_order', self.handle_message)
+        self.msg_bus.register_callback('control_op', self.handle_message)
         signal.signal(signal.SIGINT, self.signal_handler)
+
 
         self.camera = None  # OpenCV camera object
         self.live = live
-        self.tr = tr_method
+        self.tr = None # e1-1, e1-2, e2, p
         self.labels = None
         self.confidence_threshold = 0.0
         self.redis_db = None
@@ -86,13 +87,6 @@ class Hypervisor(object):
 #        self.timegap = datetime.datetime()
         self.gettimegap()
         self.curframe = None # current frame for being cropped
-        self.tm_methods = ['cv2.TM_SQDIFF_NORMED', 'cv2.TM_CCOEFF_NORMED', 'cv2.TM_CCORR_NORMED', 'cv2.TM_CCOEFF', 'cv2.TM_CCORR', 'cv2.TM_SQDIFF']
-        self.tm_op1 = cv2.TM_CCOEFF_NORMED
-        self.tm_op2 = cv2.TM_CCOEFF
-        self.tm_op3 = cv2.TM_CCORR_NORMED
-        self.tm_op4 = cv2.TM_CCORR
-        self.tm_op5 = cv2.TM_SQDIFF_NORMED
-        self.tm_op6 = cv2.TM_SQDIFF
         self.frame_skips = None # how many frames should be skipped before detection 
         self.ct = None # centroid tracker
         self.trackers = [] 
@@ -107,6 +101,9 @@ class Hypervisor(object):
         self.movingdelta = 0
         self.futuresteps = 0
         self.trackingscheme = None
+        # e1-2 
+        self.cop = "True" # if this is set as True, it will start sending again.
+
 
         self.frameq = queue.Queue()
 
@@ -145,6 +142,9 @@ class Hypervisor(object):
             self.msg_dict = msg_dict
             self.findobj=True
             # add the image to trackable list... but we don't know the coordinates...!
+        elif msg_dict['type'] == 'control_op':
+            print("received :", msg_dict['onoff'])
+            self.cop = "True"
 
         else:
             # Silently ignore invalid message types.
@@ -243,8 +243,6 @@ class Hypervisor(object):
         device = mvnc.Device(devices[0])
         device.OpenDevice()
         return device
-
-
         
 
     def close_ncs_device(self, device, graph):
@@ -357,6 +355,7 @@ class Hypervisor(object):
         frame_start_time =time.time()
         cumlative_fps = 0
         framecnt =0
+        print(self.timegap)
         #graph = load_graph(self.graph_file, device)
 
         while (True):
@@ -372,13 +371,12 @@ class Hypervisor(object):
 
                 continue
             else:
-                curr_time_str = datetime.utcnow().strftime('%H:%M:%S.%f')[:-3]
                 frame = self.frameq.get()
                 if(self.width == None and self.height == None):
                     self.width = frame.shape[1]
                     self.height = frame.shape[0]
                 frame = cv2.resize(frame, (self.width, self.height))
-                print("framecnt: "+str(framecnt)+" estimated transmission fps {0}".format(cumlative_fps))
+                print("framecnt: "+str(framecnt)+" estimated transmitting fps {0}".format(cumlative_fps))
                 jsonified_data = self.msg_bus.create_raw_message(frame, framecnt, self.encode_param, self.device_name,self.timegap)
                 self.msg_bus.send_message_str(self.controller_ip, self.controller_port, jsonified_data)
 
@@ -427,8 +425,8 @@ class Hypervisor(object):
                     self.width = frame.shape[1]
                     self.height = frame.shape[0]
                 frame = cv2.resize(frame, (self.width, self.height))
-                print("framecnt: "+str(framecnt)+" estimated transmission fps {0}".format(cumlative_fps))
-                if(self.controller_order == "send"):
+                print("framecnt: "+str(framecnt)+" estimated transmitting or dropping fps {0}".format(cumlative_fps))
+                if(self.cop == "True"):
                     jsonified_data = self.msg_bus.create_raw_req_message(frame, framecnt, self.encode_param, self.device_name,self.timegap)
                     self.msg_bus.send_message_str(self.controller_ip, self.controller_port, jsonified_data)
                 else: # drop the frames. 
