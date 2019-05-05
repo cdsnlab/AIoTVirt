@@ -109,9 +109,11 @@ class Hypervisor(object):
 
     def gettimegap(self):
         starttime = datetime.now()
-        ntp_response = ntplib.NTPClient().request('2.kr.pool.ntp.org', version=3)
+        #ntp_response = ntplib.NTPClient().request('2.kr.pool.ntp.org', version=3)
+        ntp_response = ntplib.NTPClient().request('143.248.55.71', version=3)
         returntime = datetime.now()
         self.timegap = datetime.fromtimestamp(ntp_response.tx_time) - starttime - (returntime - starttime)/2
+        print (self.timegap)
 
     def signal_handler(self, sig, frame):
         self.logfile.close()
@@ -349,14 +351,11 @@ class Hypervisor(object):
     #
     @threaded
     def send_raw_dequeue(self):
-        # make ncs connection
+
         endcnt = 0
-        #device = self.open_ncs_device()
         frame_start_time =time.time()
         cumlative_fps = 0
         framecnt =0
-        print(self.timegap)
-        #graph = load_graph(self.graph_file, device)
 
         while (True):
             if (self.frameq.empty()):
