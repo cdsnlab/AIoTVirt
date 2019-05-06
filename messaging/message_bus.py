@@ -151,6 +151,15 @@ class MessageBus(object):
         json_msg = {'type': 'img_e1-2', 'img_string': encstr, 'time': curTime, 'framecnt': framecnt, 'device_name': device_name}
         return json.dumps(json_msg)
 
+    @staticmethod
+    def create_e2_message(img, framecnt, encode_param, device_name, coord, timegap=timedelta()): # e1-2 (send frames upon request)
+        _, encimg = cv2.imencode('.jpg', img, encode_param)
+        encstr = base64.b64encode(encimg).decode('ascii')
+        now = datetime.utcnow()+timegap
+        curTime = now.strftime('%H:%M:%S.%f') # string format
+        json_msg = {'type': 'img_e2', 'img_string': encstr, 'time': curTime, 'framecnt': framecnt, 'device_name': device_name, 'coordinates': coord}
+        return json.dumps(json_msg)
+
 
     @staticmethod
     def create_det_message(img, framecnt, encode_param, device_name,timegap=timedelta()): # e2 & p (send frame + rects)
