@@ -454,6 +454,8 @@ class Hypervisor(object):
         cumlative_fps = 0
         framecnt =0
         skip=2
+        grant = False
+        coord = 0,0,0,0
         device = self.open_ncs_device()
         graph = load_graph(self.graph_file, device)
         self.encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), 99]
@@ -478,7 +480,7 @@ class Hypervisor(object):
                     self.height = frame.shape[0]
                 frame = cv2.resize(frame, (self.width, self.height))
                 print("[e2] framecnt: "+str(framecnt)+" estimated processing fps {0}".format(cumlative_fps))
-                if framecnt % skip == 0:
+                if framecnt % skip == 0: # if the even one has the target, send the conseq frame with the same box
                     img = self.pre_process_image(frame)
                     x1, y1, x2, y2 = self.infer_image_e2(graph, img, frame)
                     coord = x1, y1, x2, y2
@@ -486,10 +488,18 @@ class Hypervisor(object):
                         print(str(framecnt) + ": target found at " + str(coord))
                         jsonified_data = self.msg_bus.create_e2_message(frame, framecnt, self.encode_param, self.device_name, coord, self.timegap)
                         self.msg_bus.send_message_str(self.controller_ip, self.controller_port, jsonified_data)
+                        grant = True
 
                     else: 
                     # no target, drop frame. 
                         print(str(framecnt) + ": no target found, dropping frame")
+                else:
+                    if grant: 
+                        print(str(framecnt) + ": sending follow up " + str(coord))
+                        jsonified_data = self.msg_bus.create_e2_message(frame, framecnt, self.encode_param, self.device_name, coord, self.timegap)
+                        self.msg_bus.send_message_str(self.controller_ip, self.controller_port, jsonified_data)
+                        grant = False
+
                 framecnt += 1
 
                 if self.display == "on":
@@ -729,7 +739,7 @@ class Hypervisor(object):
             frame = cv2.resize(frame, (self.width, self.height))
 
             #prev_time, fps = self.getfps(prev_time)
-            print('[VIDEOSOURCE] estimated video enqueue fps :{0}'.format(cumlative_fps))
+            #print('[VIDEOSOURCE] estimated video enqueue fps :{0}'.format(cumlative_fps))
             
             # enqueue here
             self.frameq.put(frame) # keep chuggggggging 
