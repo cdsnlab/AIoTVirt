@@ -133,7 +133,7 @@ class MessageBus(object):
             print(str(e))
             return
 
-    @staticmethod
+    @staticmethod # e1-1
     def create_raw_message(img, framecnt, encode_param, device_name,timegap=timedelta()): # e1-1 (send frames no matter what)
         _, encimg = cv2.imencode('.jpg', img, encode_param)
         encstr = base64.b64encode(encimg).decode('ascii')
@@ -142,7 +142,7 @@ class MessageBus(object):
         json_msg = {'type': 'img_e1-1', 'img_string': encstr, 'time': curTime, 'framecnt': framecnt, 'device_name': device_name}
         return json.dumps(json_msg)
 
-    @staticmethod
+    @staticmethod # e1-2
     def create_raw_req_message(img, framecnt, encode_param, device_name,timegap=timedelta()): # e1-2 (send frames upon request)
         _, encimg = cv2.imencode('.jpg', img, encode_param)
         encstr = base64.b64encode(encimg).decode('ascii')
@@ -161,17 +161,17 @@ class MessageBus(object):
         return json.dumps(json_msg)
 
 
-    @staticmethod
+    @staticmethod # p: to server
     def create_det_message(img, framecnt, encode_param, device_name,timegap=timedelta()): # e2 & p (send frame + rects)
         _, encimg = cv2.imencode('.jpg', img, encode_param)
         encstr = base64.b64encode(encimg).decode('ascii')
         now = datetime.utcnow()+timegap
         curTime = now.strftime('%H:%M:%S.%f') # string format
-        json_msg = {'type': 'img_e2', 'img_string': encstr, 'time': curTime, 'framecnt': framecnt, 'device_name': device_name}
+        json_msg = {'type': 'img_e1-1', 'img_string': encstr, 'time': curTime, 'framecnt': framecnt, 'device_name': device_name}
         return json.dumps(json_msg)
 
 
-    @staticmethod
+    @staticmethod # p: to another dev
     def create_message_list_numpy_handoff(img, encode_param, device_name,timegap=timedelta()): # p (send template to next machine)
         _, encimg = cv2.imencode('.jpg', img, encode_param)
         encstr = base64.b64encode(encimg).decode('ascii')

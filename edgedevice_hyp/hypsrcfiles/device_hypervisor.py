@@ -145,9 +145,9 @@ class Hypervisor(object):
             self.findobj=True
             # add the image to trackable list... but we don't know the coordinates...!
         elif msg_dict['type'] == 'control_op':
-            print("received :", msg_dict['onoff'])
             self.cop = msg_dict['onoff']
-
+        elif msg_dict['type'] == 'neighbor_op':
+            self.neighbor_op = msg_dict['neighbor_op']
         else:
             # Silently ignore invalid message types.
             pass
@@ -798,27 +798,6 @@ class Hypervisor(object):
                 positions = []
                 cpu = psutil.cpu_percent()
                 ram = psutil.virtual_memory()
-                if self.findobj == True: # does not work, detect frames and do similarity check instead.
-                    print('looking for objects in frame...')
-                    decstr = base64.b64decode(self.msg_dict['img_string'])
-                    imgarray = np.fromstring(decstr, dtype=np.uint8)
-                    self.tracking_template = cv2.imdecode(imgarray, cv2.IMREAD_COLOR)
-                    w = self.tracking_template.shape[0]
-                    h = self.tracking_template.shape[1]
-                    print(self.tracking_template.shape[0], self.tracking_template.shape[1])
-                    res = cv2.matchTemplate(frame, self.tracking_template, cv2.TM_CCOEFF_NORMED)
-                    min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(res)
-                    top_left = max_loc
-                    bottom_right = (top_left[0]+w, top_left[1]+h)
-                    cv2.rectangle(frame, top_left, bottom_right, 255,2)
-                    cv2.imwrite(str(self.counter)+".jpg", frame)
-                    
-                    tracker = dlib.rectangle(top_left[0], top_left[1], bottom_right[0], bottom_right[1])
-                    tracker.start_track(rgb, rect)
-                    self.trackers.append(tracker)
-                    
-                    self.findobj = False
-
 
                 if self.counter % self.frame_skips ==0:
                     self.trackers = []
@@ -833,18 +812,19 @@ class Hypervisor(object):
                 
                     for i in range(0, output_dict['num_detections']):
                         if output_dict['detection_scores_' + str(i)] > self.confidence_threshold :
-                            if output_dict ['detection_classes_'+str(i)] != 15: # skip if not human
-                                continue
-                            print("%3.1f%%\t" % output_dict['detection_scores_' + str(i)] + self.labels[int(output_dict['detection_classes_' + str(i)])] + ": Top Left: " + str(output_dict['detection_boxes_' + str(i)][0]) + " Bottom Right: " + str(output_dict['detection_boxes_' + str(i)][1]))
+                            if output_dict ['detection_classes_'+str(i)] == 15: # if target
+                                print("%3.1f%%\t" % output_dict['detection_scores_' + str(i)] + self.labels[int(output_dict['detection_classes_' + str(i)])] + ": Top Left: " + str(output_dict['detection_boxes_' + str(i)][0]) + " Bottom Right: " + str(output_dict['detection_boxes_' + str(i)][1]))
                   
-                            (y1, x1) = output_dict.get('detection_boxes_' + str(i))[0]
-                            (y2, x2) = output_dict.get('detection_boxes_' + str(i))[1]
-                            #print("centroid X Y", (x1+x2) / 2.0, (y1+y2)/2.0)
-                            # add to tracking objects
-                            tracker = dlib.correlation_tracker()
-                            rect = dlib.rectangle(x1, y1, x2, y2)
-                            tracker.start_track(rgb,rect)
-                            self.trackers.append(tracker)
+                                (y1, x1) = output_dict.get('detection_boxes_' + str(i))[0]
+                                (y2, x2) = output_dict.get('detection_boxes_' + str(i))[1]
+                            
+                                tracker = dlib.correlation_tracker()
+                                rect = dlib.rectangle(x1, y1, x2, y2)
+                                tracker.start_track(rgb,rect)
+                                self.trackers.append(tracker)
+
+                                k = MessageBus.create_det_message(frame, self.counter, self.encode_param, self.device_name,self.timegap)
+                                self.msg_bus.send_message_str(self.controller_ip, self.controller_port, k)
 
                 else:
                     for tracker in self.trackers: 
@@ -859,16 +839,16 @@ class Hypervisor(object):
                 objects = self.ct.update(positions)
                 # prints all existing indexes.
                 #self.ct.getall()
-                if self.ct.checknumberofexisting():
-                    print("send to mars")
-                    #k = MessageBus.create_raw_req_message(frame, self.counter, self.encode_param, self.device_name,self.timegap)
-                    #self.msg_bus.send_message_str(self.controller_ip, self.controller_port, k)
+                if self.ct.checknumberofexisting() or self.neighbor_op:
+                    print("[Tracking object EXIST] send to mars")
+                    k = MessageBus.create_det_message(frame, self.counter, self.encode_param, self.device_name,self.timegap)
+                    self.msg_bus.send_message_str(self.controller_ip, self.controller_port, k)
+                    self.neighbor_op = False
 
 
                 for (objectID, centroid) in objects.items():
                     to = self.trobs.get(objectID, None)
-                    #cv2.imwrite(self.counter+".jpg", frame)
-                    #self.ct.getall()
+
                     if (self.ct.checknumberofexisting()):
                         self.sumframebytes+=sys.getsizeof(frame)
 
@@ -893,10 +873,14 @@ class Hypervisor(object):
                                     if (p[0]<=0 or p[1] <= 0 or p[2] <= 0 or p[3] <=0):
                                         pass
                                     else:
-                                        cv2.rectangle(frame, (p[0], p[1]), (p[2], p[3]), (255,0,0),2)
-                                        croppedimg = frame[p[1]:p[3], p[0]:p[2]]
-                                        jsonified_data = MessageBus.create_message_list_numpy_handoff(croppedimg, self.encode_param, self.device_name, self.timegap)
-                                        self.msg_bus.send_message_str(self.center_device_ip_int, self.center_device_port, jsonified_data)
+                                        #cv2.rectangle(frame, (p[0], p[1]), (p[2], p[3]), (255,0,0),2)
+                                        #croppedimg = frame[p[1]:p[3], p[0]:p[2]]
+                                        #jsonified_data = MessageBus.create_message_list_numpy_handoff(croppedimg, self.encode_param, self.device_name, self.timegap)
+                                        #self.msg_bus.send_message_str(self.center_device_ip_int, self.center_device_port, jsonified_data)
+                                        if(self.device_name == "camera01"):
+                                            msg = dict(type='neighbor_op', device_name=self.device_name, neighbor_op = "True")
+                                            self.msg_bus.send_message_json(self.center_device_ip_int, self.center_device_port, msg)
+        
 
                                 # sned mesg
                                 elif(self.checkboundary_dir(prex, prey)=="L"):
@@ -906,12 +890,15 @@ class Hypervisor(object):
                                         pass
                                     else:
                                 
-                                        cv2.rectangle(frame, (p[0], p[1]), (p[2], p[3]), (255,0,0),2)
-                                        croppedimg = frame[p[1]:p[3], p[0]:p[2]]
-                                        print((p[0], p[1]), (p[2], p[3]))
+                                        #cv2.rectangle(frame, (p[0], p[1]), (p[2], p[3]), (255,0,0),2)
+                                        #croppedimg = frame[p[1]:p[3], p[0]:p[2]]
+                                        #print((p[0], p[1]), (p[2], p[3]))
                                         #cv2.imwrite(str(self.counter)+".jpg", croppedimg)
-                                        jsonified_data = MessageBus.create_message_list_numpy_handoff(croppedimg, self.encode_param, self.device_name, self.timegap)
-                                        self.msg_bus.send_message_str(self.left_device_ip_int, self.left_device_port, jsonified_data)
+                                        #jsonified_data = MessageBus.create_message_list_numpy_handoff(croppedimg, self.encode_param, self.device_name, self.timegap)
+                                        #self.msg_bus.send_message_str(self.left_device_ip_int, self.left_device_port, jsonified_data)
+                                        if(self.device_name == "camera02"):
+                                            msg = dict(type='neighbor_op', device_name=self.device_name, neighbor_op = "True")
+                                            self.msg_bus.send_message_json(self.left_device_ip_int, self.left_device_port, msg)
 
                                 elif(self.checkboundary_dir(prex, prey)=="D"):
                                     print("we need to send msg to down")
@@ -931,29 +918,37 @@ class Hypervisor(object):
                                     print("we need to send msg to right")
                                     #print("just throw in the cropped img template")
                                     #print("upon receiving the cropped img, do the template matching & add to tracking dlib queue")
-                                    p = self.ct.get_object_rect_by_id(objectID) # x1, y1, x2, y2
+                                    #p = self.ct.get_object_rect_by_id(objectID) # x1, y1, x2, y2
                                     #t = self.ct.objects[objectID]  #centroid x, y
                                     #print("type p: ", type(p)) # rect
                                     #print("t: ", t) # centroid
-                                    cv2.rectangle(frame, (p[0], p[1]), (p[2], p[3]), (255,0,0),2)
+                                    #cv2.rectangle(frame, (p[0], p[1]), (p[2], p[3]), (255,0,0),2)
                                     #croppedimg = frame[y1:y2, x1: x2]
-                                    croppedimg = frame[p[1]:p[3], p[0]:p[2]]
-                                    jsonified_data = MessageBus.create_message_list_numpy_handoff(croppedimg, self.encode_param, self.device_name, self.timegap)
-                                    self.msg_bus.send_message_str(self.center_device_ip_int, self.center_device_port, jsonified_data)
+                                    #croppedimg = frame[p[1]:p[3], p[0]:p[2]]
+                                    #jsonified_data = MessageBus.create_message_list_numpy_handoff(croppedimg, self.encode_param, self.device_name, self.timegap)
+                                    #self.msg_bus.send_message_str(self.center_device_ip_int, self.center_device_port, jsonified_data)
+                                    if(self.device_name == "camera01"):
+                                        msg = dict(type='neighbor_op', device_name=self.device_name, neighbor_op = "True")
+                                        self.msg_bus.send_message_json(self.center_device_ip_int, self.center_device_port, msg)
 
                             
                                 elif (self.where[objectID]== "LEFT"):
                                     print("we need to send msg to left")
-                                    p = self.ct.get_object_rect_by_id(objectID) # x1, y1, x2, y2
+                                    #p = self.ct.get_object_rect_by_id(objectID) # x1, y1, x2, y2
                                     #t = self.ct.objects[objectID]  #centroid x, y
                                     #print("type p: ", type(p)) # rect
                                     #print("t: ", t) # centroid
-                                    cv2.rectangle(frame, (p[0], p[1]), (p[2], p[3]), (255,0,0),2)
+                                    #cv2.rectangle(frame, (p[0], p[1]), (p[2], p[3]), (255,0,0),2)
                                     #croppedimg = frame[y1:y2, x1: x2]
-                                    croppedimg = frame[p[1]:p[3], p[0]:p[2]]
-                                    jsonified_data = MessageBus.create_message_list_numpy_handoff(croppedimg, self.encode_param, self.device_name, self.timegap)
+                                    #croppedimg = frame[p[1]:p[3], p[0]:p[2]]
+                                    #jsonified_data = MessageBus.create_message_list_numpy_handoff(croppedimg, self.encode_param, self.device_name, self.timegap)
                                     #jsonified_data = MessageBus.create_message_list_numpy_handoff(croppedimg, encode_param, self.device_name, self.timegap)
-                                    self.msg_bus.send_message_str(self.right_device_ip_int, self.right_device_port, jsonified_data)
+                                    #self.msg_bus.send_message_str(self.right_device_ip_int, self.right_device_port, jsonified_data)
+
+                                    if(self.device_name == "camera02"):
+                                        msg = dict(type='neighbor_op', device_name=self.device_name, neighbor_op = "True")
+                                        self.msg_bus.send_message_json(self.left_device_ip_int, self.left_device_port, msg)
+
                                 elif (self.where[objectID]== "TOP"):
                                     print("we need to send msg to top")
                                 elif (self.where[objectID]== "BOTTOM"):
