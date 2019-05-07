@@ -103,6 +103,7 @@ class Hypervisor(object):
         self.trackingscheme = None
         # e1-2 
         self.cop = "True" # if this is set as True, it will start sending again.
+        self.neighbor_op = False
 
 
         self.frameq = queue.Queue()
@@ -147,6 +148,7 @@ class Hypervisor(object):
         elif msg_dict['type'] == 'control_op':
             self.cop = msg_dict['onoff']
         elif msg_dict['type'] == 'neighbor_op':
+            print("received: ", msg_dict['type'])
             self.neighbor_op = msg_dict['neighbor_op']
         else:
             # Silently ignore invalid message types.
@@ -823,8 +825,7 @@ class Hypervisor(object):
                                 tracker.start_track(rgb,rect)
                                 self.trackers.append(tracker)
 
-                                k = MessageBus.create_det_message(frame, self.counter, self.encode_param, self.device_name,self.timegap)
-                                self.msg_bus.send_message_str(self.controller_ip, self.controller_port, k)
+                                
 
                 else:
                     for tracker in self.trackers: 
@@ -866,7 +867,7 @@ class Hypervisor(object):
                         if not to.counted:
                             
                             if (self.trackingscheme == "dr"):
-                                prex, prey = self.ct.predict(objectID, 30)
+                                prex, prey = self.ct.predict(objectID, self.futuresteps)
                                 if(self.checkboundary_dir(prex, prey)=="R"):
                                     print("we need to send msg to right")
                                     p = self.ct.get_object_rect_by_id(objectID) # x1, y1, x2, y2
@@ -1031,6 +1032,7 @@ if __name__ == '__main__':
                         help="delta of moving object value.")
     ### for dead reckoning approach.
     parser.add_argument('-fs', '--futuresteps', type=int,
+                        default=10,
                         help="how many future steps are we going to look for dead reckoning?")
 
     ARGS = parser.parse_args()
@@ -1124,7 +1126,7 @@ if __name__ == '__main__':
         hyp.src_to_frame_enqueue(ARGS.videofile)
         print('[Hypervisor] tracking objects with dequeuing technique. 1) boundary checking 2) dead reckoning')
         hyp.tracking_objects_dequeue()
-        hyp.logfile.close()
+        #hyp.logfile.close()
 
     else:
         print('[Hypervisor] Error: invalid option for the scheme.')
