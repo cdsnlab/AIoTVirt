@@ -24,7 +24,6 @@ import ntplib
 import trackableobject 
 import centroidtracker
 import queue
-from skimage.measure import structural_similarity as ssim
 
 #
 # Reads a graph file into a buffer
@@ -723,41 +722,75 @@ class Hypervisor(object):
 
         if vf == str(1):
             cap = cv2.VideoCapture(0)
+        elif vf == "dummy":
+            frame = cv2.imread('dummy.jpg', cv2.IMREAD_COLOR)
         else:
             cap = cv2.VideoCapture(vf)
+        if (vf!="dummy"):
+            while cap.isOpened():
+                #curr_time_str = datetime.utcnow().strftime('%H:%M:%S.%f')[:-3]
+                if(framecnt %input_fps == 0):
+                    start_time = time.time()
+                ret, frame = cap.read()  # ndarray
+                if frame is None:
+                    print('no more frames from the src..! quitting :D')
+                    sys.exit(0)
+                    break
+                if(self.width == None and self.height == None):
+                    self.width = frame.shape[1]
+                    self.height = frame.shape[0]
+                frame = cv2.resize(frame, (self.width, self.height))
 
-        while cap.isOpened():
-            #curr_time_str = datetime.utcnow().strftime('%H:%M:%S.%f')[:-3]
-            if(framecnt %input_fps == 0):
-                start_time = time.time()
-            ret, frame = cap.read()  # ndarray
-            if frame is None:
-                print('no more frames from the src..! quitting :D')
-                sys.exit(0)
-                break
-            if(self.width == None and self.height == None):
-                self.width = frame.shape[1]
-                self.height = frame.shape[0]
-            frame = cv2.resize(frame, (self.width, self.height))
-
-            #prev_time, fps = self.getfps(prev_time)
-            #print('[VIDEOSOURCE] estimated video enqueue fps :{0}'.format(cumlative_fps))
-            
-            # enqueue here
-            self.frameq.put(frame) # keep chuggggggging 
-            if(framecnt % input_fps ==0 ): #10fps
-                wait_time = time.time()
-                sleeptime = 1-(wait_time - start_time)
-                #sleeptime = 0.00001
+                #prev_time, fps = self.getfps(prev_time)
+                #print('[VIDEOSOURCE] estimated video enqueue fps :{0}'.format(cumlative_fps))
                 
-                time.sleep(sleeptime)
-                framecnt = 0
-                start_time=0
+                # enqueue here
+                self.frameq.put(frame) # keep chuggggggging 
+                if(framecnt % input_fps ==0 ): #10fps
+                    wait_time = time.time()
+                    sleeptime = 1-(wait_time - start_time)
+                    #sleeptime = 0.00001
+                
+                    time.sleep(sleeptime)
+                    framecnt = 0
+                    start_time=0
 
-            framecnt += 1
-            inputcounter +=1
-            frame_end_time = time.time()
-            cumlative_fps  = inputcounter / (frame_end_time - frame_start_time)
+                framecnt += 1
+                inputcounter +=1
+                frame_end_time = time.time()
+                cumlative_fps  = inputcounter / (frame_end_time - frame_start_time)
+        else:
+            while True:
+               if(framecnt %input_fps == 0):
+                    start_time = time.time()
+                if frame is None:
+                    print('no more frames from the src..! quitting :D')
+                    sys.exit(0)
+                    break
+                if(self.width == None and self.height == None):
+                    self.width = frame.shape[1]
+                    self.height = frame.shape[0]
+                frame = cv2.resize(frame, (self.width, self.height))
+
+                #prev_time, fps = self.getfps(prev_time)
+                #print('[VIDEOSOURCE] estimated video enqueue fps :{0}'.format(cumlative_fps))
+                
+                # enqueue here
+                self.frameq.put(frame) # keep chuggggggging 
+                if(framecnt % input_fps ==0 ): #10fps
+                    wait_time = time.time()
+                    sleeptime = 1-(wait_time - start_time)
+                    #sleeptime = 0.00001
+                
+                    time.sleep(sleeptime)
+                    framecnt = 0
+                    start_time=0
+
+                framecnt += 1
+                inputcounter +=1
+                frame_end_time = time.time()
+                cumlative_fps  = inputcounter / (frame_end_time - frame_start_time)
+
 
 
     
