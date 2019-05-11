@@ -62,6 +62,7 @@ class Hypervisor(object):
         self.msg_bus.register_callback('device_list', self.handle_message)
         self.msg_bus.register_callback('handoff_request', self.handle_message)
         self.msg_bus.register_callback('control_op', self.handle_message)
+        self.msg_bus.register_callback('neighbor_op', self.handle_message)
         signal.signal(signal.SIGINT, self.signal_handler)
 
 
@@ -146,6 +147,7 @@ class Hypervisor(object):
             # add the image to trackable list... but we don't know the coordinates...!
         elif msg_dict['type'] == 'control_op':
             self.cop = msg_dict['onoff']
+
         elif msg_dict['type'] == 'neighbor_op':
             print("received: ", msg_dict['type'])
             self.neighbor_op = msg_dict['neighbor_op']
@@ -193,7 +195,7 @@ class Hypervisor(object):
             print("connecting to left cam")
             join_msg = dict(type='join', device_name=device_name, ip=self.device_ip_ext, port=self.device_port_ext,
                         location='N1_823_1', capability='no')
-            #self.msg_bus.send_message_json(self.left_device_ip_int, self.left_device_port, join_msg)
+            self.msg_bus.send_message_json(self.left_device_ip_int, self.left_device_port, join_msg)
             #print("connecting to right cam")
             #join_msg = dict(type='join', device_name=device_name, ip=self.device_ip_ext, port=self.device_port_ext,
             #            location='N1_823_1', capability='no')
@@ -203,7 +205,7 @@ class Hypervisor(object):
             print("connecting to center cam")
             join_msg = dict(type='join', device_name=device_name, ip=self.device_ip_ext, port=self.device_port_ext,
                         location='N1_823_1', capability='no')
-            #self.msg_bus.send_message_json(self.center_device_ip_int, self.center_device_port, join_msg)
+            self.msg_bus.send_message_json(self.center_device_ip_int, self.center_device_port, join_msg)
             
             #print("connecting to right cam")
             #join_msg = dict(type='join', device_name=device_name, ip=self.device_ip_ext, port=self.device_port_ext,
@@ -761,7 +763,7 @@ class Hypervisor(object):
                 cumlative_fps  = inputcounter / (frame_end_time - frame_start_time)
         else:
             while True:
-               if(framecnt %input_fps == 0):
+                if(framecnt %input_fps == 0):
                     start_time = time.time()
                 if frame is None:
                     print('no more frames from the src..! quitting :D')
@@ -829,7 +831,7 @@ class Hypervisor(object):
                 img = self.pre_process_image(frame)
                 rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                 #prev_time, fps = self.getfps(prev_time)
-                print("estimated tracking fps {0}".format(cumlative_fps))
+                print("[p] estimated tracking fps {0}".format(cumlative_fps))
                 positions = []
                 cpu = psutil.cpu_percent()
                 ram = psutil.virtual_memory()
@@ -882,14 +884,14 @@ class Hypervisor(object):
 
                 for (objectID, centroid) in objects.items():
                     to = self.trobs.get(objectID, None)
-
+                    print("1")
                     if (self.ct.checknumberofexisting()):
                         self.sumframebytes+=sys.getsizeof(frame)
 
                     if to == None:
                         to = trackableobject.TrackableObject(objectID, centroid)
                     else:
-
+                        print("2")
                         cv2.circle(frame, (centroid[0],centroid[1]),4,(0,255,0),-1)
                         y = [c[1] for c in to.centroids]
                         x = [c[0] for c in to.centroids]
@@ -898,10 +900,11 @@ class Hypervisor(object):
                         to.centroids.append(centroid)
                     
                         if not to.counted:
-                            
+                            print("3")
                             if (self.trackingscheme == "dr"):
                                 prex, prey = self.ct.predict(objectID, self.futuresteps)
                                 if(self.checkboundary_dir(prex, prey)=="R"):
+                                    print("4")
                                     print("we need to send msg to right")
                                     p = self.ct.get_object_rect_by_id(objectID) # x1, y1, x2, y2
                                     if (p[0]<=0 or p[1] <= 0 or p[2] <= 0 or p[3] <=0):

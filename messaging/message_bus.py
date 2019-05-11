@@ -116,6 +116,9 @@ class MessageBus(object):
                 elif msg_dict['type'] == 'handoff_request':
                     for handler in self.handlers.get('handoff_request', []):
                         handler(msg_dict)
+                elif msg_dict['type'] == 'neighbor_op':
+                    for handler in self.handlers.get('neighbor_op', []):
+                        handler(msg_dict)
                 elif msg_dict['type'] == 'control_op':
                     for handler in self.handlers.get('control_op', []):
                         handler(msg_dict)
