@@ -17,6 +17,8 @@ import queue
 import threading
 import time
 import torch
+import requests
+import json
 from torch.autograd import Variable
 from darknet import Darknet
 import pickle as pkl
@@ -44,6 +46,7 @@ class Controller(object):
         self.msg_bus.register_callback('control_op', self.handle_message)
         self.model = None
         signal.signal(signal.SIGINT, self.signal_handler)
+        signal.signal(signal.SIGTERM, self.signal_handler)
         self.logfile1 = None
         self.logfile2 = None
         self.logfile3 = None
@@ -51,6 +54,8 @@ class Controller(object):
         self.dalgorithm = "yolo"
         self.starttime = 0.0
         self.endtime = 0.0
+        self.width = 0
+        self.height = 0
         self.cpu = None
         self.ram = None
         self.label_path = None
@@ -81,9 +86,10 @@ class Controller(object):
         self.framecntq ={}
         self.dev_nameq ={}
         self.typeq = {}
+        self.coorq = {} 
 
         # tracking related 
-        self.ct = centroidtracker.CentroidTracker(50, maxDistance =50, queuesize = 10)
+        self.ct = centroidtracker.CentroidTracker(20, maxDistance =50, queuesize = 10)
         self.frame_skips = None # how many frames should be skipped before detection 
         self.trackers = []
         self.trobs = {}
@@ -99,7 +105,8 @@ class Controller(object):
 
     def gettimegap(self):
         starttime = datetime.now()
-        ntp_response = ntplib.NTPClient().request('2.kr.pool.ntp.org', version=3)
+#ntp_response = ntplib.NTPClient().request('2.kr.pool.ntp.org', version=3)
+        ntp_response = ntplib.NTPClient().request('143.248.55.71', version=3)
         returntime = datetime.now()
         self.timegap = datetime.fromtimestamp(ntp_response.tx_time) - starttime - (returntime - starttime) / 2
 
@@ -110,10 +117,12 @@ class Controller(object):
         self.logfile2.close()
         self.logfile3.close()
         self.logfile4.close()
+        self.slacknoti("spencer end using")
         print('closing logfile')
         torch.cuda.empty_cache()
         print('clearing cuda cache')
-        sys.exit(0)
+        #sys.exit(1)
+        os._exit(1)
 
     def draw_bbox(self, imgs, bbox, colors, classes):
         img = imgs[int(bbox[0])]
@@ -135,8 +144,8 @@ class Controller(object):
             self.process_raw_tracking(msg_dict)
         elif msg_dict['type'] == 'img_e1-2': # image raw data
             self.process_raw_tracking(msg_dict)
-        elif msg_dict['type'] == 'img_e2': # image raw data
-            self.process_raw_tracking(msg_dict)
+        elif msg_dict['type'] == 'img_e2': # image & coordinates
+            self.process_e2(msg_dict)
         elif msg_dict['type'] == 'img_p': # 
             self.process_raw_tracking(msg_dict)
         elif msg_dict['type'] == 'control_op':
@@ -156,8 +165,54 @@ class Controller(object):
             node_info = node_table.table[node_name]
             self.msg_bus.send_message_json(node_info.ip, int(node_info.port), device_list_json)
 
+
     @threaded
-    def process_raw_tracking(self, msg_dict):
+    def process_e2(self, msg_dict): # this goes with e2
+#        print(' - tracking image')
+        decstr = base64.b64decode(msg_dict['img_string'])
+        imgarray = np.fromstring(decstr, dtype=np.uint8)
+        decimg = cv2.imdecode(imgarray, cv2.IMREAD_COLOR)
+        localNow = datetime.utcnow()+self.timegap
+
+        # use this for transmission time btw device n edge server
+        curTime = datetime.utcnow().strftime('%H:%M:%S.%f') # string forma
+        curdatetime = datetime.strptime(curTime, '%H:%M:%S.%f')
+        sentdatetime = datetime.strptime(msg_dict['time'], '%H:%M:%S.%f')
+        simplecurtime = time.time()
+
+        if(msg_dict['device_name'] in self.dd_cam.keys()): # depending on the sent device, add them to the corresonding queue.
+            self.typeq[msg_dict['device_name']].put(str(msg_dict['type']))
+            self.imgq[msg_dict['device_name']].put(decimg)
+            self.timerq[msg_dict['device_name']].put(simplecurtime)
+            self.framecntq[msg_dict['device_name']].put(str(msg_dict['framecnt']))
+            self.dev_nameq[msg_dict['device_name']].put(str(msg_dict['device_name']))
+            self.coorq[msg_dict['device_name']].put(msg_dict['coordinates'])
+            self.dd_cam[msg_dict['device_name']] = 'notempty'
+        else:
+            self.typeq[msg_dict['device_name']] = queue.Queue(2000)
+            self.imgq[msg_dict['device_name']] = queue.Queue(2000)
+            self.timerq[msg_dict['device_name']] = queue.Queue(2000)
+            self.framecntq[msg_dict['device_name']] = queue.Queue(2000)
+            self.dev_nameq[msg_dict['device_name']] = queue.Queue(2000)
+            self.coorq[msg_dict['device_name']] = queue.Queue(2000)
+
+            self.typeq[msg_dict['device_name']].put(str(msg_dict['type']))
+            self.imgq[msg_dict['device_name']].put(decimg)
+            self.timerq[msg_dict['device_name']].put(simplecurtime)
+            self.framecntq[msg_dict['device_name']].put(str(msg_dict['framecnt']))
+            self.dev_nameq[msg_dict['device_name']].put(str(msg_dict['device_name']))
+            self.coorq[msg_dict['device_name']].put(msg_dict['coordinates'])
+
+            self.d_list.append(msg_dict['device_name'])
+            self.dd_cam[msg_dict['device_name']] = 'notempty'
+            self.numberofcameras+=1
+        self.d_cam = {k : v for k, v in self.dd_cam.items()}
+        self.totalrecbytes += sys.getsizeof(decimg)
+        self.logfile4.write(str(self.totalrecbytes / 1000000) + "\n")
+
+
+    @threaded
+    def process_raw_tracking(self, msg_dict): # this goes with e1-1, e1-2
 #        print(' - tracking image')
         decstr = base64.b64decode(msg_dict['img_string'])
         imgarray = np.fromstring(decstr, dtype=np.uint8)
@@ -296,6 +351,78 @@ class Controller(object):
         else:
             return False
 
+# e1 - GROUNDTRUTH
+
+    @threaded
+    def e1_groundtruth(self): # this one recieve all frames and detect one by one. 
+        framecnt = 0
+        frame_start_time = time.time()
+        self.encode_param = [int(cv2.IMWRITE_JPEG_QUALITY),99]
+        while (True):
+            if(self.isitempty()): # yes its empty...
+                print("[q all empty] waiting...")
+                time.sleep(0.5)
+
+            else: # not all q are empty... loop all queues until the target is found. 
+                for i in self.d_cam.keys():
+                    if(self.imgq[i].empty()): # if i'th queue is empty, skip this queue stak. check other camera queue stack.
+                        self.d_cam[i]='empty'
+                        print("[finding..] "+ i +" q is empty, moving on to next q") 
+                        time.sleep(0.001) 
+                        continue
+#                        pass
+                    else: 
+                        print("[ verifying...] ", i, self.dev_nameq[i].qsize(), self.framecntq[i].qsize(), self.imgq[i].qsize(), self.typeq[i].qsize(), self.timerq[i].qsize())
+                        s = time.time()
+                        self.d_cam[i] = 'notempty'
+                        cdevice_name = self.dev_nameq[i].get()
+                        ccounter = int(self.framecntq[i].get())
+                        cframe = self.imgq[i].get()
+                        ctype = self.typeq[i].get()
+                        ctimer = self.timerq[i].get()
+
+                        crgb = cv2.cvtColor(cframe, cv2.COLOR_BGR2RGB)
+
+                        if self.cuda:
+                            width = cframe.shape[0]
+                            height = cframe.shape[1]
+
+                            frame_tensor = cv_image2tensor(cframe, self.input_size).unsqueeze(0)
+                            frame_tensor = Variable(frame_tensor)
+                    
+                            frame_tensor = frame_tensor.cuda()
+
+                            detections = self.model(frame_tensor, self.cuda).cpu()
+                            detections = process_result(detections, self.confidence, self.nms_thresh)
+                            if len(detections) != 0:
+                                detections = transform_result(detections, [cframe], self.input_size)
+                                #for detection in detections:
+                                for idx, detection in enumerate(detections):
+                                    if (self.classes[int(detection[-1])]=="person"):
+                                        if float(detection[6]) > self.confidence:
+                                            print("-- [target found ] person on device: ", cdevice_name, ccounter) # 
+                                            found = 1
+
+                                        else:
+                                            found = 0
+                                    else:
+                                        found = 0
+                            else:
+                                found=0
+                        # log here.
+                        time_now = time.time()
+                        inf_time = time_now - s
+                        if cdevice_name == "camera01": # if its from cam1
+                            self.logfile1.write(str(ccounter) + "\t" + str(time_now - ctimer) + "\t" + str(found) + "\t" + str(inf_time)+"\n")
+                        elif cdevice_name == "camera02": # if its from cam2
+                            self.logfile2.write(str(ccounter) + "\t" + str(time_now - ctimer) + "\t" + str(found) + "\t" + str(inf_time)+"\n")
+#                        else : # other (say cam 3)
+#                            self.logfile2.write(str(ccounter) + "\t" + str(time_now - ctimer) + "\t" + str(found) + "\t" + str(inf_time)+"\n")
+                                             
+
+
+### e1-1
+
     @threaded
     def e1_1_proc_dequeue(self):
         framecnt = 0
@@ -304,9 +431,10 @@ class Controller(object):
         frame_start_time = time.time()
         self.encode_param = [int(cv2.IMWRITE_JPEG_QUALITY),99]
         while (True):
-            print(self.isitempty())    
             if(self.isitempty()): # yes its empty...
                 print('nothing in all q, sleeping..')
+                if self.cur_tar_dev == "wow":
+                    self.cur_tar_dev = None
                 time.sleep(0.5)
                 endcnt += 1
 
@@ -317,7 +445,8 @@ class Controller(object):
                             self.d_cam[i]='empty'
                             print("[finding..] "+ i +" q is empty, moving on to next q") 
                             time.sleep(0.001) 
-                            continue
+#                            continue
+                            pass
                         else:
                             print("[finding..] ", i, self.dev_nameq[i].qsize(), self.framecntq[i].qsize(), self.imgq[i].qsize(), self.typeq[i].qsize(), self.timerq[i].qsize())
                             # it does not skip, u just didn't catch if its not human or low threshold... dumb f... 
@@ -390,7 +519,7 @@ class Controller(object):
 
                 for i in self.d_cam.keys(): # target found phase.
 
-                    if self.isitempty():
+                    if self.isitempty(): # to check if both are empty.
                         print('[target found phase..] break from searching phase, all q empty, go back to waiting phase')
                         self.d_cam[i] = 'empty' 
                         break
@@ -425,12 +554,12 @@ class Controller(object):
                                     detections = self.model(frame_tensor, self.cuda).cpu()
                                     detections = process_result(detections, self.confidence, self.nms_thresh)
                                     if len(detections) != 0:
-                                        detections = transform_result(detections, [cframe], self.input_size)
+                                        detections = transform_result(detections, [fframe], self.input_size)
                                     #for detection in detections:
                                         for idx, detection in enumerate(detections):
                                             if (self.classes[int(detection[-1])]=="person"):
                                                 if float(detection[6]) > self.confidence:
-                                                    print("-- [target found phase ] person on device: ", fdevice_name) # well u r supposed to match the person detect with the template, but for the time being we assume its a person. # sangwoo is on it thou
+                                                    print("-- [target found phase ] person on device: ", fdevice_name) # sangwoo is done with it 
                                                     pre_score = (float(detection[6])) # prediction score
                                                     pre_class = (self.classes[int(detection[-1])]) # prediction class
                                                     pre_x1 = (int(detection[1])) # x1
@@ -490,9 +619,10 @@ class Controller(object):
 
                             print("dropping frames from: ", fdevice_name)
                             pass
+### e1-2
 
     @threaded
-    def e1_2_proc_dequeue(self):
+    def e1_2_proc_dequeue(self): # server picks the camera based on tracking target.
         framecnt = 0
         emptycount = 0
         endcnt =0 # if idle for 2 minutes, save and quit.
@@ -500,59 +630,36 @@ class Controller(object):
         self.encode_param = [int(cv2.IMWRITE_JPEG_QUALITY),99]
         node_table = self.msg_bus.node_table
         while (True):
-            
-            for i in self.d_cam.keys():
-                print(i+" "+ self.d_cam[i])
-                if (self.imgq[i].empty()):
-                    self.d_cam[i] = 'empty'
-            # check if all d_cams are empty
-            for i in self.d_cam.keys():
-                if self.d_cam[i] == 'empty':
-                    emptycount += 1
-
-            if emptycount == self.numberofcameras: # all q are empty.. loop around until one is filled up.
-                if(endcnt >= 600):
-                    self.logfile1.close()
-                    self.logfile2.close()
-                    print("byebye")
-                    sys.exit(0)
-                    emptycount=0
-                    break
-                else:
-                    print("[q all empty] waiting..")
-                    # send message to all cam devs to quit or start sending 
-                    for node_name in node_table.table.keys():
-                        node_info = node_table.table[node_name]
-                        op_json = {"type": "control_op", "onoff": "True"}
-                        print("[q all empty] telling "+node_info.device_name+" to start sending")
-                        self.msg_bus.send_message_json(node_info.ip, int(node_info.port), op_json) 
-
-                    time.sleep(0.5)
-                    endcnt += 1
-                    emptycount =0
+#print(self.isitempty())    
+            if(self.isitempty()): # yes its empty...
+                print("[q all empty] waiting...")
+                if self.cur_tar_dev == "wow": # to get out of finding phase.
+                    self.cur_tar_dev = None
+                # print('nothing in all q, sleeping..')
+                time.sleep(0.5)
 
             else: # not all q are empty... loop all queues until the target is found. 
                 while(self.cur_tar_dev==None):
                     for i in self.d_cam.keys():
                         if(self.imgq[i].empty()): # if i'th queue is empty, skip this queue stak. check other camera queue stack.
                             self.d_cam[i]='empty'
-                            emptycount+=1
                             print("[finding..] "+ i +" q is empty, moving on to next q") 
-                            # continue
+                            time.sleep(0.001) 
+#                            continue
                             pass
                         else:
-                            print(self.dev_nameq[i].qsize(), self.framecntq[i].qsize(), self.imgq[i].qsize(), self.typeq[i].qsize(), self.timerq[i].qsize())
-                            s = time.time()
-                            emptycount =0
+                            print("[finding..] ", i, self.dev_nameq[i].qsize(), self.framecntq[i].qsize(), self.imgq[i].qsize(), self.typeq[i].qsize(), self.timerq[i].qsize())
+
+                            self.d_cam[i] = 'notempty'
                             cdevice_name = self.dev_nameq[i].get()
                             ccounter = int(self.framecntq[i].get())
                             cframe = self.imgq[i].get()
                             ctype = self.typeq[i].get()
                             ctimer = self.timerq[i].get()
+                            s = time.time()
                             if self.cuda:
-
-                                width = cframe.shape[0]
-                                height = cframe.shape[1]
+                                self.width = cframe.shape[0]
+                                self.height = cframe.shape[1]
                                 crgb = cv2.cvtColor(cframe, cv2.COLOR_BGR2RGB)
     
                                 frame_tensor = cv_image2tensor(cframe, self.input_size).unsqueeze(0)
@@ -563,24 +670,13 @@ class Controller(object):
                                 detections = self.model(frame_tensor, self.cuda).cpu()
                                 detections = process_result(detections, self.confidence, self.nms_thresh)
                             
-#print(self.dev_nameq[i].qsize(), self.framecntq[i].qsize(), self.imgq[i].qsize(), self.typeq[i].qsize(), self.timerq[i].qsize(), len(detections))
                                 if len(detections) != 0:
                                     detections = transform_result(detections, [cframe], self.input_size)
                                     #for detection in detections:
                                     for idx, detection in enumerate(detections):
                                         if (self.classes[int(detection[-1])]=="person"):
                                             if float(detection[6]) > self.confidence:
-                                                print("[finding..] found person on device: ",ccounter, cdevice_name) # well u r supposed to match the person detect with the template, but for the time being we assume its a person. # sangwoo is on it thou
-                                                # send message to all cam devs to quit or start sending 
-                                                for node_name in node_table.table.keys():
-                                                    node_info = node_table.table[node_name]
-                                                    if node_info.device_name == cdevice_name:
-                                                        op_json = {"type": "control_op", "onoff": "True"}
-                                                        print("[w] telling "+cdevice_name+" to start sending")
-                                                    else: # if its the target is not there, signal stop  
-                                                        op_json = {"type": "control_op", "onoff": "False"}
-                                                        print("[w] telling "+cdevice_name+" to stop sending")
-                                                    self.msg_bus.send_message_json(node_info.ip, int(node_info.port), op_json) 
+                                                print("-[searching phase] FOUND person on device: ",ccounter, cdevice_name) # well u r supposed to match the person detect with the template, but for the time being we assume its a person. # sangwoo is on it thou
                                                 pre_score = (float(detection[6])) # prediction score
                                                 pre_class = (self.classes[int(detection[-1])]) # prediction class
                                                 pre_x1 = (int(detection[1])) # x1
@@ -594,6 +690,20 @@ class Controller(object):
                                                 tracker.start_track(crgb, rect)
                                                 self.trackers.append(tracker)
                                                 self.cur_tar_dev = cdevice_name
+                                                # need to be telling other devices to stop sending. 
+                                                # should we clear other queue?
+                                                # exactly cam1, cam2
+                                                for node_name in node_table.table.keys(): 
+                                                    if cdevice_name == "camera01": #
+                                                        node_info = node_table.table["camera02"]
+                                                        op_json = {"type": "control_op", "onoff": "False"}
+                                                        print("[FOUND!] telling "+node_info.device_name+" to STOP sending")
+                                                        self.msg_bus.send_message_json(node_info.ip, int(node_info.port), op_json) 
+                                                    elif cdevice_name == "camera02": #
+                                                        node_info = node_table.table["camera01"]
+                                                        op_json = {"type": "control_op", "onoff": "False"}
+                                                        print("[FOUND!] telling "+node_info.device_name+" to STOP sending")
+                                                        self.msg_bus.send_message_json(node_info.ip, int(node_info.port), op_json) 
                                                 break
                                             else:
                                                 print("[finding..] low confidence person", ccounter, cdevice_name)
@@ -602,26 +712,38 @@ class Controller(object):
 
                                 else:
                                     print("[finding..] nothing detected: ", ccounter, cdevice_name)
-                                    print(self.imgq[i].empty()) # true if empty
-                            e = time.time()
-                            print ("time for inf: ", e - s)
-                            print ("decay time: ", e - ctimer)
-                            print("log here")
-                             
+                            time_now = time.time()
+                            inf_time = time_now - s
+                            if cdevice_name == "camera01":
+                                if self.cur_tar_dev == "camera01": # if this device found the target
+                                    self.logfile1.write(str(ccounter) + "\t" + str(time_now - ctimer) + "\t" + "1" + "\t" + str(inf_time)+"\n")
+                                else:
+                                    self.logfile1.write(str(ccounter) + "\t" + str(time_now - ctimer) + "\t" + "0" + "\t" + str(inf_time)+"\n")
+                            elif cdevice_name == "camera02":
+                                if self.cur_tar_dev == "camera02":
+                                    self.logfile2.write(str(ccounter) + "\t" + str(time_now - ctimer) + "\t" + "1" + "\t" + str(inf_time)+"\n")
+                                else:
+                                    self.logfile2.write(str(ccounter) + "\t" + str(time_now - ctimer) + "\t" + "0" + "\t" + str(inf_time)+"\n")
 
-                    if emptycount == self.numberofcameras:
-                        print('[finding..] still at search phase, all q empty, go back to waiting phase')
+                        if self.isitempty(): # won't fall into unless there is a pass code above...
+                            print('[finding..] still at search phase, all q empty, go back to waiting phase')
+                            self.cur_tar_dev = 'wow' # a random txt to escape this loop
+                        
+                            break
+
+                for i in self.d_cam.keys(): # target found phase.
+
+                    if self.isitempty(): # to check if both are empty.
+                        print('[target found phase..] break from searching phase, all q empty, go back to waiting phase')
+                        self.d_cam[i] = 'empty' 
                         break
-
-                for i in self.d_cam.keys():
-
-                    if emptycount == self.numberofcameras:
-                        print('[found..] break from searching phase, all q empty, go back to waiting phase')
-                        emptycount =0
-                        self.cur_tar_dev=None
-                        break
+                    if(self.imgq[i].empty()): # if i'th queue is empty, skip this queue stak. check other camera queue stack.
+                        self.d_cam[i]='empty'
+                        print("[target found phase....] "+ i +" q is empty, moving on to next q") 
+                        continue
                     else: # there is smth here 
-                        emptycount =0
+                        print("[target_found_phase..] ", i, self.dev_nameq[i].qsize(), self.framecntq[i].qsize(), self.imgq[i].qsize(), self.typeq[i].qsize(), self.timerq[i].qsize())
+                        self.d_cam[i] = 'notempty' 
                         ftype = self.typeq[i].get()
                         fdevice_name = self.dev_nameq[i].get()
                         fcounter = self.framecntq[i].get()
@@ -629,12 +751,13 @@ class Controller(object):
                         fframe = self.imgq[i].get()
                         rgb = cv2.cvtColor(fframe, cv2.COLOR_BGR2RGB)
                         fpositions=[]
+                        fs = time.time()
                         if fdevice_name == self.cur_tar_dev:
                             if(int(fcounter) % self.frame_skips == 0):
                                 self.trackers=[]
                                 if self.cuda:
-                                    width = fframe.shape[0]
-                                    height = fframe.shape[1]
+                                    self.width = fframe.shape[0]
+                                    self.height = fframe.shape[1]
 
                                     frame_tensor = cv_image2tensor(fframe, self.input_size).unsqueeze(0)
                                     frame_tensor = Variable(frame_tensor)
@@ -650,7 +773,7 @@ class Controller(object):
                                         for idx, detection in enumerate(detections):
                                             if (self.classes[int(detection[-1])]=="person"):
                                                 if float(detection[6]) > self.confidence:
-                                                    print("[found..] person on device: ", cdevice_name) # well u r supposed to match the person detect with the template, but for the time being we assume its a person. # sangwoo is on it thou
+                                                    print("-- [target found phase ] person on device: ", fdevice_name) # sangwoo is done with it 
                                                     pre_score = (float(detection[6])) # prediction score
                                                     pre_class = (self.classes[int(detection[-1])]) # prediction class
                                                     pre_x1 = (int(detection[1])) # x1
@@ -663,7 +786,21 @@ class Controller(object):
                                                     rect = dlib.rectangle(pre_x1, pre_y1, pre_x2, pre_y2)
                                                     tracker.start_track(rgb, rect)
                                                     self.trackers.append(tracker)
-                                                    self.cur_tar_dev = cdevice_name
+                                                    self.cur_tar_dev = fdevice_name
+                                                    # for only cam1, cam2
+                                                    for node_name in node_table.table.keys(): 
+                                                        if fdevice_name == "camera01": #
+                                                            node_info = node_table.table["camera02"]
+                                                            op_json = {"type": "control_op", "onoff": "False"}
+                                                            print("[--tracking phase: FOUND!] telling "+node_info.device_name+" to STOP sending")
+                                                            self.msg_bus.send_message_json(node_info.ip, int(node_info.port), op_json) 
+                                                        elif cdevice_name == "camera02": #
+                                                            node_info = node_table.table["camera01"]
+                                                            op_json = {"type": "control_op", "onoff": "False"}
+                                                            print("[--tracking phase: FOUND!] telling "+node_info.device_name+" to STOP sending")
+                                                            self.msg_bus.send_message_json(node_info.ip, int(node_info.port), op_json) 
+
+
                             else:
                                 for tracker in self.trackers: 
                                     tracker.update(rgb)
@@ -676,31 +813,397 @@ class Controller(object):
 
                             objects = self.ct.update(fpositions)
                             # track well and if u miss out, go back to search phase
-                            if self.ct.checknumberofexisting():
-                                print("[found..] donno but still here: ", fdevice_name)
-                                self.sumframebytes+=sys.getsizeof(fframe)
-                            else: # break and find it now 
+                            self.exist[i] = self.ct.checknumberofexisting()
+                            print(fdevice_name, self.exist[i])
+#                            if self.ct.checknumberofexisting():
+                            # i think we need to do tracking here...
+
+                            for (objectID, centroid) in objects.items():
+                                to = self.trobs.get(objectID, None)
+
+                                if to == None:
+                                    to = trackableobject.TrackableObject(objectID, centroid)
+                                else:
+
+                                    cv2.circle(fframe, (centroid[0],centroid[1]),4,(255,255,255),-1)
+                                    y = [c[1] for c in to.centroids]
+                                    x = [c[0] for c in to.centroids]
+                                    dirY = centroid[1] - np.mean(y)
+                                    dirX = centroid[0] - np.mean(x)
+                                    to.centroids.append(centroid)
+                    
+                                    if not to.counted:
+                                        if (self.ts == "dr"):
+                                            prex, prey = self.ct.predict(objectID, 30)
+                                            print("predicted obj movement..x,y: ", prex, prey)
+                                            if(self.checkboundary_dir(prex, prey)=="R"):
+                                                print("we need to send msg to right")
+                                                p = self.ct.get_object_rect_by_id(objectID) # x1, y1, x2, y2
+                                                print("whats pppppppppppppp",p) 
+                                                if (p[0]<=0 or p[1] <= 0 or p[2] <= 0 or p[3] <=0):
+                                                    pass
+                                                else:
+                                                    for node_name in node_table.table.keys(): 
+                                                        if fdevice_name == "camera01": #
+                                                            node_info = node_table.table["camera02"]
+                                                            op_json = {"type": "control_op", "onoff": "True"}
+                                                            print("[--tracking phase: telling "+node_info.device_name+" to start sending")
+                                                            self.msg_bus.send_message_json(node_info.ip, int(node_info.port), op_json) 
+                                            
+                                            elif(self.checkboundary_dir(prex, prey)=="L"):
+                                                print("we need to send msg to left")
+                                                p = self.ct.get_object_rect_by_id(objectID) # x1, y1, x2, y2
+                                                if (p[0]<=0 or p[1] <= 0 or p[2] <= 0 or p[3] <=0):
+                                                    pass
+                                                else:
+                                                    for node_name in node_table.table.keys(): 
+                                                        if fdevice_name == "camera02": #
+                                                            node_info = node_table.table["camera01"]
+                                                            op_json = {"type": "control_op", "onoff": "True"}
+                                                            print("[--tracking phase: telling "+node_info.device_name+" to start sending")
+                                                            self.msg_bus.send_message_json(node_info.ip, int(node_info.port), op_json) 
+
+                                            elif(self.checkboundary_dir(prex, prey)=="D"):
+                                                print("we need to send msg to down")
+                                            elif(self.checkboundary_dir(prex, prey)=="U"):
+                                                print("we need to send msg to up")
+
+                                        elif (self.ts == "bc"):
+                                            self.checkboundary(centroid, objectID)
+
+                                            self.checkdir(dirX, dirY, objectID)
+
+                                            self.where[objectID] = self.checkhandoff(objectID)
+                                            # send hand off msg here
+                                            if(self.where[objectID] == "RIGHT"):
+                                                print("we need to send msg to right")
+                                                for node_name in node_table.table.keys(): 
+                                                    if fdevice_name == "camera01": #
+                                                        node_info = node_table.table["camera02"]
+                                                        op_json = {"type": "control_op", "onoff": "True"}
+                                                        print("[--tracking phase: telling "+node_info.device_name+" to start sending")
+                                                        self.msg_bus.send_message_json(node_info.ip, int(node_info.port), op_json) 
+
+                            
+                                            elif (self.where[objectID]== "LEFT"):
+                                                print("we need to send msg to left")
+                                                for node_name in node_table.table.keys(): 
+                                                    if fdevice_name == "camera02": #
+                                                        node_info = node_table.table["camera01"]
+                                                        op_json = {"type": "control_op", "onoff": "True"}
+                                                        print("[--tracking phase: telling "+node_info.device_name+" to start sending")
+                                                        self.msg_bus.send_message_json(node_info.ip, int(node_info.port), op_json) 
+                                            elif (self.where[objectID]== "TOP"):
+                                                print("we need to send msg to top")
+                                            elif (self.where[objectID]== "BOTTOM"):
+                                                print("we need to send msg to bottom")
+                                            else:
+                                                print("nothing is happinging")
+
+                                self.trobs[objectID] = to
+                                text = "ID {}".format(objectID) +" "+ str(centroid[0]) +" "+ str(centroid[1])
+#cv2.putText(frame, text, (centroid[0]-10, centroid[1]-10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255,255,255),2) # ID of the object 
+                                
+                            
+                            time_now = time.time()
+                            inf_time = time_now - fs
+                            if self.exist[i] and self.cur_tar_dev:
+                                
+                                print("[target tracking phase ] donno but still here: ", fdevice_name, fcounter, self.exist[i])
+                                if fdevice_name == 'camera01':
+                                    self.logfile1.write(str(fcounter) + "\t" + str(time_now - ftimer) + "\t" + "1" + "\t" + str(inf_time)+"\n")
+                                else:
+                                    self.logfile2.write(str(fcounter) + "\t" + str(time_now - ftimer) + "\t" + "1" + "\t" + str(inf_time)+"\n")
+                            else: # break and find it now , but what if not lost ?
+                                print("target lost-------------- NO need to send _start all_ code here. It will when it loops back up.")
+                                if fdevice_name == 'camera01':
+                                    self.logfile1.write(str(fcounter) + "\t" + str(time_now - ftimer) + "\t" + "0" + "\t" + str(inf_time)+"\n")
+                                else:
+                                    self.logfile2.write(str(fcounter) + "\t" + str(time_now - ftimer) + "\t" + "0" + "\t" + str(inf_time)+"\n")
                                 self.cur_tar_dev = None
+                                for node_name in node_table.table.keys(): #sending start code
+                                    node_info = node_table.table[node_name]
+                                    op_json = {"type": "control_op", "onoff": "True"}
+                                    print("[TARGET LOST!] telling "+node_info.device_name+" to start sending")
+                                    self.msg_bus.send_message_json(node_info.ip, int(node_info.port), op_json) 
                                 break
-                        else:
-                            continue # drop other queues
+                            
+                        else: # not cur_tar_dev, drop frames but log
+                            time_now = time.time()
+                            inf_time = 0
+                            if fdevice_name == "camera01":
+                                if self.cur_tar_dev == "camera02":
+                                    self.logfile1.write(str(fcounter) + "\t" + str(time_now - ftimer) + "\t" + "0" + "\t" + str(inf_time)+"\n")
+                            elif fdevice_name == "camera02":
+                                if self.cur_tar_dev == "camera01":
+                                    self.logfile2.write(str(fcounter) + "\t" + str(time_now - ftimer) + "\t" + "0" + "\t" + str(inf_time)+"\n")
+
+                            print("dropping frames from: ", fdevice_name)
+                            pass
+
+### e2: 
+
+    @threaded
+    def e2_proc_verify(self): #just verify frame don't do anything else. 
+        framecnt = 0
+        endcnt =0 # if idle for 2 minutes, save and quit.
+        frame_start_time = time.time()
+        self.encode_param = [int(cv2.IMWRITE_JPEG_QUALITY),99]
+        while (True):
+            if(self.isitempty()): # yes its empty...
+                print("[q all empty] waiting...")
+                time.sleep(0.5)
+
+            else: # not all q are empty... loop all queues until the target is found. 
+                for i in self.d_cam.keys():
+                    if(self.imgq[i].empty()): # if i'th queue is empty, skip this queue stak. check other camera queue stack.
+                        self.d_cam[i]='empty'
+                        print("[finding..] "+ i +" q is empty, moving on to next q") 
+                        time.sleep(0.001) 
+                        continue
+#                        pass
+                    else: 
+                        print("[ verifying...] ", i, self.dev_nameq[i].qsize(), self.framecntq[i].qsize(), self.imgq[i].qsize(), self.typeq[i].qsize(), self.timerq[i].qsize())
+                        s = time.time()
+                        self.d_cam[i] = 'notempty'
+                        cdevice_name = self.dev_nameq[i].get()
+                        ccounter = int(self.framecntq[i].get())
+                        cframe = self.imgq[i].get()
+                        ctype = self.typeq[i].get()
+                        ctimer = self.timerq[i].get()
+                        ccoord = self.coorq[i].get()
+                        crgb = cv2.cvtColor(cframe, cv2.COLOR_BGR2RGB)
+
+                        if self.cuda:
+                            width = cframe.shape[0]
+                            height = cframe.shape[1]
+
+                            frame_tensor = cv_image2tensor(cframe, self.input_size).unsqueeze(0)
+                            frame_tensor = Variable(frame_tensor)
+                    
+                            frame_tensor = frame_tensor.cuda()
+
+                            detections = self.model(frame_tensor, self.cuda).cpu()
+                            detections = process_result(detections, self.confidence, self.nms_thresh)
+                            if len(detections) != 0:
+                                detections = transform_result(detections, [cframe], self.input_size)
+                                #for detection in detections:
+                                for idx, detection in enumerate(detections):
+                                    if (self.classes[int(detection[-1])]=="person"):
+                                        if float(detection[6]) > self.confidence:
+                                            print("-- [target found phase ] person on device: ", cdevice_name) # 
+                                            found = 1
+
+                                        else:
+                                            found = 0
+                                    else:
+                                        found = 0
+                            else:
+                                found=0
+                        # log here.
                         time_now = time.time()
                         inf_time = time_now - s
-                        if cdevice_name == "camera01":
-                            if self.cur_tar_dev != None:
-                                self.logfile1.write(str(fcounter) + "\t" + str(time_now - ftimer) + "\t" + "1" + "\t" + str(inf_time)+"\n")
-                            else:
-                                self.logfile1.write(str(fcounter) + "\t" + str(time_now - ftimer) + "\t" + "0" + "\t" + str(inf_time))+"\n"
-                        elif cdevice_name == "camera02":
-                            if self.cur_tar_dev != None:
-                                self.logfile2.write(str(fcounter) + "\t" + str(time_now - ftimer) + "\t" + "1" + "\t" + str(inf_time)+"\n")
-                            else:
-                                self.logfile2.write(str(fcounter) + "\t" + str(time_now - ftimer) + "\t" + "0" + "\t" + str(inf_time)+"\n")
+                        if cdevice_name == "camera01": # if its from cam1
+                            self.logfile1.write(str(ccounter) + "\t" + str(time_now - ctimer) + "\t" + str(found) + "\t" + str(inf_time)+"\n")
+                        else: # if its from cam2
+                            self.logfile2.write(str(ccounter) + "\t" + str(time_now - ctimer) + "\t" + str(found) + "\t" + str(inf_time)+"\n")
+                                             
 
 
+                            
+
+
+    @threaded
+    def e2_proc_dequeue(self): # in the edge server, we don't re-detect objects, we just track with given frame. 
+        framecnt = 0
+        initpacket = 0
+        endcnt =0 # if idle for 2 minutes, save and quit.
+        frame_start_time = time.time()
+        self.encode_param = [int(cv2.IMWRITE_JPEG_QUALITY),99]
+        while (True):
+            if(self.isitempty()): # yes its empty...
+                print("[q all empty] waiting...")
+                if self.cur_tar_dev == "wow": # to get out of finding phase.
+                    self.cur_tar_dev = None
+                if(initpacket):
+                    time.sleep(2)
+                    initpacket = False
+                time.sleep(0.5)
+
+            else: # not all q are empty... loop all queues until the target is found. 
+                while(self.cur_tar_dev==None):
+                    for i in self.d_cam.keys():
+                        if(self.imgq[i].empty()): # if i'th queue is empty, skip this queue stak. check other camera queue stack.
+                            self.d_cam[i]='empty'
+                            print("[finding..] "+ i +" q is empty, moving on to next q") 
+                            time.sleep(0.001) 
+#                            continue
+                            pass
+                        else:# just check if its the target or not
+                            print("[not empty] ", i, self.dev_nameq[i].qsize(), self.framecntq[i].qsize(), self.imgq[i].qsize(), self.typeq[i].qsize(), self.timerq[i].qsize())
+                            s = time.time()
+                            self.d_cam[i] = 'notempty'
+                            cdevice_name = self.dev_nameq[i].get()
+                            ccounter = int(self.framecntq[i].get())
+                            cframe = self.imgq[i].get()
+                            ctype = self.typeq[i].get()
+                            ctimer = self.timerq[i].get()
+                            ccoord = self.coorq[i].get()
+                            crgb = cv2.cvtColor(cframe, cv2.COLOR_BGR2RGB)
+                            pre_x1 = ccoord[0]
+                            pre_y1 = ccoord[1]
+                            pre_x2 = ccoord[2]
+                            pre_y2 = ccoord[3]
+                            print(pre_x1, pre_y1, pre_x2, pre_y2)
+
+                            tracker = dlib.correlation_tracker()
+                            rect = dlib.rectangle(pre_x1, pre_y1, pre_x2, pre_y2)
+                            tracker.start_track(crgb, rect)
+                            self.trackers.append(tracker)
+                            self.cur_tar_dev = cdevice_name
+                         
+                            time_now = time.time()
+                            inf_time = time_now - s
+                            if cdevice_name == "camera01":
+                                if self.cur_tar_dev == "camera01": # if this device found the target
+                                    self.logfile1.write(str(ccounter) + "\t" + str(time_now - ctimer) + "\t" + "1" + "\t" + str(inf_time)+"\n")
+                                else:
+                                    self.logfile1.write(str(ccounter) + "\t" + str(time_now - ctimer) + "\t" + "0" + "\t" + str(inf_time)+"\n")
+                            elif cdevice_name == "camera02":
+                                if self.cur_tar_dev == "camera02":
+                                    self.logfile2.write(str(ccounter) + "\t" + str(time_now - ctimer) + "\t" + "1" + "\t" + str(inf_time)+"\n")
+                                else:
+                                    self.logfile2.write(str(ccounter) + "\t" + str(time_now - ctimer) + "\t" + "0" + "\t" + str(inf_time)+"\n")
+                            break
+
+                        if self.isitempty(): # won't fall into unless there is a pass code above...
+                            print('[finding..] still at search phase, all q empty, go back to waiting phase')
+                            self.cur_tar_dev = 'wow' # a random txt to escape this loop
+                        
+                            break
+
+                for i in self.d_cam.keys(): # target found phase.
+
+                    if self.isitempty(): # to check if both are empty.
+                        print('[target found phase..] break from searching phase, all q empty, go back to waiting phase')
+                        self.d_cam[i] = 'empty' 
+                        break
+                    if(self.imgq[i].empty()): # if i'th queue is empty, skip this queue stak. check other camera queue stack.
+                        self.d_cam[i]='empty'
+                        print("[target found phase....] "+ i +" q is empty, moving on to next q") 
+                        continue
+                    else: # there is smth here 
+                        print("[target_found_phase..] ", i, self.dev_nameq[i].qsize(), self.framecntq[i].qsize(), self.imgq[i].qsize(), self.typeq[i].qsize(), self.timerq[i].qsize())
+                        self.d_cam[i] = 'notempty' 
+                        ftype = self.typeq[i].get()
+                        fdevice_name = self.dev_nameq[i].get()
+                        fcounter = self.framecntq[i].get()
+                        ftimer = self.timerq[i].get()
+                        fframe = self.imgq[i].get()
+                        fcoord= self.coorq[i].get()
+                        rgb = cv2.cvtColor(fframe, cv2.COLOR_BGR2RGB)
+                        fpositions=[]
+                        fs = time.time()
+                        if fdevice_name == self.cur_tar_dev: # this q is the target q
+                            if(int(fcounter) % self.frame_skips == 0):
+                                self.trackers=[]
+                                pre_x1 = fcoord[0]
+                                pre_y1 = fcoord[1]
+                                pre_x2 = fcoord[2]
+                                pre_y2 = fcoord[3]
+#                                pre_x1, pre_y1, pre_x2, pre_y2 = fcoord
+                                tracker = dlib.correlation_tracker()
+                                rect = dlib.rectangle(pre_x1, pre_y1, pre_x2, pre_y2)
+                                tracker.start_track(rgb, rect)
+                                self.trackers.append(tracker)
+                                self.cur_tar_dev = fdevice_name
+
+                            else:
+                                for tracker in self.trackers: 
+                                    tracker.update(rgb)
+                                    fpos = tracker.get_position()
+                                    startX = int(fpos.left())
+                                    startY = int(fpos.top())
+                                    endX = int(fpos.right())
+                                    endY = int(fpos.bottom())
+                                    fpositions.append((startX, startY, endX, endY))
+
+                            objects = self.ct.update(fpositions)
+                            # track well and if u miss out, go back to search phase
+                            self.exist[i] = self.ct.checknumberofexisting()
+                            print(fdevice_name, self.exist[i])
+#                            if self.ct.checknumberofexisting():
+                            time_now = time.time()
+                            inf_time = time_now - fs
+                            if self.exist[i] and self.cur_tar_dev:
+                                
+                                print("[target tracking phase ] donno but still here: ", fdevice_name, fcounter, self.exist[i])
+                                if fdevice_name == 'camera01':
+                                    self.logfile1.write(str(fcounter) + "\t" + str(time_now - ftimer) + "\t" + "1" + "\t" + str(inf_time)+"\n")
+                                else:
+                                    self.logfile2.write(str(fcounter) + "\t" + str(time_now - ftimer) + "\t" + "1" + "\t" + str(inf_time)+"\n")
+                            else: # break and find it now, but target is never lost..!?
+                                print("target lost-------------- ")
+                                if fdevice_name == 'camera01':
+                                    self.logfile1.write(str(fcounter) + "\t" + str(time_now - ftimer) + "\t" + "0" + "\t" + str(inf_time)+"\n")
+                                else:
+                                    self.logfile2.write(str(fcounter) + "\t" + str(time_now - ftimer) + "\t" + "0" + "\t" + str(inf_time)+"\n")
+                                self.cur_tar_dev = None
+                                break
+
+                        else: # not cur_tar_dev, we shouldn't drop frames at all, because they are all useful frames!
+
+                            if(int(fcounter) % self.frame_skips == 0):
+                                self.trackers=[]
+                                pre_x1 = fcoord[0]
+                                pre_y1 = fcoord[1]
+                                pre_x2 = fcoord[2]
+                                pre_y2 = fcoord[3]
+#                                pre_x1, pre_y1, pre_x2, pre_y2 = fcoord
+                                tracker = dlib.correlation_tracker()
+                                rect = dlib.rectangle(pre_x1, pre_y1, pre_x2, pre_y2)
+                                tracker.start_track(rgb, rect)
+                                self.trackers.append(tracker)
+                                self.cur_tar_dev = fdevice_name
+
+                            else:
+                                for tracker in self.trackers: 
+                                    tracker.update(rgb)
+                                    fpos = tracker.get_position()
+                                    startX = int(fpos.left())
+                                    startY = int(fpos.top())
+                                    endX = int(fpos.right())
+                                    endY = int(fpos.bottom())
+                                    fpositions.append((startX, startY, endX, endY))
+
+                            objects = self.ct.update(fpositions)
+                            # track well and if u miss out, go back to search phase
+                            self.exist[i] = self.ct.checknumberofexisting()
+                            print(fdevice_name, self.exist[i])
+#                            if self.ct.checknumberofexisting():
+                            time_now = time.time()
+                            inf_time = time_now - fs
+                            if self.exist[i] and self.cur_tar_dev:
+                                
+                                print("[target tracking phase ] donno but still here: ", fdevice_name, fcounter, self.exist[i])
+                                if fdevice_name == 'camera01':
+                                    self.logfile1.write(str(fcounter) + "\t" + str(time_now - ftimer) + "\t" + "1" + "\t" + str(inf_time)+"\n")
+                                else:
+                                    self.logfile2.write(str(fcounter) + "\t" + str(time_now - ftimer) + "\t" + "1" + "\t" + str(inf_time)+"\n")
+                            else: # break and find it now, but target is never lost..!?
+                                print("target lost-------------- ")
+                                if fdevice_name == 'camera01':
+                                    self.logfile1.write(str(fcounter) + "\t" + str(time_now - ftimer) + "\t" + "0" + "\t" + str(inf_time)+"\n")
+                                else:
+                                    self.logfile2.write(str(fcounter) + "\t" + str(time_now - ftimer) + "\t" + "0" + "\t" + str(inf_time)+"\n")
+                                self.cur_tar_dev = None
+                                break
+
+
+### proposed.
    
     @threaded
-    def p_proc_dequeue(self):
+    def p_proc_dequeue_original(self): #not used currently 
         framecnt = 0
         endcnt =0 # if idle for 2 minutes, save and quit.
         frame_start_time = time.time()
@@ -900,6 +1403,207 @@ class Controller(object):
                 #self.logfile2.write(str(cnt)+"\t"+str(dev)+"\t"+str(thing)+"\t"+str(decay.total_seconds())+"\n")
 
 
+### proposed
+    def p_proc_dequeue(self):
+        framecnt = 0
+        emptycount = 0
+        endcnt =0 # if idle for 2 minutes, save and quit.
+        frame_start_time = time.time()
+        self.encode_param = [int(cv2.IMWRITE_JPEG_QUALITY),99]
+        node_table = self.msg_bus.node_table
+        while (True):
+            if(self.isitempty()): # yes its empty...
+                print("[q all empty] waiting...")
+                if self.cur_tar_dev == "wow" or self.cur_tar_dev != None: # to get out of finding phase.
+                    self.cur_tar_dev = None
+                time.sleep(0.5)
+
+            else: # not all q are empty... loop all queues until the target is found. 
+                while(self.cur_tar_dev==None):
+                    for i in self.d_cam.keys():
+                        if(self.imgq[i].empty()): # if i'th queue is empty, skip this queue stak. check other camera queue stack.
+                            self.d_cam[i]='empty'
+                            print("[finding..] "+ i +" q is empty, moving on to next q") 
+                            time.sleep(0.001) 
+#                            continue
+                            pass
+                        else:
+                            print("[finding..] ", i, self.dev_nameq[i].qsize(), self.framecntq[i].qsize(), self.imgq[i].qsize(), self.typeq[i].qsize(), self.timerq[i].qsize())
+
+                            self.d_cam[i] = 'notempty'
+                            cdevice_name = self.dev_nameq[i].get()
+                            ccounter = int(self.framecntq[i].get())
+                            cframe = self.imgq[i].get()
+                            ctype = self.typeq[i].get()
+                            ctimer = self.timerq[i].get()
+                            s = time.time()
+                            if self.cuda:
+                                self.width = cframe.shape[0]
+                                self.height = cframe.shape[1]
+                                crgb = cv2.cvtColor(cframe, cv2.COLOR_BGR2RGB)
+    
+                                frame_tensor = cv_image2tensor(cframe, self.input_size).unsqueeze(0)
+                                frame_tensor = Variable(frame_tensor)
+
+                                frame_tensor = frame_tensor.cuda()
+
+                                detections = self.model(frame_tensor, self.cuda).cpu()
+                                detections = process_result(detections, self.confidence, self.nms_thresh)
+                            
+                                if len(detections) != 0:
+                                    detections = transform_result(detections, [cframe], self.input_size)
+                                    #for detection in detections:
+                                    for idx, detection in enumerate(detections):
+                                        if (self.classes[int(detection[-1])]=="person"):
+                                            if float(detection[6]) > self.confidence:
+                                                print("-[searching phase] FOUND person on device: ",ccounter, cdevice_name) # well u r supposed to match the person detect with the template, but for the time being we assume its a person. # sangwoo is on it thou
+                                                pre_score = (float(detection[6])) # prediction score
+                                                pre_class = (self.classes[int(detection[-1])]) # prediction class
+                                                pre_x1 = (int(detection[1])) # x1
+                                                pre_y1 = (int(detection[2])) # y1
+                                                pre_x2 = (int(detection[3])) # x2 
+                                                pre_y2 = (int(detection[4])) # y2
+
+                                                #self.draw_bbox([frame], detection, self.colors, self.classes)
+                                                tracker = dlib.correlation_tracker()
+                                                rect = dlib.rectangle(pre_x1, pre_y1, pre_x2, pre_y2)
+                                                tracker.start_track(crgb, rect)
+                                                self.trackers.append(tracker)
+                                                self.cur_tar_dev = cdevice_name
+
+                                                break
+                                            else:
+                                                print("[finding..] low confidence person", ccounter, cdevice_name)
+                                        else: 
+                                            print("[finding..] not a person", ccounter, cdevice_name)
+
+                                else:
+                                    print("[finding..] nothing detected: ", ccounter, cdevice_name)
+                            time_now = time.time()
+                            inf_time = time_now - s
+                            if cdevice_name == "camera01":
+                                if self.cur_tar_dev == "camera01": # if this device found the target
+                                    self.logfile1.write(str(ccounter) + "\t" + str(time_now - ctimer) + "\t" + "1" + "\t" + str(inf_time)+"\n")
+                                else:
+                                    self.logfile1.write(str(ccounter) + "\t" + str(time_now - ctimer) + "\t" + "0" + "\t" + str(inf_time)+"\n")
+                            elif cdevice_name == "camera02":
+                                if self.cur_tar_dev == "camera02":
+                                    self.logfile2.write(str(ccounter) + "\t" + str(time_now - ctimer) + "\t" + "1" + "\t" + str(inf_time)+"\n")
+                                else:
+                                    self.logfile2.write(str(ccounter) + "\t" + str(time_now - ctimer) + "\t" + "0" + "\t" + str(inf_time)+"\n")
+
+                        if self.isitempty(): # won't fall into unless there is a pass code above...
+                            print('[finding..] still at search phase, all q empty, go back to waiting phase')
+                            self.cur_tar_dev = 'wow' # a random txt to escape this loop
+                        
+                            break
+
+                for i in self.d_cam.keys(): # target found phase.
+
+                    if self.isitempty(): # to check if both are empty.
+                        print('[target found phase..] break from searching phase, all q empty, go back to waiting phase')
+                        self.d_cam[i] = 'empty' 
+                        break
+                    if(self.imgq[i].empty()): # if i'th queue is empty, skip this queue stak. check other camera queue stack.
+                        self.d_cam[i]='empty'
+                        print("[target found phase....] "+ i +" q is empty, moving on to next q") 
+                        continue
+                    else: # there is smth here 
+                        print("[target_found_phase..] ", i, self.dev_nameq[i].qsize(), self.framecntq[i].qsize(), self.imgq[i].qsize(), self.typeq[i].qsize(), self.timerq[i].qsize())
+                        self.d_cam[i] = 'notempty' 
+                        ftype = self.typeq[i].get()
+                        fdevice_name = self.dev_nameq[i].get()
+                        fcounter = self.framecntq[i].get()
+                        ftimer = self.timerq[i].get()
+                        fframe = self.imgq[i].get()
+                        rgb = cv2.cvtColor(fframe, cv2.COLOR_BGR2RGB)
+                        fpositions=[]
+                        fs = time.time()
+                        if fdevice_name == self.cur_tar_dev:
+                            if(int(fcounter) % self.frame_skips == 0):
+                                self.trackers=[]
+                                if self.cuda:
+                                    self.width = fframe.shape[0]
+                                    self.height = fframe.shape[1]
+
+                                    frame_tensor = cv_image2tensor(fframe, self.input_size).unsqueeze(0)
+                                    frame_tensor = Variable(frame_tensor)
+
+                                    if self.cuda:
+                                        frame_tensor = frame_tensor.cuda()
+
+                                    detections = self.model(frame_tensor, self.cuda).cpu()
+                                    detections = process_result(detections, self.confidence, self.nms_thresh)
+                                    if len(detections) != 0:
+                                        detections = transform_result(detections, [fframe], self.input_size)
+                                    #for detection in detections:
+                                        for idx, detection in enumerate(detections):
+                                            if (self.classes[int(detection[-1])]=="person"):
+                                                if float(detection[6]) > self.confidence:
+                                                    print("-- [target found phase ] person on device: ", fdevice_name) # sangwoo is done with it 
+                                                    pre_score = (float(detection[6])) # prediction score
+                                                    pre_class = (self.classes[int(detection[-1])]) # prediction class
+                                                    pre_x1 = (int(detection[1])) # x1
+                                                    pre_y1 = (int(detection[2])) # y1
+                                                    pre_x2 = (int(detection[3])) # x2 
+                                                    pre_y2 = (int(detection[4])) # y2
+
+                                                #self.draw_bbox([frame], detection, self.colors, self.classes)
+                                                    tracker = dlib.correlation_tracker()
+                                                    rect = dlib.rectangle(pre_x1, pre_y1, pre_x2, pre_y2)
+                                                    tracker.start_track(rgb, rect)
+                                                    self.trackers.append(tracker)
+                                                    self.cur_tar_dev = fdevice_name
+                                                    # for only cam1, cam2
+
+
+                            else:
+                                for tracker in self.trackers: 
+                                    tracker.update(rgb)
+                                    fpos = tracker.get_position()
+                                    startX = int(fpos.left())
+                                    startY = int(fpos.top())
+                                    endX = int(fpos.right())
+                                    endY = int(fpos.bottom())
+                                    fpositions.append((startX, startY, endX, endY))
+
+                            objects = self.ct.update(fpositions)
+                            # track well and if u miss out, go back to search phase
+                            self.exist[i] = self.ct.checknumberofexisting()
+                            print(fdevice_name, self.exist[i])
+#                            if self.ct.checknumberofexisting():
+                            # i think we need to do tracking here...
+
+                            time_now = time.time()
+                            inf_time = time_now - fs
+                            if self.exist[i]:
+                                print("[target tracking phase ] donno but still here: ", fdevice_name, fcounter, self.exist[i])
+                                if fdevice_name == 'camera01':
+                                    self.logfile1.write(str(fcounter) + "\t" + str(time_now - ftimer) + "\t" + "1" + "\t" + str(inf_time)+"\n")
+                                else:
+                                    self.logfile2.write(str(fcounter) + "\t" + str(time_now - ftimer) + "\t" + "1" + "\t" + str(inf_time)+"\n")
+                            else: # break and find it now , but what if not lost ?
+                                print("target lost-------------- NO need to send _start all_ code here. It will when it loops back up.")
+                                if fdevice_name == 'camera01':
+                                    self.logfile1.write(str(fcounter) + "\t" + str(time_now - ftimer) + "\t" + "0" + "\t" + str(inf_time)+"\n")
+                                else:
+                                    self.logfile2.write(str(fcounter) + "\t" + str(time_now - ftimer) + "\t" + "0" + "\t" + str(inf_time)+"\n")
+                                self.cur_tar_dev = None
+                                break
+                            
+                        else: # not cur_tar_dev, drop frames but log
+                            time_now = time.time()
+                            inf_time = 0
+                            if fdevice_name == "camera01":
+                                if self.cur_tar_dev == "camera02":
+                                    self.logfile1.write(str(fcounter) + "\t" + str(time_now - ftimer) + "\t" + "0" + "\t" + str(inf_time)+"\n")
+                            elif fdevice_name == "camera02":
+                                if self.cur_tar_dev == "camera01":
+                                    self.logfile2.write(str(fcounter) + "\t" + str(time_now - ftimer) + "\t" + "0" + "\t" + str(inf_time)+"\n")
+
+                            print("dropping frames from: ", fdevice_name)
+                            pass
+
     def setup_before_detection_gpu(self):
         self.input_size = [int(self.model.net_info['height']), int(self.model.net_info['width'])]
         self.colors = pkl.load(open("pallete", "rb"))
@@ -1002,6 +1706,11 @@ class Controller(object):
         print(' - %s' % msg_dict)
 
 
+    def slacknoti(self, contentstr):
+        webhook_url = "https://hooks.slack.com/services/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"
+        payload = {"text": contentstr}
+        requests.post(webhook_url, data=json.dumps(payload), headers={'Content-Type': 'application/json'})
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="IoT controller of Chameleon.")
     parser.add_argument('-ln1', '--logfilename1', type=str, default='logfiledev1.txt', help="logfile name for dev1")
@@ -1026,6 +1735,7 @@ if __name__ == '__main__':
     ctrl = Controller(controller_name, listen_port)
     print("[INFO] Loading model...")
     print("[INFO] Please wait until setup is done...")
+    ctrl.slacknoti("spencer start using")
     ctrl.net = cv2.dnn.readNetFromCaffe(prototxtpath, modelpath)
 
     ctrl.confidence = ARGS.confidence
@@ -1048,7 +1758,6 @@ if __name__ == '__main__':
     ctrl.ts = ARGS.trackingscheme
     ctrl.frame_skips = ARGS.frameskips
     print("[INFO] Finished setup!")
-
     if ARGS.transmission == 'e1-1':
         print('[Controller] running as an existing work 1-1. receiving all frames and strart tracking')
         time.sleep(1)
@@ -1058,15 +1767,21 @@ if __name__ == '__main__':
         print('[Controller] running as an existing work 1-2. (upon request)')
         time.sleep(1)
         ctrl.e1_2_proc_dequeue()
-        
-    elif ARGS.transmission == 'e2': # need imp
-        print('[Controller] running as an existing work 2. (image metadata)') 
+    elif ARGS.transmission == 'e1g':
+        print('[Controller] making ground truth data. receiving all frames')
         time.sleep(1)
-              
+
+        ctrl.e1_groundtruth()        
+    elif ARGS.transmission == 'e2': # need imp
+        print('[Controller] running as an existing work 2. (image + detection box)') 
+        time.sleep(1)
+        ctrl.e2_proc_verify()
+        #ctrl.e2_proc_dequeue()              
     elif ARGS.transmission == 'p':
         print('[Controller]  tracking objects with dequeuing technique. 1) boundary checking 2) dead reckoning')
         time.sleep(1)
         ctrl.p_proc_dequeue()
+        #ctrl.e1_groundtruth()        
     else:
         print('[Controller]  Error: invalid option for the scheme.')
 

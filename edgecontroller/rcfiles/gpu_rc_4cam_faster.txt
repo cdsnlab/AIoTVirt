@@ -1,0 +1,5 @@
+python3 gpu_controller.py -tr e1g -ln1 e1g_cam1_2355_60.txt -ln2 e1g_cam2_2355_60.txt -ln4 e1g_gpu_2355_60.txt
+python3 gpu_controller.py -tr e1-1 -ln1 e1-1_cam1_2355_60.txt -ln2 e1-1_cam2_2355_60.txt -ln4 e1-1_gpu_2355_60.txt
+python3 gpu_controller.py -tr e1-2 -ln1 e1-2_cam1_2355_60.txt -ln2 e1-2_cam2_2355_60.txt -ln4 e1-2_gpu_2355_60.txt
+python3 gpu_controller.py -tr p -ln1 p_tsdr_cam1_2355_60_sk10_dt20_fs20.txt -ln2 p_tsdr_cam2_2355_60_sk10_dt20_fs20.txt -ln4 p_tsdr_gpu_2355_60_sk10_dt20_fs20.txt
+python3 gpu_controller.py -tr p -ln1 p_tsbc_cam1_2355_60_sk10_dt20_bt100_md5.txt -ln2 p_tsbc_cam2_2355_60_sk10_dt20_bt100_md5.txt -ln4 p_tsbc_gpu_2355_60_sk10_dt20_bt100_md5.txt

@@ -9,6 +9,7 @@ import collections
 from datetime import datetime,timedelta
 import ntplib
 from time import ctime
+import time
 
 #
 # Decorator for threading methods in a class
@@ -54,10 +55,15 @@ class MessageBus(object):
     def send_message_json(self, target_ip, target_port, msg_dict):
         sock = self.ctx.socket(zmq.REQ)
         sock.connect('tcp://{}:{}'.format(target_ip, target_port))
-        # print('[MESSAGING] sending msg to {}:{} (type: {})'.format(target_ip, target_port, msg_dict['type']))
+        print('[MESSAGING] sending msg to {}:{} (type: {})'.format(target_ip, target_port, msg_dict['type']))
         sock.send_json(msg_dict)
         rep = sock.recv().decode()
         # print(' - Reply from receiver: {}'.format(rep))
+
+    @threaded
+    def send_message_json_scheduled(self, target_ip, target_port, msg_dict, seconds):
+        time.sleep(seconds)
+        self.send_message_json(target_ip, target_port, msg_dict)
 
     #
     # Sends a plain-text string through the ZeroMQ socket
@@ -132,7 +138,7 @@ class MessageBus(object):
             print(' - Error: invalid JSON format.')
             return
         except Exception as e:
-            print(' - Error: general unknown error.')
+            print(' [cam1]- Error: general unknown error.')
             print(str(e))
             return
 

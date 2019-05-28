@@ -24,7 +24,7 @@ import ntplib
 import trackableobject 
 import centroidtracker
 import queue
-
+from collections import deque
 #
 # Reads a graph file into a buffer
 #
@@ -84,7 +84,7 @@ class Hypervisor(object):
         self.starttime = time.time()
         self.logfile = None
         self.encode_param = None
-#        self.timegap = datetime.datetime()
+        self.timegap = None #datetime.datetime()
         self.gettimegap()
         self.curframe = None # current frame for being cropped
         self.frame_skips = None # how many frames should be skipped before detection 
@@ -107,6 +107,7 @@ class Hypervisor(object):
 
 
         self.frameq = queue.Queue()
+        self.timeq = queue.Queue()
 
     def gettimegap(self):
         starttime = datetime.now()
@@ -129,16 +130,11 @@ class Hypervisor(object):
         print('[Hypervisor] handle_message: %s' % msg_dict['type'])
         if msg_dict['type'] == 'join':
             self.handle_join(msg_dict)
+
         elif msg_dict['type'] == 'device_list':
-            # print(msg_dict)
-            device_list = json.loads(msg_dict['devices'])
-            for item in device_list:
-                if item['device_name'] == self.device_name:
-                    continue
-                else:
-                    # adding a node info that i am not aware of...
-                    print(' - adding a new node_info: ', item['device_name'])
-                    self.msg_bus.node_table.add_entry(item['device_name'], item['ip'], item['port'], item['location'], item['capability'])
+           # print(msg_dict)
+           device_list = json.loads(msg_dict['devices'])
+           self.handle_device_list(device_list.copy())
 
         elif msg_dict['type'] == 'handoff_request':
             # self.process_cropped_image_tracking(msg_dict)
@@ -155,6 +151,14 @@ class Hypervisor(object):
             # Silently ignore invalid message types.
             pass
 
+    def handle_device_list(self, device_list):
+        for item in device_list:
+            if item['device_name'] == self.device_name:
+                continue
+            else:
+                # adding a node info that i am not aware of...
+                print(' - adding a new node_info: ', item['device_name'])
+                self.msg_bus.node_table.add_entry(item['device_name'], item['ip'], item['port'], item['location'], item['capability'])
 
     def process_cropped_image_tracking(self, msg_dict):
         print(' - received handoff request')
@@ -373,12 +377,15 @@ class Hypervisor(object):
 
                 continue
             else:
+                
                 frame = self.frameq.get()
+                st = time.time()
+                dqtime = self.timeq.get()
                 if(self.width == None and self.height == None):
                     self.width = frame.shape[1]
                     self.height = frame.shape[0]
                 frame = cv2.resize(frame, (self.width, self.height))
-                print("framecnt: "+str(framecnt)+" estimated transmitting fps {0}".format(cumlative_fps))
+                print("[cam1] framecnt: "+str(framecnt)+" estimated transmitting fps {0}".format(cumlative_fps))
                 jsonified_data = self.msg_bus.create_raw_message(frame, framecnt, self.encode_param, self.device_name,self.timegap)
                 self.msg_bus.send_message_str(self.controller_ip, self.controller_port, jsonified_data)
 
@@ -392,6 +399,8 @@ class Hypervisor(object):
 
                 frame_end_time = time.time()
                 cumlative_fps = framecnt / (frame_end_time - frame_start_time)
+                self.logfile.write(str(framecnt))
+                self.logfile.write("\t"+str("{0:.2f}".format(cumlative_fps))+"\t"+str(frame_end_time-st)+"\t"+str(st-dqtime)+"\n") 
 
     #
     # Exsiting work (E1-2): sending at adjusted frame rate. 
@@ -462,7 +471,7 @@ class Hypervisor(object):
         device = self.open_ncs_device()
         graph = load_graph(self.graph_file, device)
         self.encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), 99]
-
+        pts = deque(maxlen = 1000)
         while (True):
             if (self.frameq.empty()):
                 if(endcnt >= 600):
@@ -476,6 +485,7 @@ class Hypervisor(object):
 
                 continue
             else:
+                center = None
                 curr_time_str = datetime.utcnow().strftime('%H:%M:%S.%f')[:-3]
                 frame = self.frameq.get()
                 if(self.width == None and self.height == None):
@@ -483,6 +493,13 @@ class Hypervisor(object):
                     self.height = frame.shape[0]
                 frame = cv2.resize(frame, (self.width, self.height))
                 print("[e2] framecnt: "+str(framecnt)+" estimated processing fps {0}".format(cumlative_fps))
+                img = self.pre_process_image(frame)
+                x1, y1, x2, y2 = self.infer_image_e2(graph, img, frame)
+                centx = ( x1 + x2 ) / 2
+                centy = ( y1 + y2 ) / 2
+                center = centx, centy
+                pts.appendleft(center)
+                '''
                 if framecnt % skip == 0: # if the even one has the target, send the conseq frame with the same box
                     img = self.pre_process_image(frame)
                     x1, y1, x2, y2 = self.infer_image_e2(graph, img, frame)
@@ -502,9 +519,10 @@ class Hypervisor(object):
                         jsonified_data = self.msg_bus.create_e2_message(frame, framecnt, self.encode_param, self.device_name, coord, self.timegap)
                         self.msg_bus.send_message_str(self.controller_ip, self.controller_port, jsonified_data)
                         grant = False
-
+                '''
                 framecnt += 1
-
+                for i in np.arange(1, len(pts)):
+                    cv2.circle(frame,(int(pts[i][0]), int(pts[i][1])), 4, (0,255,0), 4)
                 if self.display == "on":
                     cv2.imshow('NCS live inference', frame)
                 if (cv2.waitKey(3) & 0xFF == ord('q')):
@@ -744,10 +762,11 @@ class Hypervisor(object):
                 frame = cv2.resize(frame, (self.width, self.height))
 
                 #prev_time, fps = self.getfps(prev_time)
-                #print('[VIDEOSOURCE] estimated video enqueue fps :{0}'.format(cumlative_fps))
-                
+                print('[cam1] estimated video enqueue fps :{0}'.format(cumlative_fps))
+                curtime = time.time() 
                 # enqueue here
                 self.frameq.put(frame) # keep chuggggggging 
+                self.timeq.put(curtime)
                 if(framecnt % input_fps ==0 ): #10fps
                     wait_time = time.time()
                     sleeptime = 1-(wait_time - start_time)
@@ -821,7 +840,10 @@ class Hypervisor(object):
                 continue
             else:
                 curr_time_str = datetime.utcnow().strftime('%H:%M:%S.%f')[:-3]
+                st = time.time()
                 frame = self.frameq.get()
+                fqtime = self.timeq.get()
+                getframet = time.time()
                 if(self.width == None and self.height == None):
                     self.width = frame.shape[1]
                     self.height = frame.shape[0]
@@ -831,7 +853,7 @@ class Hypervisor(object):
                 img = self.pre_process_image(frame)
                 rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                 #prev_time, fps = self.getfps(prev_time)
-                print("[p] estimated tracking fps {0}".format(cumlative_fps))
+                print("[p-cam1] estimated tracking fps {0}".format(cumlative_fps))
                 positions = []
                 cpu = psutil.cpu_percent()
                 ram = psutil.virtual_memory()
@@ -861,7 +883,6 @@ class Hypervisor(object):
                                 self.trackers.append(tracker)
 
                                 
-
                 else:
                     for tracker in self.trackers: 
                         tracker.update(rgb)
@@ -871,7 +892,7 @@ class Hypervisor(object):
                         endX = int(pos.right())
                         endY = int(pos.bottom())
                         positions.append((startX, startY, endX, endY))
-            
+                dett = time.time()
                 objects = self.ct.update(positions)
                 # prints all existing indexes.
                 #self.ct.getall()
@@ -879,32 +900,32 @@ class Hypervisor(object):
                     print("[Tracking object EXIST] send to mars")
                     k = MessageBus.create_det_message(frame, self.counter, self.encode_param, self.device_name,self.timegap)
                     self.msg_bus.send_message_str(self.controller_ip, self.controller_port, k)
-                    self.neighbor_op = False
+                    self.sumframebytes+=sys.getsizeof(frame)
+#                    self.neighbor_op = False
+                transt = time.time()
+                if self.ct.checknumberofexisting():
+                    self.neighbor_op =False
 
 
                 for (objectID, centroid) in objects.items():
                     to = self.trobs.get(objectID, None)
-                    print("1")
                     if (self.ct.checknumberofexisting()):
-                        self.sumframebytes+=sys.getsizeof(frame)
+#                        self.sumframebytes+=sys.getsizeof(frame)
+                         print(" ")
 
                     if to == None:
                         to = trackableobject.TrackableObject(objectID, centroid)
                     else:
-                        print("2")
-                        cv2.circle(frame, (centroid[0],centroid[1]),4,(0,255,0),-1)
+                        cv2.circle(frame, (centroid[0],centroid[1]),4,(0,255,0),4)
                         y = [c[1] for c in to.centroids]
                         x = [c[0] for c in to.centroids]
                         dirY = centroid[1] - np.mean(y)
                         dirX = centroid[0] - np.mean(x)
                         to.centroids.append(centroid)
-                    
                         if not to.counted:
-                            print("3")
                             if (self.trackingscheme == "dr"):
                                 prex, prey = self.ct.predict(objectID, self.futuresteps)
                                 if(self.checkboundary_dir(prex, prey)=="R"):
-                                    print("4")
                                     print("we need to send msg to right")
                                     p = self.ct.get_object_rect_by_id(objectID) # x1, y1, x2, y2
                                     if (p[0]<=0 or p[1] <= 0 or p[2] <= 0 or p[3] <=0):
@@ -916,7 +937,11 @@ class Hypervisor(object):
                                         #self.msg_bus.send_message_str(self.center_device_ip_int, self.center_device_port, jsonified_data)
                                         if(self.device_name == "camera01"):
                                             msg = dict(type='neighbor_op', device_name=self.device_name, neighbor_op = "True")
-                                            self.msg_bus.send_message_json(self.center_device_ip_int, self.center_device_port, msg)
+                                            est = (-1.8 * prex) + 8.15 +1
+                                            print(est)
+
+                                            #self.msg_bus.send_message_json(self.center_device_ip_int, self.center_device_port, msg)
+                                            self.msg_bus.send_message_json_scheduled(self.center_device_ip_int, self.center_device_port, msg, est)
         
 
                                 # sned mesg
@@ -935,7 +960,11 @@ class Hypervisor(object):
                                         #self.msg_bus.send_message_str(self.left_device_ip_int, self.left_device_port, jsonified_data)
                                         if(self.device_name == "camera02"):
                                             msg = dict(type='neighbor_op', device_name=self.device_name, neighbor_op = "True")
-                                            self.msg_bus.send_message_json(self.left_device_ip_int, self.left_device_port, msg)
+#                                            self.msg_bus.send_message_json(self.left_device_ip_int, self.left_device_port, msg)
+                                            est = (-1.8 * prex) + 8.15 +1
+                                            print(est)
+
+                                            self.msg_bus.send_message_json_scheduled(self.left_device_ip_int, self.left_device_port, msg, est)
 
                                 elif(self.checkboundary_dir(prex, prey)=="D"):
                                     print("we need to send msg to down")
@@ -992,10 +1021,10 @@ class Hypervisor(object):
                                     print("we need to send msg to bottom")
                                 else:
                                     print("nothing is happinging")
-    
 
                     self.trobs[objectID] = to
-                    text = "ID {}".format(objectID) +" "+ str(centroid[0]) +" "+ str(centroid[1])
+                    text = " "
+#                    text = "ID {}".format(objectID) +" "+ str(centroid[0]) +" "+ str(centroid[1])
                     cv2.putText(frame, text, (centroid[0]-10, centroid[1]-10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255,255,255),2) # ID of the object 
                 sendablecnt = 0
                 self.counter += 1
@@ -1006,9 +1035,12 @@ class Hypervisor(object):
                     break
                 #save = {"CPU": str(cpu), "fps": str("{0:.2f}".format(fps)), "cur_tracking_count": str(len(self.trackers)), "totalbytes": str(self.sumframebytes)}
                 frame_end_time = time.time()
+                inftime = frame_end_time - st
                 cumlative_fps  = self.counter / (frame_end_time - frame_start_time)
                 self.logfile.write(str(self.counter)+"\t") 
-                self.logfile.write(str(cpu)+"\t"+str("{0:.2f}".format(cumlative_fps))+"\t"+str(self.ct.checknumberofexisting())+"\t"+str(self.sumframebytes/1000000)) 
+                #self.logfile.write(str(cpu)+"\t"+str("{0:.2f}".format(cumlative_fps))+"\t"+str(inftime)+"\t"+str(self.ct.checknumberofexisting())+"\t"+str(self.sumframebytes/1000000))
+                self.logfile.write(str(cpu)+"\t"+str("{0:.2f}".format(cumlative_fps))+"\t"+str(frame_end_time-dett)+"\t"+str(dett-st)+"\t"+str(st-fqtime)+"\t"+str(self.ct.checknumberofexisting())+"\t"+str(self.sumframebytes/1000000)) 
+                 
                 self.logfile.write("\n")
                 #print(str(self.ct.checknumberofexisting()))
                 #print (str(self.sumframebytes/1000000))
@@ -1021,7 +1053,7 @@ if __name__ == '__main__':
                         default='eth0',
                         help="A network interface name for edge network connection (eth0, wlan0, ...)")
     parser.add_argument('-g', '--graph', type=str,
-                        default='../SSD_MobileNet/graph',
+            default='../SSD_MobileNet/graph',
                         help="Absolute path to the neural network graph file.")
     parser.add_argument('-l', '--labels', type=str,
                         default='../SSD_MobileNet/labels.txt',
@@ -1137,7 +1169,7 @@ if __name__ == '__main__':
         hyp.src_to_frame_enqueue(ARGS.videofile)
         print('[Hypervisor] running as an existing work 1-1. (raw image stream whole time)')
         hyp.send_raw_dequeue()
-        hyp.logfile.close()
+   #     hyp.logfile.close()
 
     elif ARGS.transmission == 'e1-2':
         print("[Hypervisor] Start Chugging frames!")

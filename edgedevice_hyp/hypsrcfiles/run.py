@@ -26,7 +26,7 @@ if __name__ == '__main__':
     proc_name = sys.argv[1] # python3
     arguments = sys.argv[2] #
     print("number of arguements", len(sys.argv)-1)
-    sleep_interval = 140
+    sleep_interval = 190
 
     pr = run_cmd(proc_name, sys.argv)
     time.sleep(sleep_interval)

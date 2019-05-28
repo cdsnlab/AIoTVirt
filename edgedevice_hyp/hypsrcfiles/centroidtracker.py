@@ -67,6 +67,8 @@ class CentroidTracker:
                 
                 disx = self.lqx[objectID].queue.queue[xsize-1] - self.lqx[objectID].queue.queue[0]
                 disy = self.lqy[objectID].queue.queue[ysize-1] - self.lqy[objectID].queue.queue[0]
+                print("x speed: ", str(disx / self.queuesize))
+                print("y speed: ", str(disy / self.queuesize))
 
                 #print((disx / self.queuesize * next_spot) + self.lqx[objectID].queue.queue[xsize-1])
                 #print((disy / self.queuesize * next_spot) + self.lqy[objectID].queue.queue[ysize-1])
