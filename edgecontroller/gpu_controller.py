@@ -103,9 +103,9 @@ class Controller(object):
         self.frame_skip = 10
         self.sumofframebytes = 0
 
-    def gettimegap(self):
+    def gettimegap(self): # this is for self.timegap
         starttime = datetime.now()
-#ntp_response = ntplib.NTPClient().request('2.kr.pool.ntp.org', version=3)
+        #ntp_response = ntplib.NTPClient().request('2.kr.pool.ntp.org', version=3)
         ntp_response = ntplib.NTPClient().request('143.248.55.71', version=3)
         returntime = datetime.now()
         self.timegap = datetime.fromtimestamp(ntp_response.tx_time) - starttime - (returntime - starttime) / 2
@@ -178,6 +178,9 @@ class Controller(object):
         curTime = datetime.utcnow().strftime('%H:%M:%S.%f') # string forma
         curdatetime = datetime.strptime(curTime, '%H:%M:%S.%f')
         sentdatetime = datetime.strptime(msg_dict['time'], '%H:%M:%S.%f')
+        print("senttime:", sentdatetime)
+        print("curtime:", time.time())
+        print("fly time:", time.time() - time.mktime(sentdatetime.timetuple()))
         simplecurtime = time.time()
 
         if(msg_dict['device_name'] in self.dd_cam.keys()): # depending on the sent device, add them to the corresonding queue.
@@ -223,6 +226,10 @@ class Controller(object):
         curTime = datetime.utcnow().strftime('%H:%M:%S.%f') # string forma
         curdatetime = datetime.strptime(curTime, '%H:%M:%S.%f')
         sentdatetime = datetime.strptime(msg_dict['time'], '%H:%M:%S.%f')
+        print("senttime:", sentdatetime)
+        print("curtime:", curdatetime)
+        print("fly time:", curdatetime - sentdatetime)
+
         simplecurtime = time.time()
 
         if(msg_dict['device_name'] in self.dd_cam.keys()): # depending on the sent device, add them to the corresonding queue.
@@ -1743,7 +1750,8 @@ if __name__ == '__main__':
     ctrl.display = ARGS.display
     ctrl.model = Darknet("cfg/yolov3.cfg")
     ctrl.model.load_weights('yolov3.weights')
-    ctrl.cuda = torch.cuda.is_available()
+#ctrl.cuda = torch.cuda.is_available()
+    ctrl.cuda = torch.cuda.device('cuda:0')
     if torch.cuda.is_available():
         ctrl.model.cuda()
     ctrl.model.eval()
