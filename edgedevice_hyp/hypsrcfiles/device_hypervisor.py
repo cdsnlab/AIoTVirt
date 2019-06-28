@@ -114,8 +114,10 @@ class Hypervisor(object):
         #ntp_response = ntplib.NTPClient().request('2.kr.pool.ntp.org', version=3)
         ntp_response = ntplib.NTPClient().request('143.248.55.71', version=3)
         returntime = datetime.now()
-        self.timegap = datetime.fromtimestamp(ntp_response.tx_time) - starttime - (returntime - starttime)/2
-        print (self.timegap)
+        self.timegap =datetime.fromtimestamp(ntp_response.tx_time) - starttime - (returntime - starttime)/2
+#        print(gapdt) # 0:00:00.124
+#        self.timegap = time.mktime(gapdt.timetuple())
+#        print (self.timegap)
 
     def signal_handler(self, sig, frame):
         self.logfile.close()
