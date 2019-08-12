@@ -1,4 +1,4 @@
-# Chameleon: An Application-Aware Virtualization Architecture for Edge IoT Clouds
+# An Application-Aware Virtualization Architecture for Edge IoT Clouds
 
 
 ## Development environment
@@ -12,19 +12,15 @@ agents and contributions to the middleware.
 ### Python
 Version: 3.5.3
 
-Library: paho-mqtt, pymongo, docker
+Library: ZMQ, docker
 
-### FIles
+### Files
 Initial raspberry pi install is under setup4rasp.
 Initial edge server install manual is under setup4edgeserver.
+Manual for GPU-equipped edge servers will be updated soon. 
 
-## MQTT Message Format
-
-### Service request (Example)
-Topic: service/CriminalTracking
-
-Message: {"name": "CriminalTracking", "type": "ObjectTracking", "requestTime": 12345, "parameter": {"object": "face", "resolution": 720}, "requirement": {"Performance": "HIGH", "Reliability": "MID"}}
-
+## ZMQ Messaging format
+##
 ## License
 
 All rights are reserved by CDSN Lab, Korea Advanced Institute of Science and
