@@ -340,34 +340,6 @@ class chamEnv(gym.Env):
         #print(res)
         return res
 
-    '''
-    def translatestates(self, cam1, cam2):
-        if cam1 and cam2: 
-            self.perceivedstatus = "11"
-        elif cam1 and not cam2:
-            self.perceivedstatus = "01"
-        elif not cam1 and cam2:
-            self.perceivedstatus = "10"
-        else:
-            self.perceivedstatus = "00"
-        self.statushistory.append(self.perceivedstatus)
-    
-    def getstatushistory(self): # search for all prev states, if it has 1 on which spot. 
-        i1 = None
-        i2 = None
-        i1 = self.rindex(self.statushistory, "01")
-        i2 = self.rindex(self.statushistory, "10")
-        #둘중 하나라도 가장 최근에 있으면 리턴 값.
-        #print (i1, i2)
-        if i1 ==0 and i2 ==0:
-            return "00"
-        elif i1 <= i2:
-            #self.statushistory[i2]
-            return "10"
-        elif i1 >= i2:
-            #self.statushistory[i1]
-            return "01"
-    '''
 
     def setaction (self, action):
         self.curaction = action

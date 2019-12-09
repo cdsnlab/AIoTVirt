@@ -67,8 +67,8 @@ class cam (object):
 
         # https://discuss.pytorch.org/t/difference-device-error-when-i-use-multiple-gpus-with-creating-new-cuda-tensor/41676
 
-        self.model = Darknet("cfg/yolov3.cfg")
-        self.model.load_weights('yolov3.weights')
+        self.model = Darknet("/home/spencer/mycfg/cfg/yolov3.cfg")
+        self.model.load_weights('/home/spencer/mycfg/yolov3.weights')
         #self.cuda = torch.device(1)
         if self.CUDA:
             #self.model.to("cuda:0")
