@@ -25,6 +25,9 @@ class chamEnv(gym.Env):
         self.qkey={}
         self.qvaluecount={}
         self.perceivedstatus= None
+        self.statushistory = []
+        self.perceivedlpos = None
+        self.lposhistory = []
         self.cumlativestates = {}
         self.cumlativeactions = {}
         self.cumlativerewards = {}
@@ -35,7 +38,7 @@ class chamEnv(gym.Env):
         self.cumeedict = {}
         self.cstate = None
         self.curaction = "c"
-        self.statushistory = []
+        
         self.scheme = "random"
         self.actopt = None
         self.action = None
@@ -271,18 +274,18 @@ class chamEnv(gym.Env):
             return 0
         return len(mylist) - mylist[::-1].index(myvalue) - 1
 
-    def translatestates(self, c):
-        # print(c)
-        strline = ''
-        # for every false from the first place, replace it with a 0, otherwise 1
-        for i in range(len(c)):
-            if c[i]==False:
-                strline+="0"
-            else:
-                strline+="1"
-        print("cur location of target: ", strline)
-        self.perceivedstatus=strline
-        self.statushistory.append(self.perceivedstatus)
+    # def translatestates(self, c):
+    #     # print(c)
+    #     strline = ''
+    #     # for every false from the first place, replace it with a 0, otherwise 1
+    #     for i in range(len(c)):
+    #         if c[i]==False:
+    #             strline+="0"
+    #         else:
+    #             strline+="1"
+    #     print("cur location of target: ", strline)
+    #     self.perceivedstatus=strline
+    #     self.statushistory.append(self.perceivedstatus)
 
     def translatestatedict(self, c):
         sortedc = sorted(c.keys())
@@ -294,6 +297,16 @@ class chamEnv(gym.Env):
                 strline+="1"
         self.perceivedstatus=strline
         self.statushistory.append(self.perceivedstatus)
+
+    def translatelposdict(self, c):
+        sortedc = sorted(c.keys())
+        strline = ''
+        for key in sortedc:
+            strline += c[key]
+        print("lpos strline: ", strline)
+        self.perceivedlpos=strline
+        self.lposhistory.append(self.perceivedlpos)
+
 
     def getstatushistory(self, camnum): # find the latest location of camera.
         ind = []
@@ -341,8 +354,8 @@ class chamEnv(gym.Env):
         return res
 
 
-    def setaction (self, action):
-        self.curaction = action
+    # def setaction (self, action):
+    #     self.curaction = action
 
     def chooseaction(self, scheme, count):
         # random.
@@ -411,11 +424,11 @@ class chamEnv(gym.Env):
             self.qkey[atmpkeystring+","+self.cumlativeactions[i]] = self.rew #update with last reward
 
 
-    def show_episode(self):
-        print("printing episode number")
+    # def show_episode(self):
+    #     print("printing episode number")
 
-    def show_frame_cnt(self):
-        print("printing current frame number")
+    # def show_frame_cnt(self):
+    #     print("printing current frame number")
 
-    def update_sim_status(self):
-        print("updates simulation status, decides when to quit prog.")
+    # def update_sim_status(self):
+    #     print("updates simulation status, decides when to quit prog.")

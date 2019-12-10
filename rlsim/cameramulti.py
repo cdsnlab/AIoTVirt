@@ -40,6 +40,7 @@ class cam (object):
         self.void = 0 # time when target is gone from view
         self.voidtmp = 0
         self.voidtimer = 0
+        self.lpos = ""
         
         # NN related
         self.CUDA = torch.cuda.is_available()
@@ -120,7 +121,7 @@ class cam (object):
             midx = ( pre_x1 + pre_x2 ) / 2
             midy = ( pre_y1 + pre_y2 ) / 2
 
-            lpos=self.findinmatrix(midx, midy, frame.width, frame.height)
+            self.lpos=self.findinmatrix(midx, midy, frame.width, frame.height)
 
             tracker = dlib.correlation_tracker()
             rect = dlib.rectangle(pre_x1, pre_y1, pre_x2, pre_y2)
@@ -142,10 +143,8 @@ class cam (object):
             self.existing = self.ct.checknumberofexisting()
             if self.existing: 
                 self.voidtimer = time.time()
-                # 가장 최근 값으로 업데이트 
+                # renew timer. 
                 self.void = int(time.time() - stime)
-                #print("when exist", self.void)
-
            
                 # calc void timer
             # for all objects in basket, predict movement direction. 
@@ -174,34 +173,33 @@ class cam (object):
         else:
             if self.voidtimer == 0: # finding phase
                 self.void = 0
-                lpos = "00" # initial position in matrix.
+                self.lpos = "xx" # initial position in matrix.
+
             else: # in btw cam
                 self.void = int(time.time() - self.voidtimer)
             #print("when gone", self.void)
             answer = False
-            
-        return answer, lpos
+
+        return answer, self.lpos
         
     def findinmatrix(self, x, y, w, h): # fixed size of matrix cell numbers: 10
-        # which (0,0), (4,7), etc...
         celldiv = 10
         cellwidth = w / celldiv 
         cellheight = h / celldiv
         tempx, tempy = 0, 0
-        for i in range (0, 10):            
+        for i in range (0, celldiv):            
             if x > (i * cellwidth): 
                 tempx = i
             elif x <= (i * cellwidth):
                 break
                     
-        for j in range (0, 10):
+        for j in range (0, celldiv):
             if y > (j * cellheight):
                 tempy = j
             elif y <= (j * cellheight):
                 break
-        #mat = str(tempx).join(str(tempy))
-        mat = (str(tempx)+str(tempy))
-        return mat # return the matrix location of the currently seen object
+               
+        return str(tempx)+str(tempy) # return the matrix location of the currently seen object
 
     def loadvid(self, id, iteration, like):
         # depending on the id of the cam number, load a diff vid.

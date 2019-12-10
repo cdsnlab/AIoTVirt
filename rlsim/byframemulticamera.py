@@ -167,12 +167,11 @@ def play():
             threads=[]
             #cidx.append(agent[j].procframe(agent[j].id, k))
             #c1 = agent[0].procframe(agent[0].id, i, env.curaction) # operation 혹은 action 이 필요한듯?
-#            c2 = agent[1].procframe(agent[1].id, i, env.curaction)
+            #c2 = agent[1].procframe(agent[1].id, i, env.curaction)
             #print(cidx)
-            #env.translatestates(cidx)
             env.translatestatedict(cidx)
-            
-            print("cstate: ", cidx)
+            env.translatelposdict(lpos) 
+            print("current state (cidx): ", cidx)
             if "1" not in env.perceivedstatus: # currently we are not seeing anything in any of the cameras. 
                 # if currently perceived status does not contain any 1
                 psh = env.getstatushistory(int(args.numcam))
@@ -180,17 +179,19 @@ def play():
                 # if psh is all zeros --> not seen from the camera network.
                 pshcount = psh.count('0')
                 if pshcount == int(args.numcam): # never seen in any of the cam.
-                    env.cstate=[psh, psh, 0, 00] # [curloc, prevloc, timer, locinpixel] locinpixel --> 9x9 matrix of the frame
+                    env.cstate=[psh, psh, 0, xx] # [curloc, prevloc, timer, locinpixel] locinpixel --> 9x9 matrix of the frame
                     # env.cstate=[psh,psh,0] # [curloc, prevloc, timer]
                 else: #previously seen in some cam. findout which cam.
                     sind = psh.index(max(psh))
-                    env.cstate = ["".join(env.createcombinationexact(int(args.numcam),0)), psh, agent[sind].void, 00] # 4state
+                    env.cstate = ["".join(env.createcombinationexact(int(args.numcam),0)), psh, agent[sind].void, agent[sind].lpos] # 4state
                     # env.cstate = ["".join(env.createcombinationexact(int(args.numcam),0)), psh, agent[sind].void] 
             else: # currently we are seeing one.
-                env.cstate=[env.perceivedstatus, "".join(env.createcombinationexact(int(args.numcam),0)),00] #  4state
+                psh = env.getstatushistory(int(args.numcam))
+                sind = psh.index(max(psh))
+                env.cstate=[env.perceivedstatus, "".join(env.createcombinationexact(int(args.numcam),0)),0, agent[sind].lpos] #
                 # env.cstate=[env.perceivedstatus, "".join(env.createcombinationexact(int(args.numcam),0)),0]
 
-            #print(env.cstate)
+            print("current env.cstate: ", env.cstate)
             env.writecumlativestates(count)
 
             # 2) action 
