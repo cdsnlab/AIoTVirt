@@ -109,13 +109,20 @@ class cam (object):
     
         dur_time, pre_score, pre_class, pre_x1, pre_y1, pre_x2, pre_y2=self.detection_gpu_return(frame, id)
         #print(id, dur_time,pre_score, pre_class, pre_x1, pre_y1, pre_x2, pre_y2)
-        # do tracking here?
+        
         self.trackers=[]
         positions=[]
 
         # if pre_score== '0' and pre_x1== '0' and pre_y1== '0' and pre_x2== '0' and pre_y2== '0' : # add new trackable object
         if pre_score!= 0 : # add new trackable object
-            #print("in tracking", id, dur_time,pre_score, pre_class, pre_x1, pre_y1, pre_x2, pre_y2)
+            
+            # find spot on matrix
+            midx = ( pre_x1 + pre_x2 ) / 2
+            midy = ( pre_y1 + pre_y2 ) / 2
+
+            lpos=findinmatrix(midx, midy, frame.width, frame.height)
+
+
             tracker = dlib.correlation_tracker()
             rect = dlib.rectangle(pre_x1, pre_y1, pre_x2, pre_y2)
             tracker.start_track(crgb, rect)
@@ -168,13 +175,24 @@ class cam (object):
         else:
             if self.voidtimer == 0: # finding phase
                 self.void = 0
+                lpos = 00 # initial position in matrix.
             else: # in btw cam
                 self.void = int(time.time() - self.voidtimer)
             #print("when gone", self.void)
             answer = False
-        return answer
-        # 또한 단순히 대상의 유/무가 아닌, 어디로 이동하는지 언제 나가는지 정보를 추가적으로 시스템 상으로 알려줘야됨.
-    
+            
+        return answer, lpos
+        
+    def findinmatrix(self, x, y, w, h): # fixed size of matrix cell numbers: 10
+        # which (0,0), (4,7), etc...
+        cellwidth = w / 10 
+        cellheight = h / 10
+        for i in range (0, w, cellwidth):
+            #if x >
+            print (":D")
+
+        return "00" # return the matrix location of the currently seen object
+            
 
     def loadvid(self, id, iteration, like):
         # depending on the id of the cam number, load a diff vid.

@@ -146,9 +146,10 @@ def play():
         threads = []
         cidx={}
         def run_thr(target, id):
-            res = target[id].procframe(target[id].id,0)
+            res, lastseen = target[id].procframe(target[id].id,0)
             #cidx.append(res)
             cidx[id] = res
+            lpos[id] = lastseen
 
         for k in range (0,int(agent[0].cap.get(cv2.CAP_PROP_FRAME_COUNT)-2)):
             print("current frame number: ", count)
@@ -164,7 +165,7 @@ def play():
                 i.join()
 
             threads=[]
-                #cidx.append(agent[j].procframe(agent[j].id, k))
+            #cidx.append(agent[j].procframe(agent[j].id, k))
             #c1 = agent[0].procframe(agent[0].id, i, env.curaction) # operation 혹은 action 이 필요한듯?
 #            c2 = agent[1].procframe(agent[1].id, i, env.curaction)
             #print(cidx)
@@ -176,17 +177,18 @@ def play():
                 # if currently perceived status does not contain any 1
                 psh = env.getstatushistory(int(args.numcam))
                 #print("psh: ", psh)
-                # if psh is all zeros --> not seen from the camera network. save cstate to be [curloc, prevloc, timer]
+                # if psh is all zeros --> not seen from the camera network.
                 pshcount = psh.count('0')
-                if pshcount == int(args.numcam): # never seen in ay of the cam.
-                    env.cstate=[psh, psh, 0, ]
-                    # env.cstate=[psh,psh,0]
-                else: #previously seen in some cam.
-                    # findout which cam.
+                if pshcount == int(args.numcam): # never seen in any of the cam.
+                    env.cstate=[psh, psh, 0, 00] # [curloc, prevloc, timer, locinpixel] locinpixel --> 9x9 matrix of the frame
+                    # env.cstate=[psh,psh,0] # [curloc, prevloc, timer]
+                else: #previously seen in some cam. findout which cam.
                     sind = psh.index(max(psh))
-                    env.cstate = ["".join(env.createcombinationexact(int(args.numcam),0)), psh, agent[sind].void]
+                    env.cstate = ["".join(env.createcombinationexact(int(args.numcam),0)), psh, agent[sind].void, 00] # 4state
+                    # env.cstate = ["".join(env.createcombinationexact(int(args.numcam),0)), psh, agent[sind].void] 
             else: # currently we are seeing one.
-                env.cstate=[env.perceivedstatus, "".join(env.createcombinationexact(int(args.numcam),0)),0]
+                env.cstate=[env.perceivedstatus, "".join(env.createcombinationexact(int(args.numcam),0)),00] #  4state
+                # env.cstate=[env.perceivedstatus, "".join(env.createcombinationexact(int(args.numcam),0)),0]
 
             #print(env.cstate)
             env.writecumlativestates(count)
