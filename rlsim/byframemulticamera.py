@@ -10,7 +10,6 @@ import gym
 import sys
 import time
 import random
-#import camera
 import cameramulti
 import cv2
 import _pickle as pickle
@@ -145,6 +144,7 @@ def play():
 
         threads = []
         cidx={}
+        lpos={}
         def run_thr(target, id):
             res, lastseen = target[id].procframe(target[id].id,0)
             #cidx.append(res)
