@@ -179,7 +179,8 @@ def play():
                 # if psh is all zeros --> not seen from the camera network. save cstate to be [curloc, prevloc, timer]
                 pshcount = psh.count('0')
                 if pshcount == int(args.numcam): # never seen in ay of the cam.
-                    env.cstate=[psh,psh,0]
+                    env.cstate=[psh, psh, 0, ]
+                    # env.cstate=[psh,psh,0]
                 else: #previously seen in some cam.
                     # findout which cam.
                     sind = psh.index(max(psh))
