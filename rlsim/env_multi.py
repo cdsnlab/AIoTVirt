@@ -71,6 +71,7 @@ class chamEnv(gym.Env):
         acloc = []
         aploc = []
         timer = []
+        lposmatrix = []
         tmpstate = []
         # tmpact = ["GETCAM1", "GETCAM2", "GETBOTH", "GETNONE"] # this should be changed to binary too...
         # create curlocation 
@@ -81,20 +82,37 @@ class chamEnv(gym.Env):
         #print(acloc)
 
         # create dummy timer
-        timer.extend(range(0, 40)) # time in seconds 
+        timer.extend(range(0, 20)) # time in seconds 
+        # create dummy matrix values (xx, 00, 01, 11, ... 99)
+        lposmatrix = self.createlposmatrix(10)
+        
         #timer.append(None)
         # adding curloc, prevloc, timer, action
         for i in acloc:
             for j in aploc:
                 for k in timer:
-                    for l in self.actopt:
-                        tmpstate.append(str(i)+","+str(j)+","+str(k)+","+str(l))
+                    for l in lposmatrix:
+                        for m in self.actopt:
+                            tmpstate.append(str(i)+","+str(j)+","+str(k)+","+str(l)+","+str(m))
         
         for i in tmpstate:
             self.qkey[i] = 0
-        #print (self.qkey)
+
+            #print (i) #print all available state & action set
         #print(self.actopt)
         
+    def createlposmatrix(self, matnum):
+        tmplpos = []
+        tmplpos.append("xx")
+        for i in range(0,10):
+            for j in range (0,10):
+                tmplpos.append(str(i)+str(j))
+
+        return tmplpos
+
+
+
+    
     def createavailableactions(self, p, e):
         comb = self.createcombination(p, e)
         self.actopt = comb
@@ -133,21 +151,19 @@ class chamEnv(gym.Env):
         self.maxrew = numcam
         self.halfrew = numcam / 2
         
-    def constructstate(self, curloc, prevloc, timer):
-        return str(curloc)+","+str(prevloc)+","+str(timer)
+    def constructstate(self, curloc, prevloc, timer, lpos):
+        return str(curloc)+","+str(prevloc)+","+str(timer)+","+str(lpos)
 
-    def deconstructstatefromstring(self, state):
-        result = [x.strip() for x in state.split(',')]
-        return result[0], result[1], result[2]
 
-    def deconstructstatefromlist(self, state): # curloc, preloc, timer
-        return state[0], state[1], state[2]
+    def deconstructstatefromlist(self, state): # curloc, preloc, timer, lpos
+        return state[0], state[1], state[2], state[3]
 
-    def getmaxvalueofanaction(self, curloc, prevloc, timer):
+    def getmaxvalueofanaction(self, curloc, prevloc, timer, lpos):
         # get max value of state-action set. 
         curmax = -10
         for i in self.actopt:
-            line = str(curloc)+","+str(prevloc)+","+str(timer)+","+str(i)
+            # 0010, 0000, 10, 0010
+            line = str(curloc)+","+str(prevloc)+","+str(timer)+","+str(lpos)+","+str(i)
             
             if self.qkey[line] > curmax:
                 #print("better pick: ", self.qkey[line])
@@ -190,9 +206,7 @@ class chamEnv(gym.Env):
         self.cumee += countones
         #print("numb zero: ", countzeros)
         
-        
         self.maxcumee +=self.numcam
-        
 
         # GP와 EE 반영된 rew값. cumee 계산이 어떻게 좋아져야될까....
         # action과 perceive가 다르면 된거지 어떻게 다른지 확인해줘야되는데? 
@@ -201,10 +215,10 @@ class chamEnv(gym.Env):
                 
         # q[state, action] = q[state, action] + alpha * (reward + gamma * np.max(q[new_state, :]) — Q[state, action])
         if count-1 is -1:
-            acurstate, aprevstate, atimer = self.deconstructstatefromlist(self.cumlativestates[0])
-            atmpkeystring = self.constructstate(acurstate, aprevstate, atimer)
+            acurstate, aprevstate, atimer, alpos = self.deconstructstatefromlist(self.cumlativestates[0])
+            atmpkeystring = self.constructstate(acurstate, aprevstate, atimer, alpos)
             #print(self.qkey[atmpkeystring+","+action])
-            maxvalue = self.getmaxvalueofanaction(acurstate, aprevstate, atimer)
+            maxvalue = self.getmaxvalueofanaction(acurstate, aprevstate, atimer, alpos)
             # need to get cumlative one.
             self.qkey[atmpkeystring+","+action] = self.qkey[atmpkeystring+","+action] + self.alpha * (rew + self.gamma * maxvalue - self.qkey[atmpkeystring+","+action])
             #print("current qvalue: ", self.qkey[atmpkeystring+","+action])
@@ -212,12 +226,12 @@ class chamEnv(gym.Env):
             self.cumeedict[0] = self.cumee 
             self.cumgpdict[0] = self.cumgp / 1 * 100
         else: 
-            acurstate, aprevstate, atimer = self.deconstructstatefromlist(self.cumlativestates[count-1])
-            atmpkeystring = self.constructstate(acurstate, aprevstate, atimer)
+            acurstate, aprevstate, atimer, alpos = self.deconstructstatefromlist(self.cumlativestates[count-1])
+            atmpkeystring = self.constructstate(acurstate, aprevstate, atimer, alpos)
             #print(self.qkey[atmpkeystring+","+action])
-            tcurstate, tprevstate, ttimer = self.deconstructstatefromlist(self.cumlativestates[count])
-            ttmpkeystring = self.constructstate(tcurstate, tprevstate, ttimer)
-            maxvalue = self.getmaxvalueofanaction(tcurstate, tprevstate, ttimer)
+            tcurstate, tprevstate, ttimer, tlpos = self.deconstructstatefromlist(self.cumlativestates[count])
+            ttmpkeystring = self.constructstate(tcurstate, tprevstate, ttimer, tlpos)
+            maxvalue = self.getmaxvalueofanaction(tcurstate, tprevstate, ttimer, tlpos)
             
             self.qkey[atmpkeystring+","+action] = self.qkey[atmpkeystring+","+action] + self.alpha * (rew + self.gamma * maxvalue - self.qkey[atmpkeystring+","+action])
             #print("current qvalue: ", self.qkey[atmpkeystring+","+action])
@@ -274,18 +288,7 @@ class chamEnv(gym.Env):
             return 0
         return len(mylist) - mylist[::-1].index(myvalue) - 1
 
-    # def translatestates(self, c):
-    #     # print(c)
-    #     strline = ''
-    #     # for every false from the first place, replace it with a 0, otherwise 1
-    #     for i in range(len(c)):
-    #         if c[i]==False:
-    #             strline+="0"
-    #         else:
-    #             strline+="1"
-    #     print("cur location of target: ", strline)
-    #     self.perceivedstatus=strline
-    #     self.statushistory.append(self.perceivedstatus)
+
 
     def translatestatedict(self, c):
         sortedc = sorted(c.keys())
@@ -354,9 +357,6 @@ class chamEnv(gym.Env):
         return res
 
 
-    # def setaction (self, action):
-    #     self.curaction = action
-
     def chooseaction(self, scheme, count):
         # random.
         if scheme == "random":
@@ -366,27 +366,27 @@ class chamEnv(gym.Env):
         elif scheme == "eg":
             #print("do greedy action based on previous reward")
             # 현재 state에서 고를수 있는 값 중에서 가장 큰 값을 p의 확률로 고르고 나머지를 1-p확률로.
-            acurstate, aprevstate, atimer = self.deconstructstatefromlist(self.cumlativestates[count])
+            acurstate, aprevstate, atimer, alpos = self.deconstructstatefromlist(self.cumlativestates[count])
             #atmpkeystring = self.constructstate(acurstate, aprevstate, atimer)
-            newact = self.getactionofmax(acurstate, aprevstate, atimer)
+            newact = self.getactionofmax(acurstate, aprevstate, atimer, alpos)
             self.action = newact
         elif scheme =="rn":
             #print("do heuristic")
-            acurstate, aprevstate, atimer = self.deconstructstatefromlist(self.cumlativestates[count])
-            newact = self.getactionofrandmax(acurstate, aprevstate, atimer)
+            acurstate, aprevstate, atimer, alpos = self.deconstructstatefromlist(self.cumlativestates[count])
+            newact = self.getactionofrandmax(acurstate, aprevstate, atimer, alpos)
 
             self.action = newact
         else:
             print("else")
             self.action = "FIXMI"
 
-    def getactionofmax(self, curloc, prevloc, timer):
+    def getactionofmax(self, curloc, prevloc, timer, lpos):
         # get max value of state-action set. 
         randvalue=random.uniform(0,1)
         curmax = -100
         optopt = None
         for i in self.actopt:
-            line = str(curloc)+","+str(prevloc)+","+str(timer)+","+str(i)
+            line = str(curloc)+","+str(prevloc)+","+str(timer)+","+str(lpos)+","+str(i)
             if self.qkey[line] > curmax:
                 curmax = self.qkey[line]
                 print("line,curmax: ", line, curmax)
@@ -400,12 +400,12 @@ class chamEnv(gym.Env):
             newlist = [x for x in self.actopt if x != optopt]
             return random.choice (newlist)  
 
-    def getactionofrandmax(self, curloc, prevloc, timer):
+    def getactionofrandmax(self, curloc, prevloc, timer, lpos):
         # get max value of state-action set. 
         curmax = -1000
         optopt = None
         for i in self.actopt:
-            line = str(curloc)+","+str(prevloc)+","+str(timer)+","+str(i)
+            line = str(curloc)+","+str(prevloc)+","+str(timer)+","+str(lpos)+","+str(i)
             randval = random.randint(0, 5)
             if self.qkey[line] +randval> curmax:
                 curmax = self.qkey[line] + randval
@@ -415,13 +415,13 @@ class chamEnv(gym.Env):
 
         return optopt
 
-    def update(self):
-        # TODO: update the qvalue at the end of each iteration
-        for i in range(len(self.qvaluecount)):
-            curstate, prevstate, timer = self.deconstructstatefromlist(self.cumlativestates[i])
-            atmpkeystring = self.constructstate(curstate, prevstate, timer)
+    # def update(self):
+    #     # TODO: update the qvalue at the end of each iteration
+    #     for i in range(len(self.qvaluecount)):
+    #         curstate, prevstate, timer, lpos = self.deconstructstatefromlist(self.cumlativestates[i])
+    #         atmpkeystring = self.constructstate(curstate, prevstate, timer)
 
-            self.qkey[atmpkeystring+","+self.cumlativeactions[i]] = self.rew #update with last reward
+    #         self.qkey[atmpkeystring+","+self.cumlativeactions[i]] = self.rew #update with last reward
 
 
     # def show_episode(self):
@@ -432,3 +432,24 @@ class chamEnv(gym.Env):
 
     # def update_sim_status(self):
     #     print("updates simulation status, decides when to quit prog.")
+
+        # def deconstructstatefromstring(self, state):
+    #     result = [x.strip() for x in state.split(',')]
+    #     return result[0], result[1], result[2]
+
+
+    # def setaction (self, action):
+    #     self.curaction = action
+
+    # def translatestates(self, c):
+    #     # print(c)
+    #     strline = ''
+    #     # for every false from the first place, replace it with a 0, otherwise 1
+    #     for i in range(len(c)):
+    #         if c[i]==False:
+    #             strline+="0"
+    #         else:
+    #             strline+="1"
+    #     print("cur location of target: ", strline)
+    #     self.perceivedstatus=strline
+    #     self.statushistory.append(self.perceivedstatus)

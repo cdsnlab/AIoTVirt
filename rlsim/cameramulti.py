@@ -121,7 +121,7 @@ class cam (object):
             midx = ( pre_x1 + pre_x2 ) / 2
             midy = ( pre_y1 + pre_y2 ) / 2
 
-            self.lpos=self.findinmatrix(midx, midy, frame.width, frame.height)
+            self.lpos=self.findinmatrix(midx, midy, self.cap.get(cv2.CAP_PROP_FRAME_WIDTH), self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
 
             tracker = dlib.correlation_tracker()
             rect = dlib.rectangle(pre_x1, pre_y1, pre_x2, pre_y2)
