@@ -82,7 +82,7 @@ class chamEnv(gym.Env):
         #print(acloc)
 
         # create dummy timer
-        timer.extend(range(0, 20)) # time in seconds 
+        timer.extend(range(0, 40)) # time in seconds 
         # create dummy matrix values (xx, 00, 01, 11, ... 99)
         lposmatrix = self.createlposmatrix(10)
         
@@ -109,8 +109,6 @@ class chamEnv(gym.Env):
                 tmplpos.append(str(i)+str(j))
 
         return tmplpos
-
-
 
     
     def createavailableactions(self, p, e):
@@ -144,6 +142,7 @@ class chamEnv(gym.Env):
         self.createavailableactions(p,e)
         self.createstateactionkeys(p, e)
         self.setminmaxreward(p)
+        print("[INFO] setup complete.")
 
     def setminmaxreward(self, numcam):
         self.minrew = -numcam

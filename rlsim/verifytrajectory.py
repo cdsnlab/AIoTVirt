@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+# -*- coding: utf-8 -*-
 # referenced darknet from the following github.
 # https://github.com/ayooshkathuria/YOLO_v3_tutorial_from_scratch/blob/master/detect.py
 
@@ -16,23 +17,16 @@ import pickle as pkl
 import dlib
 import centroidtracker
 import trackableobject
-import os
+import requests
+import json
+from env1 import chamEnv
+import argparse
+import datetime
 
-#vidpath = "/home/spencer/samplevideo/testedvids/edge-node"
-#vidpath = "/home/spencer/samplevideo/testedvids/carla_6cam_" #shorter version (10sec)
-#vidpath = "/home/spencer/samplevideo/testedvids/carla_4cam_" # lil longer version (40sec)
-#vidpath = "/home/spencer/samplevideo/testedvids/random_6cam" # 6cam version (60sec)
-#vidpath = "/home/spencer/samplevideo/testedvids/0.3likelihood_6cam_" # 6cam version (60sec)
-#vidpath = "/home/spencer/samplevideo/testedvids_multipath/"
-vidpath = "/home/spencer/samplevideo/multipath_zonetozone/"
-#vidpath = "/home/spencer/samplevideo/testedvids/real" # 6cam version (60sec)
 
-#vidpath = vidpath = "/home/spencer/samplevideo/testedvids/carla_8cam_" 
 class cam (object):
-    def __init__ (self, id, iteration, like):
+    def __init__ (self, id, vidpath):
         self.id = id
-        self.iteration = iteration
-        self.likelihood = like
         # cam setting related
         self.fr = None # framerate
         self.res = None # resolution
@@ -43,7 +37,6 @@ class cam (object):
         self.void = 0 # time when target is gone from view
         self.voidtmp = 0
         self.voidtimer = 0
-        self.lpos = ""
         
         # NN related
         self.CUDA = torch.cuda.is_available()
@@ -57,7 +50,8 @@ class cam (object):
         self.confidence = 0.6 
 
         # initialize video
-        self.loadvid(id, iteration, like) 
+        self.vidpath = vidpath
+        self.loadvid(id)
 
         # tracking related
         self.ct = centroidtracker.CentroidTracker(10, maxDistance = 50, queuesize=10)
@@ -89,6 +83,7 @@ class cam (object):
 
     def setup_before_detection_gpu(self):
         self.input_size = [int(self.model.net_info['height']), int(self.model.net_info['width'])]
+        # CANNOT MODIFY self.input_size yourself: self.input_size = [208, 208]
 
         self.colors = pkl.load(open("pallete", "rb"))
         self.classes = self.load_classes ("data/coco.names")
@@ -99,7 +94,11 @@ class cam (object):
         names = fp.read().split("\n")[:-1]
         return names       
         
-    def procframe(self, id, idx):
+    
+    def procframe(self, id, idx, newact):
+        # which frame are we in.
+        # print("processing frame id %d" % idx)
+
         answer = False
         ret, frame = self.cap.read() # read next frame. 
         crgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
@@ -112,20 +111,12 @@ class cam (object):
             sys.exit(0)
     
         dur_time, pre_score, pre_class, pre_x1, pre_y1, pre_x2, pre_y2=self.detection_gpu_return(frame, id)
-        #print(id, dur_time,pre_score, pre_class, pre_x1, pre_y1, pre_x2, pre_y2)
-        
+        # do tracking here?
         self.trackers=[]
         positions=[]
 
         # if pre_score== '0' and pre_x1== '0' and pre_y1== '0' and pre_x2== '0' and pre_y2== '0' : # add new trackable object
         if pre_score!= 0 : # add new trackable object
-            
-            # find spot on matrix
-            midx = ( pre_x1 + pre_x2 ) / 2
-            midy = ( pre_y1 + pre_y2 ) / 2
-
-            self.lpos=self.findinmatrix(midx, midy, self.cap.get(cv2.CAP_PROP_FRAME_WIDTH), self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-
             tracker = dlib.correlation_tracker()
             rect = dlib.rectangle(pre_x1, pre_y1, pre_x2, pre_y2)
             tracker.start_track(crgb, rect)
@@ -146,10 +137,8 @@ class cam (object):
             self.existing = self.ct.checknumberofexisting()
             if self.existing: 
                 self.voidtimer = time.time()
-                # renew timer. 
                 self.void = int(time.time() - stime)
-           
-                # calc void timer
+
             # for all objects in basket, predict movement direction. 
             for (objectID, centroid) in objects.items():
                 to = self.trobs.get(objectID, None)
@@ -161,72 +150,33 @@ class cam (object):
                     x = [c[0] for c in to.centroids]
                     dirY = centroid[1] - np.mean(y)
                     dirX = centroid[0] - np.mean(x)
-                    #print("diry, dirx: ", dirY, dirX)
+#                    print("diry, dirx: ", dirY, dirX)
                     cv2.circle(frame, (int(dirX), int(dirY)), 4, (0, 0,255),-1) #cyan: current location based on 5 spots
                     to.centroids.append(centroid)
 
                     if not to.counted:
                         prex, prey = self.ct.predict(objectID, 20)
-                        #print("predicted obj loc x, y", prex, prey)
+#                        print("predicted obj loc x, y", prex, prey)
                         cv2.circle(frame, (int(prex), int(prey)), 4, (0, 255,255),-1) # yellow: predicted location in 20 spots
 
                 self.trobs[objectID] = to
-            #cv2.imwrite(str(idx)+".jpg", frame)
             answer = True
         else:
             if self.voidtimer == 0: # finding phase
                 self.void = 0
-                self.lpos = "xx" # initial position in matrix.
-
             else: # in btw cam
                 self.void = int(time.time() - self.voidtimer)
-            #print("when gone", self.void)
             answer = False
+        return answer
 
-        return answer, self.lpos
-        
-    def findinmatrix(self, x, y, w, h): # fixed size of matrix cell numbers: 10
-        celldiv = 10
-        cellwidth = w / celldiv 
-        cellheight = h / celldiv
-        tempx, tempy = 0, 0
-        for i in range (0, celldiv):            
-            if x > (i * cellwidth): 
-                tempx = i
-            elif x <= (i * cellwidth):
-                break
-                    
-        for j in range (0, celldiv):
-            if y > (j * cellheight):
-                tempy = j
-            elif y <= (j * cellheight):
-                break
-               
-        return str(tempx)+str(tempy) # return the matrix location of the currently seen object
 
-    def loadvid(self, id, iteration, like):
+    def loadvid(self, id):
         # depending on the id of the cam number, load a diff vid.
-        # vidpath = "/home/spencer/samplevideo/testedvids/"
-        # likelihoodname = "likelihood_6cam_"
-        # tmp  = "carla_6cam_"
-        # self.vf = vidpath+str(like)+likelihoodname+str(iteration)+"/"+tmp+id+".avi"            
-        # self.cap = cv2.VideoCapture(self.vf)
-        # print(id, self.vf)
-        
-        #vidpath = "/home/spencer/samplevideo/testedvids_multipath/12cams_modified_trajectory"
-        vidpath = "/home/spencer/samplevideo/multipath_zonetozone/6cam_zone_"
-
-        #likelihoodname = "12cams_modified_trajectory"
-        tempvf = "6cam_zone_"+str(iteration)
-        list_of_files=os.listdir("/home/spencer/samplevideo/multipath_zonetozone/")
-        for each_folder in list_of_files:
-            
-            if each_folder.startswith(tempvf):
-                self.vf = "/home/spencer/samplevideo/multipath_zonetozone/"+each_folder+"/"+id+".avi"
-        #self.vf = vidpath+str(iteration)+"/"+id+".avi"            
+        self.vf = self.vidpath+id+".avi"
         self.cap = cv2.VideoCapture(self.vf)
-        print("loading...", id, self.vf)
-
+        print(id, self.vf)
+             
+    
 
     def detection_gpu_return(self, frame, id):
         start_time = time.time()
@@ -242,13 +192,15 @@ class cam (object):
                 frame_tensor = frame_tensor.to("cuda:1")
 
 
-        #detections = self.model(frame_tensor, self.cuda).cpu()
         detections = self.model(frame_tensor, self.CUDA, self.id).cpu()
+        start_detection = time.time()
         detections = process_result(detections, self.confidence, self.nms_thresh)
-        
+        end_detection = time.time()
+#        print("Elapsed detection time: ", end_detection-start_detection)
+
         if len(detections) != 0:
             detections = transform_result(detections, [frame], self.input_size)
-#            for detection in detections:
+            # for detection in detections:
             for idx, detection in enumerate(detections): #what happens if there are more than 1?
                 if(self.classes[int(detection[-1])]=="person"):
                     if float(detection[6]) > self.confidence:
@@ -258,14 +210,88 @@ class cam (object):
                         pre_y1 = (int(detection[2])) # y1
                         pre_x2 = (int(detection[3])) # x2 
                         pre_y2 = (int(detection[4])) # y2 
-                        print(pre_score, pre_class, pre_x1, pre_y1, pre_x2, pre_y2)      
 
             end_time = time.time()
             dur_time = end_time-start_time
-            #print(dur_time, pre_score, pre_class, pre_x1, pre_y1, pre_x2, pre_y2)
             return dur_time, pre_score, pre_class, pre_x1, pre_y1, pre_x2, pre_y2
 
         else: 
             end_time = time.time()
             dur_time = end_time-start_time
             return dur_time, 0, 0, 0, 0, 0, 0
+
+        
+
+### implementation ###
+def slacknoti(contentstr):
+   webhook_url = "https://hooks.slack.com/services/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"
+   payload = {"text": contentstr}
+   requests.post(webhook_url, data=json.dumps(payload), headers={'Content-Type': 'application/json'})
+
+def procvideo(current_video, id): 
+    vidpath = current_video
+    camera = cam(str(id), vidpath)
+    time.sleep(2)
+    frame = None
+    prex={}
+    prey={}
+
+    for k in range(0, int(camera.cap.get(cv2.CAP_PROP_FRAME_COUNT))-2):
+        #print(k)
+        ret, frame = camera.cap.read() # read next frame. 
+
+        #camera.trajectorypervideo(camera.id, k) # draw trajectory on each video, save as jpg.
+        dur_time, pre_score, pre_class, pre_x1, pre_y1, pre_x2, pre_y2=camera.detection_gpu_return(frame, id)
+        prex[k]= (int((pre_x1+pre_x2)/2))
+        prey[k]= (int((pre_y1+pre_y2)/2))
+        #prex[k] = int((pre_x1+pre_x2)/2)
+        #prey[k] = int((pre_y1+pre_y2)/2)
+    
+    for k in range(len(prex)):
+        cv2.circle(frame, (int(prex[k]), int(prey[k])), 4, (0, 255,255),-1)
+    cv2.imwrite(str(id)+".jpg", frame)
+
+###################################################################################
+slacknoti("[MEWTWO] spencer start simulation")
+###################################################################################
+
+# settings
+path = "/home/spencer/samplevideo/multipath"
+folders = ["6cam_multipath_trajectory0"]
+files = ""
+
+# if arguments
+parser = argparse.ArgumentParser()
+parser.add_argument("-d", "--dirpath", default="noinput")
+args = parser.parse_args()
+
+
+# run program for specific folder
+if args.dirpath != "noinput":
+   dirpath = str(args.dirpath)
+   if dirpath.endswith("/"):
+      dirpath = dirpath[:len(dirpath)-1]
+
+   #print("processing video sets in %s" % dirpath)
+   detected_time = []  # list to hold detected time
+   for j in range(6):
+      current_video = dirpath + "/" + files
+      print(current_video)
+      slacknoti("[MEWTWO] spencer running:  processing  '%s%d'  in  '%s'" % (files, j, dirpath))
+      procvideo(current_video, j)
+   slacknoti("[MEWTWO] spencer end simulation")
+   exit(0)
+
+
+###################################################################################
+slacknoti("[MEWTWO] hyoungjo end simulation")
+###################################################################################
+
+
+
+
+
+
+
+
+
