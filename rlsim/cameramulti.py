@@ -44,7 +44,8 @@ class cam (object):
         self.voidtmp = 0
         self.voidtimer = 0
         self.lpos = ""
-        
+        #self.existing=None
+
         # NN related
         self.CUDA = torch.cuda.is_available()
         self.model = None
@@ -131,62 +132,63 @@ class cam (object):
             tracker.start_track(crgb, rect)
             self.trackers.append(tracker)
 
-            # keep on tracking 
-            for tracker in self.trackers:
-                tracker.update(crgb)
-                fpos = tracker.get_position()
-                startX = int(fpos.left())
-                startY = int(fpos.top())
-                endX = int(fpos.right())
-                endY = int(fpos.bottom())
-                positions.append((startX, startY, endX, endY))
-            
-            # update tracking objects positions 
-            objects = self.ct.update(positions)
-            self.existing = self.ct.checknumberofexisting()
-            if self.existing: 
-                self.voidtimer = time.time()
-                # renew timer. 
-                self.void = int(time.time() - stime)
-           
-                # calc void timer
-            # for all objects in basket, predict movement direction. 
-            for (objectID, centroid) in objects.items():
-                to = self.trobs.get(objectID, None)
-                if to == None: # if there isn't any tracking object, itit one. 
-                    to = trackableobject.TrackableObject(objectID, centroid)
-                else: 
-                    cv2.circle(frame, (centroid[0], centroid[1]), 6, (255,255,0),-1)
-                    y = [c[1] for c in to.centroids]
-                    x = [c[0] for c in to.centroids]
-                    dirY = centroid[1] - np.mean(y)
-                    dirX = centroid[0] - np.mean(x)
-                    #print("diry, dirx: ", dirY, dirX)
-                    cv2.circle(frame, (int(dirX), int(dirY)), 4, (0, 0,255),-1) #cyan: current location based on 5 spots
-                    to.centroids.append(centroid)
-
-                    if not to.counted:
-                        prex, prey = self.ct.predict(objectID, 20)
-                        #print("predicted obj loc x, y", prex, prey)
-                        cv2.circle(frame, (int(prex), int(prey)), 4, (0, 255,255),-1) # yellow: predicted location in 20 spots
-
-                self.trobs[objectID] = to
-            #cv2.imwrite(str(idx)+".jpg", frame)
             answer = True
         else:
             if self.voidtimer == 0: # finding phase
                 self.void = 0
                 self.lpos = "xx" # initial position in matrix.
-
             else: # in btw cam
                 self.void = int(time.time() - self.voidtimer)
-            #print("when gone", self.void)
+                #print("when gone", self.void)
             answer = False
+        # keep on tracking 
+        for tracker in self.trackers:
+            tracker.update(crgb)
+            fpos = tracker.get_position()
+            startX = int(fpos.left())
+            startY = int(fpos.top())
+            endX = int(fpos.right())
+            endY = int(fpos.bottom())
+            positions.append((startX, startY, endX, endY))
+        
+        # update tracking objects positions 
+        objects = self.ct.update(positions)
+        self.existing = self.ct.checknumberofexisting() # 
+        
+        if self.existing: 
+            self.voidtimer = time.time()
+            # renew timer. 
+            self.void = int(time.time() - stime)
+            answer=True
+        
+            # calc void timer
+        # for all objects in basket, predict movement direction. 
+        for (objectID, centroid) in objects.items():
+            to = self.trobs.get(objectID, None)
+            if to == None: # if there isn't any tracking object, itit one. 
+                to = trackableobject.TrackableObject(objectID, centroid)
+            else: 
+                cv2.circle(frame, (centroid[0], centroid[1]), 6, (255,255,0),-1)
+                y = [c[1] for c in to.centroids]
+                x = [c[0] for c in to.centroids]
+                dirY = centroid[1] - np.mean(y)
+                dirX = centroid[0] - np.mean(x)
+                #print("diry, dirx: ", dirY, dirX)
+                cv2.circle(frame, (int(dirX), int(dirY)), 4, (0, 0,255),-1) #cyan: current location based on 5 spots
+                to.centroids.append(centroid)
+
+                if not to.counted:
+                    prex, prey = self.ct.predict(objectID, 20)
+                    #print("predicted obj loc x, y", prex, prey)
+                    #cv2.circle(frame, (int(prex), int(prey)), 4, (0, 255,255),-1) # yellow: predicted location in 20 spots
+
+            self.trobs[objectID] = to
+        #cv2.imwrite(str(idx)+".jpg", frame)
 
         return answer, self.lpos
         
     def findinmatrix(self, x, y, w, h): # fixed size of matrix cell numbers: 10
-        celldiv = 10
+        celldiv = 4
         cellwidth = w / celldiv 
         cellheight = h / celldiv
         tempx, tempy = 0, 0
@@ -214,16 +216,27 @@ class cam (object):
         # print(id, self.vf)
         
         #vidpath = "/home/spencer/samplevideo/testedvids_multipath/12cams_modified_trajectory"
-        vidpath = "/home/spencer/samplevideo/multipath_zonetozone/6cam_zone_"
+        #vidpath = "/home/spencer/samplevideo/multipath_zonetozone/6cam_zone_"
+        #vidpath = "/home/spencer/samplevideo/multipath_start4to/6cam_zone_"
 
         #likelihoodname = "12cams_modified_trajectory"
         tempvf = "6cam_zone_"+str(iteration)
-        list_of_files=os.listdir("/home/spencer/samplevideo/multipath_zonetozone/")
+        #list_of_files=os.listdir("/home/spencer/samplevideo/multipath_zonetozone/")
+        #list_of_files=os.listdir("/home/spencer/samplevideo/multipath_start4to/")
+        list_of_files=os.listdir("/home/spencer/samplevideo/multipath_start4to_150iter/")
+        list_of_files=os.listdir("/home/spencer/samplevideo/multipath_zonetozone_alldir/")
+
+        print("iteration: ", iteration)
         for each_folder in list_of_files:
             
-            if each_folder.startswith(tempvf):
-                self.vf = "/home/spencer/samplevideo/multipath_zonetozone/"+each_folder+"/"+id+".avi"
+            if each_folder.startswith(tempvf): 
+                #self.vf = "/home/spencer/samplevideo/multipath_zonetozone/"+each_folder+"/"+id+".avi"
+                #self.vf = "/home/spencer/samplevideo/multipath_start4to/"+each_folder+"/"+id+".avi"
+                #self.vf = "/home/spencer/samplevideo/multipath_start4to_150iter/"+each_folder+"/"+id+".avi"
+                self.vf = "/home/spencer/samplevideo/multipath_zonetozone_alldir/"+each_folder+"/"+id+".avi"
+
         #self.vf = vidpath+str(iteration)+"/"+id+".avi"            
+        
         self.cap = cv2.VideoCapture(self.vf)
         print("loading...", id, self.vf)
 

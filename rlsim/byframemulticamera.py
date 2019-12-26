@@ -86,7 +86,7 @@ def play():
     draw = drawgraph()
     #scheme = "eg"
     scheme = args.scheme
-    fn_header = "prop_try_"
+    fn_header = "prop_"
     iteration = 0
     totaliteration = int(args.totit)
 
@@ -94,19 +94,27 @@ def play():
     ee_dict = {}
     svdict = {}
     
-    tmpTPTN = 0
-    tmpFPFN = 0
-    cumtp = {}
-    result=0
+    tmpTP = 0
+    tmpFP = 0
+    tmpTN = 0
+    tmpFN = 0
+    cumacc = {}
+    cumprecision = {}
+    cumrecall = {}
+    precision = 0
+    recall = 0
+    accuracy =0 
 
     start_time = time.time()
 
-    dirn = str(args.like)+"try"+str(args.addarg)+str(args.alp)+str(args.weight)
+    dirn = str(args.like)+"_try"+str(args.addarg)+"_"+str(args.alp)+"_"+str(args.weight)
     if not os.path.exists(fn_header+dirn):
         os.makedirs(fn_header+dirn)
     f_rew = fn_header+dirn+'/'+scheme+'_finalrewards.csv'
     f_gp = fn_header+dirn+'/'+scheme+'_finalgp.csv'
-    f_tp = fn_header+dirn+'/'+scheme+'_finaltp.csv'
+    f_acc = fn_header+dirn+'/'+scheme+'_finalacc.csv'
+    f_pre = fn_header+dirn+'/'+scheme+'_finalpre.csv'
+    f_rec = fn_header+dirn+'/'+scheme+'_finalrec.csv'
     f_ee = fn_header+dirn+'/'+scheme+'_finalee.csv'
     f_qtable = fn_header+dirn+'/'+scheme+'_finalqtable.csv'
 
@@ -246,20 +254,39 @@ def play():
             writer = csv.writer(make)
             for key, value in gp_dict.items():
                 writer.writerow([key, value])
-        # TP, TN, FP, FN 형태로 바꿔도 상관 없는지 확인하고 대체할 것.
+        # TP, TN, FP, FN 형태로 바꿔도 상관 없는지 확인하고 대체할 것. TN과 FN을 파악할 방법이 있나?
         
-        tmpTPTN = env.TPTN
-        tmpFPFN = env.FPFN        
-        result += ((tmpTPTN) / (tmpTPTN+tmpFPFN))*100
-        print(tmpTPTN, tmpFPFN)
-        print(result)
-        cumtp[iteration] = result 
+        tmpTP = env.TP
+        tmpFP = env.FP        
+        tmpTN = env.TN
+        tmpFN = env.FN
+        precision = (tmpTP) / (tmpTP + tmpFP) *100
+        recall = (tmpTP) / (tmpTP+tmpFN) * 100
+        accuracy = (tmpTP + tmpTN) / (tmpTP+tmpFP+tmpTN+tmpFN) * 100
+        #result += ((tmpTPTN) / (tmpTPTN+tmpFPFN))*100
+        print("tpfptnfn합: ", tmpTP+tmpFP+tmpTN+tmpFN) # 이거 누적되면 곤란한데..
+        print("count: ", count)
+        print("accuracy= ", accuracy)
+        print("recall= ", recall)
+        print("precision= ", precision)
+        cumacc[iteration] = accuracy 
+        cumrecall[iteration] = recall
+        cumprecision[iteration] = precision
 
-        with open (f_tp, 'w') as make:
+        with open (f_acc, 'w') as make:
             writer = csv.writer(make)
-            for key, value in cumtp.items():
+            for key, value in cumacc.items():
                 writer.writerow([key, value])
         
+        with open (f_rec, 'w') as saake:
+            writer = csv.writer(saake)
+            for key, value in cumrecall.items():
+                writer.writerow([key, value])
+        
+        with open (f_pre, 'w') as amake:
+            writer = csv.writer(amake)
+            for key, value in cumprecision.items():
+                writer.writerow([key, value])
         # ee
         ee_dict[iteration] = env.cumee / env.maxcumee * 100
         with open (f_ee, 'w') as wake:
@@ -279,22 +306,29 @@ def play():
         env.cumee =0
         env.maxcumee=0
         env.cumgp =0
-        result=0
+
+        env.TP = 0
+        env.FP = 0
+        env.TN = 0
+        env.FN = 0
         iteration += 1
         
         round_time = time.time()
-        print("round took: ", round_time-start_time)
+        print("round took (seconds): ", round_time-start_time)
     
-    draw.singlegraphfromdict(cumtp, fn_header+dirn, "# iteration", "goodput (%)", "tp frame based")
+    draw.singlegraphfromdict(cumacc, fn_header+dirn, "# iteration", "accuracy (%)", "accuracy frame based")
+    draw.singlegraphfromdict(cumrecall, fn_header+dirn, "# iteration", "recall (%)", "recall frame based")
+    draw.singlegraphfromdict(cumprecision, fn_header+dirn, "# iteration", "precision (%)", "precision frame based")
     draw.singlegraphfromdict(gp_dict, fn_header+dirn, "# iteration", "goodput (%)", "gp frame based")
     draw.singlegraphfromdict(ee_dict, fn_header+dirn, "# iteration", "energy usage (%)", "ee frame based")
 
     end_time = time.time()
-    print("sim took: ", end_time-start_time)
+    print("sim took (seconds): ", end_time-start_time)
     slacknoti("[MEWTWO] spencer done using")
 
 def slacknoti(contentstr):
-    webhook_url = "https://hooks.slack.com/services/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"
+    
+    webhook_url = "https://hooks.slack.com/services/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"
     payload = {"text": contentstr}
     requests.post(webhook_url, data=json.dumps(payload), headers={'Content-Type': 'application/json'})
 

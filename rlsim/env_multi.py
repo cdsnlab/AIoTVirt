@@ -7,17 +7,6 @@ import functools
 import operator
 from itertools import combinations, permutations
 
-# this program goes with episodic_run.py
-
-action_size = 16 # N과 p의 조건에 의하면 정해지겠지?
-
-#df = pandas.DataFrame (data = np.array([["GETCAM1","00", 0], ["GETCAM1","01", 2], ["GETCAM1","10", -1], ["GETCAM1","11", 1], ["GETCAM2","00", 0], ["GETCAM2","01", -1], ["GETCAM2","10", 2], ["GETCAM2","11", 1], ["GETBOTH","00", -2], ["GETBOTH","01", 1], ["GETBOTH","10", 1], ["GETBOTH","11", 2], ["GETNONE","00", 2], ["GETNONE","01", -1], ["GETNONE","10", -1], ["GETNONE","11", -2]]), columns=["action", "status", "reward"])
-#df = [["GETCAM1","00", 0], ["GETCAM1","01", 2], ["GETCAM1","10", -1], ["GETCAM1","11", 1], ["GETCAM2","00", 0], ["GETCAM2","01", -1], ["GETCAM2","10", 2], ["GETCAM2","11", 1], ["GETBOTH","00", -2], ["GETBOTH","01", 1], ["GETBOTH","10", 1], ["GETBOTH","11", 2], ["GETNONE","00", 2], ["GETNONE","01", -1], ["GETNONE","10", -1], ["GETNONE","11", -2]]
-#df = [["GETCAM1","00", 0], ["GETCAM1","01", 2], ["GETCAM1","10", 0], ["GETCAM1","11", 0], ["GETCAM2","00", 0], ["GETCAM2","01", 0], ["GETCAM2","10", 2], ["GETCAM2","11", 0], ["GETBOTH","00", 0], ["GETBOTH","01", 0], ["GETBOTH","10", 0], ["GETBOTH","11", 2], ["GETNONE","00", 2], ["GETNONE","01", 0], ["GETNONE","10", 0], ["GETNONE","11", 0]]
-#df = [["01","00", 0], ["01","01", 2], ["01","10", 0], ["01","11", 0], ["10","00", 0], ["10","01", 0], ["10","10", 2], ["10","11", 0], ["11","00", 0], ["11","01", 0], ["11","10", 0], ["11","11", 2], ["00","00", 2], ["00","01", 0], ["00","10", 0], ["00","11", 0]]
-#df = [["01","00", -1], ["01","01", 2], ["01","10", -2], ["01","11", 1], ["10","00", -1], ["10","01", -2], ["10","10", 2], ["10","11", 1], ["11","00", -2], ["11","01", -1], ["11","10", -1], ["11","11", 2], ["00","00", 2], ["00","01", -2], ["00","10", -2], ["00","11", -2]]
-ee = {}
-
 class chamEnv(gym.Env):
     def __init__ (self, alpha, gamma, epsilon, gpeeweight):
         self.numcam = 0
@@ -43,8 +32,10 @@ class chamEnv(gym.Env):
         self.actopt = None
         self.action = None
         self.wrong = {}
-        self.TPTN = 0
-        self.FPFN = 0
+        self.TP = 0 # 있다라고 판단했고 정확하게 맞을때
+        self.FP = 0 # 없다라고 판단했고 정확하게 맞을때 
+        self.TN = 0 # 있다라고 판단했는데 위치가 틀렸을 때
+        self.FN = 0 # 없다라고 판단했을 때 있을때 
 
         # sets reward based on the camera number
         self.minrew = 0
@@ -66,8 +57,7 @@ class chamEnv(gym.Env):
         self.numcam = camnum
 
     def createstateactionkeys(self, p, e): # creates [state & action] sets & initialize it
-        # format [ '00', '00', integer ], {GETCAM1, GETCAM2, GETBOTH, GETNONE}
-        # create 00, 01, 10, 11
+
         acloc = []
         aploc = []
         timer = []
@@ -82,9 +72,9 @@ class chamEnv(gym.Env):
         #print(acloc)
 
         # create dummy timer
-        timer.extend(range(0, 40)) # time in seconds 
+        timer.extend(range(0, 45)) # time in seconds 
         # create dummy matrix values (xx, 00, 01, 11, ... 99)
-        lposmatrix = self.createlposmatrix(10)
+        lposmatrix = self.createlposmatrix(4)
         
         #timer.append(None)
         # adding curloc, prevloc, timer, action
@@ -104,8 +94,8 @@ class chamEnv(gym.Env):
     def createlposmatrix(self, matnum):
         tmplpos = []
         tmplpos.append("xx")
-        for i in range(0,10):
-            for j in range (0,10):
+        for i in range(0,matnum):
+            for j in range (0,matnum):
                 tmplpos.append(str(i)+str(j))
 
         return tmplpos
@@ -185,22 +175,31 @@ class chamEnv(gym.Env):
         # goodput + ee reward 
         gprew = 0
         eerew = 0
+
+        countzeros = str(action).count("0")
+        countones = str(action).count("1")
         if action == self.perceivedstatus:         #if they are equal get max_points
             gprew = self.maxrew
-            #print("right prediction: ", gprew)
             self.cumgp += 1
-            self.TPTN +=1
+            #self.TPTN +=1
             self.wrong[count] = 0
-        else: # to be a lil more specific, we need to allow ps contains action at least one. (not now)
+            if countzeros == self.numcam:
+                self.TN +=1
+            else:
+                self.TP +=1
+            
+        else: 
             gprew = self.minrew
-            self.FPFN +=1
+            #self.FPFN +=1
             #print("wrong prediction: ", gprew)
+            if countzeros == self.numcam: # 0000 예측했는데, 뭔가 있을때.
+                self.FN +=1
+            else: # 0001으로 예측했는데, 다른 위치에 있을 때.
+                self.FP +=1
+
             self.wrong[count]=1
-        #print(type(action))
-        #countzeros = str(action).count("0")
-        #self.cumee += self.numcam - countzeros
+
         #eerew = countzeros
-        countones = str(action).count("1")
         eerew = self.numcam - 2 * countones
         self.cumee += countones
         #print("numb zero: ", countzeros)
