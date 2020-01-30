@@ -243,7 +243,7 @@ def play():
                 writer.writerow([key,value])
         
         sv = env.sumrewards()
-        svdict[iteration] = sv 
+        svdict[iteration] = sv / count * 100
         with open (f_rew, 'w') as take:
             writer = csv.writer(take)
             for key, value in svdict.items():
@@ -264,7 +264,7 @@ def play():
         recall = (tmpTP) / (tmpTP+tmpFN) * 100
         accuracy = (tmpTP + tmpTN) / (tmpTP+tmpFP+tmpTN+tmpFN) * 100
         #result += ((tmpTPTN) / (tmpTPTN+tmpFPFN))*100
-        print("tpfptnfn합: ", tmpTP+tmpFP+tmpTN+tmpFN) # 이거 누적되면 곤란한데..
+        print("tpfptnfn합: ", tmpTP+tmpFP+tmpTN+tmpFN) # 
         print("count: ", count)
         print("accuracy= ", accuracy)
         print("recall= ", recall)
@@ -319,8 +319,10 @@ def play():
     draw.singlegraphfromdict(cumacc, fn_header+dirn, "# iteration", "accuracy (%)", "accuracy frame based")
     draw.singlegraphfromdict(cumrecall, fn_header+dirn, "# iteration", "recall (%)", "recall frame based")
     draw.singlegraphfromdict(cumprecision, fn_header+dirn, "# iteration", "precision (%)", "precision frame based")
+    draw.singlegraphfromdict(svdict, fn_header+dirn, "# iteration", "average reward per iteration ", "average reward frame based")
     draw.singlegraphfromdict(gp_dict, fn_header+dirn, "# iteration", "goodput (%)", "gp frame based")
     draw.singlegraphfromdict(ee_dict, fn_header+dirn, "# iteration", "energy usage (%)", "ee frame based")
+    
 
     end_time = time.time()
     print("sim took (seconds): ", end_time-start_time)

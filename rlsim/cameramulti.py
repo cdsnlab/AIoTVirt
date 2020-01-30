@@ -24,7 +24,7 @@ import os
 #vidpath = "/home/spencer/samplevideo/testedvids/random_6cam" # 6cam version (60sec)
 #vidpath = "/home/spencer/samplevideo/testedvids/0.3likelihood_6cam_" # 6cam version (60sec)
 #vidpath = "/home/spencer/samplevideo/testedvids_multipath/"
-vidpath = "/home/spencer/samplevideo/multipath_zonetozone/"
+#vidpath = "/home/spencer/samplevideo/multipath_zonetozone/"
 #vidpath = "/home/spencer/samplevideo/testedvids/real" # 6cam version (60sec)
 
 #vidpath = vidpath = "/home/spencer/samplevideo/testedvids/carla_8cam_" 
@@ -224,7 +224,7 @@ class cam (object):
         #list_of_files=os.listdir("/home/spencer/samplevideo/multipath_zonetozone/")
         #list_of_files=os.listdir("/home/spencer/samplevideo/multipath_start4to/")
         list_of_files=os.listdir("/home/spencer/samplevideo/multipath_start4to_150iter/")
-        list_of_files=os.listdir("/home/spencer/samplevideo/multipath_zonetozone_alldir/")
+        #list_of_files=os.listdir("/home/spencer/samplevideo/multipath_zonetozone_alldir/")
 
         print("iteration: ", iteration)
         for each_folder in list_of_files:
@@ -232,8 +232,8 @@ class cam (object):
             if each_folder.startswith(tempvf): 
                 #self.vf = "/home/spencer/samplevideo/multipath_zonetozone/"+each_folder+"/"+id+".avi"
                 #self.vf = "/home/spencer/samplevideo/multipath_start4to/"+each_folder+"/"+id+".avi"
-                #self.vf = "/home/spencer/samplevideo/multipath_start4to_150iter/"+each_folder+"/"+id+".avi"
-                self.vf = "/home/spencer/samplevideo/multipath_zonetozone_alldir/"+each_folder+"/"+id+".avi"
+                self.vf = "/home/spencer/samplevideo/multipath_start4to_150iter/"+each_folder+"/"+id+".avi"
+                #self.vf = "/home/spencer/samplevideo/multipath_zonetozone_alldir/"+each_folder+"/"+id+".avi"
 
         #self.vf = vidpath+str(iteration)+"/"+id+".avi"            
         

@@ -127,8 +127,9 @@ class chamEnv(gym.Env):
         #print(res)
         return res
 
-    def reset (self, p, e):
+    def reset (self, p, e): 
         print("[INFO] init state, reward, available action sets before starting")
+        print("[FIXME] 미리 다 만들지 마셈. 필요할때 만드셈")
         self.createavailableactions(p,e)
         self.createstateactionkeys(p, e)
         self.setminmaxreward(p)
