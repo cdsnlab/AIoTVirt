@@ -225,16 +225,18 @@ class BasicSynchronousClient(object):
             width = abs(arr_box[0][0] - arr_box[3][0])
             coords = [arr_box[3], arr_box[4]]
             point = box.mean(0).getA().astype(int)
+            # * Out of image boundaries
             if point[0][0] > self.view_width or point[0][1] > self.view_height or point[0][0] < 0 or point[0][1] < 0:
                 self.tracks[cam_id][img.frame] = (-1, -1)
+            # * Visible and in-image
             else:
                 self.tracks[cam_id][img.frame] = (
                     point[0][0], point[0][1], width, height, coords[0][0], coords[0][1], coords[1][0], coords[1][1])
+                # TODO Crop box from the image and save image
+        # * Not found
         else:
             self.tracks[cam_id][img.frame] = (-1, -1)
         self.frames_count[cam_id] += 1
-        # * Removed as we don't currently want videos
-        # writer.write(image)
 
     def get_semseg_image(self, cam_id, img):
         # ! Is there a better way to do this? Keep small stack/queue of last 5 semantic segmentation frames?
@@ -273,7 +275,7 @@ class BasicSynchronousClient(object):
             writer = csv.writer(file, delimiter=',',
                                 quotechar='"', quoting=csv.QUOTE_MINIMAL)
             hasTracks = True
-            active_cams = [0, 1, 2, 3, 8, 9]
+            active_cams = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
             headers = ['Camera {}'.format(cam) for cam in active_cams]
             writer.writerow(['Frame'] + headers)
             tracks = {cam: list(tr.values())
@@ -315,9 +317,6 @@ class BasicSynchronousClient(object):
                     cam['PosY']), z=float(cam['PosZ']))
                 rotation = carla.Rotation(roll=float(cam['Roll']), pitch=float(
                     cam['Pitch']), yaw=float(cam['Yaw']))
-                # writer = cv2.VideoWriter('start_5/start_{}_end_{}_run_{}/{}.avi'.format(start_zone, end_zone, run, camera), fourcc, 15,
-                #                          (int(self.view_width), int(self.view_height)))
-                # video_writers.append(writer)
                 writer = None
                 self.tracks[camera] = OrderedDict()
                 self.semseg_images[camera] = queue.Queue()
@@ -482,8 +481,6 @@ class BasicSynchronousClient(object):
 
             for key, value in self.frames_count.items():
                 print("Camera {} : Frames - {}".format(key, value))
-            # for writer in self.video_writers:
-            #     writer.release()
 
             # TODO Print Ground Truth results
 
