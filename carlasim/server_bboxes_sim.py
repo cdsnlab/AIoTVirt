@@ -232,7 +232,11 @@ class BasicSynchronousClient(object):
             else:
                 self.tracks[cam_id][img.frame] = (
                     point[0][0], point[0][1], width, height, coords[0][0], coords[0][1], coords[1][0], coords[1][1])
-                # TODO Crop box from the image and save image
+                # * Crops box from the image and save image
+                left = point[0][0] - int(width / 2) - 5
+                top  = point[0][1] - int(height / 2) - 5
+                cropped = image[top: top + height + 5, left: left + width + 5]
+                cv2.imwrite("{}.jpg".format(img.frame))
         # * Not found
         else:
             self.tracks[cam_id][img.frame] = (-1, -1)
