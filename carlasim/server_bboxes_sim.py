@@ -122,7 +122,7 @@ class BasicSynchronousClient(object):
             help='pedestrians filter (default: "walker.pedestrian.*")')
         argparser.add_argument(
             '--config',
-            default='6_cam_config.ini',
+            default='10_camera_config.ini',
             help='path to the configuration file (default: "config.ini")')
         argparser.add_argument(
             '--foldername',
@@ -216,7 +216,7 @@ class BasicSynchronousClient(object):
             self.pedestrians, self.cameras[cam_id])
         image = ClientSideBoundingBoxes.process_img(
             img, self.view_width, self.view_height)
-        image = cv2.UMat(image)
+        # image = cv2.UMat(image)
         if len(bounding_boxes) != 0:
             box = bounding_boxes[0]
             box = np.delete(box, 2, 1)
@@ -233,10 +233,15 @@ class BasicSynchronousClient(object):
                 self.tracks[cam_id][img.frame] = (
                     point[0][0], point[0][1], width, height, coords[0][0], coords[0][1], coords[1][0], coords[1][1])
                 # * Crops box from the image and save image
-                left = point[0][0] - int(width / 2) - 5
-                top  = point[0][1] - int(height / 2) - 5
-                cropped = image[top: top + height + 5, left: left + width + 5]
-                cv2.imwrite("{}.jpg".format(img.frame))
+                abs_left = point[0][0] - int(width / 2) - 5
+                abs_top  = point[0][1] - int(height / 2) - 5
+                # * Handle cases where box corners are out of image boundaries
+                crop_left = max(0, abs_left)
+                crop_top = max(0, abs_top)
+                # * Adding + 10 as it takes the -5 from {abs_left} and {abs_top} into account 
+                cropped = image[crop_top: min(self.view_height, int(abs_top + height + 10)), crop_left: min(self.view_width, int(abs_left + width + 10))]
+                # TODO Should save this in a folder
+                cv2.imwrite("cam_{}_frame{}.jpg".format(cam_id, img.frame), cropped)
         # * Not found
         else:
             self.tracks[cam_id][img.frame] = (-1, -1)
@@ -275,6 +280,7 @@ class BasicSynchronousClient(object):
             pass
 
     def save_track(self, start_zone, end_zone, run):
+        # TODO Get folder/filename as argument
         with open('novid/start_{}_end_{}_run_{}_track.csv'.format(start_zone, end_zone, run), mode='w') as file:
             writer = csv.writer(file, delimiter=',',
                                 quotechar='"', quoting=csv.QUOTE_MINIMAL)
@@ -394,7 +400,6 @@ class BasicSynchronousClient(object):
                     # set walk to random point
                     pedestrian = self.config['PEDESTRIAN_' + str(cnt)]
                     # try Middle points
-                    # TODO CHECK LOGIC
                     # * Convert to carla location type and assign to dictionary
                     path = [carla.Location(point[0], point[1], z=1)
                             for point in path]
@@ -429,7 +434,6 @@ class BasicSynchronousClient(object):
                     for i in range(0, len(all_id), 2):
                         pedestrian = self.config['PEDESTRIAN_' + str(cnt)]
                         # only if middle point exists
-                        # TODO Check PyCharm warning
                         current_location = all_actors[i].get_location()
                         if elapsed_frames > 300:
                             stopgo = True
