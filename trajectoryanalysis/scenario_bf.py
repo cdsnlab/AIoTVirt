@@ -28,18 +28,6 @@ argparser.add_argument(
 args = argparser.parse_args()
 
 traces = {}
-transition_map = {
-    0: [1,8,9],
-    1: [0, 8, 2],
-    2: [1, 3, 7],
-    3: [1, 2, 4],
-    4: [3, 5],
-    5: [4, 6],
-    6: [5, 7],
-    7: [6, 3, 8],
-    8: [0,1,7,9],
-    9: [0,8]
-}
 
 def slacknoti(contentstr):
     webhook_url = "https://hooks.slack.com/services/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"
@@ -337,14 +325,12 @@ MIN_LENGTH = 15
 results = {}
 transitions = {}
 possible_transitions = {} # possible camera and time.
-cnt_container={}
 rec_counter ={}
 #possible_transitions = {i: -1 for i in range(10)}
 container_boot_time = 0  # container boot time
 tracker = 0
 start_time = time.time()
-transition_times = get_transition_dist(path,False) # tmap
-
+#transition_times = get_transition_dist(path,False) # tmap
 load_tmap_time = time.time()
 print("loaded tmap in {} seconds".format(load_tmap_time-start_time))
 time.sleep(2)
@@ -353,35 +339,29 @@ results_for_excel = pd.DataFrame(
     columns = ["filename", "percentage of frames processed / total number of frames", "percentage of target frames / total number of frames", "precision", "accuracy"]
 )
 #! maybe have an {time:activation} per scenario so we can draw one for example?
-
 for file in tqdm(filenames):
     if '.csv' not in file:
         continue
     print(file)
-    file_start_time = time.time()
+    file_start_time=time.time()
     data = pd.read_csv(path + file)
     
     cam_tracking = -1
 
-    perform_handover = (-1, -1)  # * Frame index; Camera
     # data = pd.read_csv(args.path)
     gr_truth = get_correct(data)
-    recovery = True
     handover_points = []
     
     recording = {i: [] for i in range(10)}
     processed_frames = {i: 0 for i in range(10)}
     cnt_seen_target= {i: 0 for i in range(10)}
-
     available_states = ["rec", "trk", "trans"]
     state = "rec" # inital state
     cnt_ = {key: 0 for key in available_states}
-    
     cnt_total = 0 #* total number of frames.
-    cnt_target =0 #* how many valid frames there are in this file
+    cnt_target =0 #* howmany valid frames there are in this file
     sump=0
     sumst=0
-
     for index, row in data.iterrows(): #* read frame by frame.
         # * Spencers approach * #
         cnt_[state]+=1
@@ -400,6 +380,7 @@ for file in tqdm(filenames):
                 processed_frames[camera] += 1
                 if '-1' not in value:
                     # * this is a new trk, 1) add new trk, 2) exit recovery mode.
+                    cnt_seen_target[camera]+=1
                     recording[camera].append({
                         "start": index,
                         "duration": 0,
@@ -408,8 +389,7 @@ for file in tqdm(filenames):
                     })
                     cam_tracking=camera
                     state="trk"
-                    cnt_seen_target[camera]+=1
-                    continue
+                    break
 
         elif state == "trk": #* tracking: 
             processed_frames[cam_tracking] +=1
@@ -426,58 +406,24 @@ for file in tqdm(filenames):
                 prev_tracking = cam_tracking
                 cam_tracking = -1
                 state="trans"
-                for i in transition_map[camera]: # get neighboring cameras transition diff.
-                    if i != camera: #! bruteforce version requires a different version of the code, since there may not be a transition from 0-->2 
-                        print("[INFO] possible transition from {} to {} at {} frames".format(camera, i, transition_times[str(camera)+"-->"+str(i)]))
-                        #possible_transitions[i] = int(transition_times[str(camera)+"-->"+str(i)])-container_boot_time
-                        possible_transitions[i] = int(transition_times[str(camera)+"-->"+str(i)])+index
-                        rec_counter[i]=0
-                        cnt_container[i]=15
-                continue
+                container_boot_time = 15 #* this means that it suffers 15 bootup time for all other cameras.
+
             else: # * If person is here, continue recording trace
                 state="trk"
-                cnt_seen_target[camera]+=1
                 recording[camera][-1]['tracks'].append(get_point(value))
+                cnt_seen_target[camera]+=1
                 
 
         elif state == "trans": #* in between cams
-            print("[INFO] in TRANS at frame number {}".format(index))
-
-            if not possible_transitions:
-                state = "rec"
+            #print("[INFO] in TRANS at frame number {}".format(index))
+            # 1) look at each camera one by one.
+            if container_boot_time ==0:
+                print("[INFO] in TRANS going to REC at frame number {}".format(index))
+                state="rec"
                 break
-            for k, v in possible_transitions.items():
-                print("[INFO] possible transition point from camera {} to camera {} at {}th frame".format(prev_tracking, k, v))
-                if v <= index: #* check if transition index is earlier than current index.                    
-                    camera=k
-                    processed_frames[camera] += 1
-                    value = row['Camera {}'.format(camera)]
-
-                    cnt_container[k] -= 1
-                    if cnt_container[k] <= 0: #* CONTAINER BOOT TIME IS DONE! search in these cameras 
-
-                        if '-1' not in value:
-                            # * correct transfer.
-                            print("[INFO] found target in camera {} in {}th frame".format(camera, index))
-                            cnt_seen_target[camera]+=1
-
-                            recording[camera].append({
-                                "start": index,
-                                "duration": 0,
-                                "tracks": [get_point(value)],
-                                "end": -1,
-                            })
-                            state="trk"
-                            cam_tracking=camera
-                            possible_transitions={} #* clear the transition points
-                            break
-
-                        rec_counter[k]+=1
-                    if rec_counter[k] >= 15: #* give 15 frames until calling missing.
-                        print("[INFO] pop transition destination for {} at {}th frame".format(k, index))
-                        possible_transitions.pop(k)
-                        cnt_container.pop(k)
-                        break
+            else:
+                print("[INFO] in TRANS:CONTAINER_BOOTING at frame number {}".format(index))
+            container_boot_time -= 1
             
     #? calculate results for each iteration. 
     for k, v in processed_frames.items():
@@ -498,5 +444,5 @@ for file in tqdm(filenames):
     print("file iteration time {}".format(file_end_time - file_start_time))
 sim_end_time = time.time()
 with pd.ExcelWriter("scenario_results_prev.xlsx", mode='a') as writer:
-    results_for_excel.to_excel(writer, sheet_name="LeNC-neighboring-containerboot")
-print("[INFO] total time {}".format(sim_end_time - start_time))
+    results_for_excel.to_excel(writer, sheet_name="bf-neighboring-containerboot")
+print("[INFO] total time {}".format(sim_end_time - start_time))        
