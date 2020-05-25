@@ -14,6 +14,7 @@ except IndexError:
 # noinspection PyUnresolvedReferences
 import carla
 
+import json
 import logging
 import time
 import cv2
@@ -241,7 +242,7 @@ class BasicSynchronousClient(object):
                 # * Adding + 10 as it takes the -5 from {abs_left} and {abs_top} into account 
                 cropped = image[crop_top: min(self.view_height, int(abs_top + height + 10)), crop_left: min(self.view_width, int(abs_left + width + 10))]
                 # TODO Should save this in a folder
-                cv2.imwrite("cam_{}_frame{}.jpg".format(cam_id, img.frame), cropped)
+                cv2.imwrite("novid/cam_{}_frame{}.jpg".format(cam_id, img.frame), cropped)
         # * Not found
         else:
             self.tracks[cam_id][img.frame] = (-1, -1)
@@ -338,24 +339,30 @@ class BasicSynchronousClient(object):
                                   rotation, cam_type='semseg')
                 time.sleep(0.1)
             # -------------
-            # Spawn Walkers
+            # Spawn Walker
             # -------------
-            # 1. take all the random locations to spawn
-            # TODO Need to add static people here
             spawn_points = []
-            for i in range(1):
-                spawn_point = carla.Transform()
-                start_pos = path.pop(0)
-                loc = carla.Location(x=start_pos[0], y=start_pos[1], z=1)
-                start_locations.append(loc)
-                if (loc != None):
-                    spawn_point.location = loc
-                    spawn_points.append(spawn_point)
+            spawn_point = carla.Transform()
+            start_pos = path.pop(0)
+            loc = carla.Location(x=start_pos[0], y=start_pos[1], z=1)
+            start_locations.append(loc)
+            if (loc != None):
+                spawn_point.location = loc
+                spawn_points.append(spawn_point)
+            # 1. Take spawn locations from json file
+            # TODO Need to add static people here
+            with open("locations.json", "r") as file:
+                spawn_data = json.loads(file)
 
+                for spawn in spawn_data:
+                    location = carla.Location(x=spawn['location']['x'], y=spawn['location']['y'], z=spawn['location']['z'])
+                    rotation = carla.Rotation(yaw=spawn['rotation']['yaw'])
+                    transform = carla.Transform(location, rotation)
+                    spawn_points.append(transform)
             # 2. we spawn the walker object
             batch = []
             cnt = 1
-            for spawn_point in spawn_points:
+            for spawn_point in spawn_points[1:]:
                 # Get blueprint from library; first because only one result is expected
                 bp_name = self.config['PEDESTRIAN_' + str(cnt)]['Blueprint']
                 walker_bp = self.world.get_blueprint_library().filter(bp_name)[
@@ -377,7 +384,7 @@ class BasicSynchronousClient(object):
                 # 3. we spawn the walker controller
                 batch = []
                 walker_controller_bp = self.world.get_blueprint_library().find('controller.ai.walker')
-                for i in range(len(walkers_list)):
+                for i in [0]:
                     batch.append(SpawnActor(walker_controller_bp,
                                             carla.Transform(), walkers_list[i]["id"]))
                 results = self.client.apply_batch_sync(batch, True)
@@ -394,7 +401,7 @@ class BasicSynchronousClient(object):
                 all_actors = self.world.get_actors(all_id)
                 cnt = 1
                 # 5. initialize each controller and set target to walk to (list is [controler, actor, controller, actor ...])
-                for i in range(0, len(all_id), 2):
+                for i in [0]:
                     # start walker
                     all_actors[i].start()
                     # set walk to random point
@@ -419,7 +426,7 @@ class BasicSynchronousClient(object):
                     cnt += 1
 
 
-                self.pedestrians = self.world.get_actors().filter('walker.*')
+                self.pedestrians = self.world.get_actors().filter('walker.pedestrian.0006')
 
                 # video_writers = []
 
@@ -431,24 +438,23 @@ class BasicSynchronousClient(object):
                 while True:
                     cnt = 1
                     elapsed_frames += 1
-                    for i in range(0, len(all_id), 2):
-                        pedestrian = self.config['PEDESTRIAN_' + str(cnt)]
+                    # for i in range(0, len(all_id), 2):
                         # only if middle point exists
-                        current_location = all_actors[i].get_location()
-                        if elapsed_frames > 300:
+                    current_location = all_actors[0].get_location()
+                    if elapsed_frames > 300:
+                        stopgo = True
+                    if len(path) > 1:
+                        if current_location.distance(path[0]) < 5:
+                            print("Reached location {}".format(path.pop(0)))
+                            print("Going to {}".format(path[0]))
+                            all_actors[0].go_to_location(path[0])
+                            print(len(path))
+                            elapsed_frames = 0
+                    else:
+                        if current_location.distance(path[0]) < 5:
+                            print("Reached end")
                             stopgo = True
-                        if len(path) > 1:
-                            if current_location.distance(path[0]) < 5:
-                                print("Reached location {}".format(path.pop(0)))
-                                print("Going to {}".format(path[0]))
-                                all_actors[i].go_to_location(path[0])
-                                print(len(path))
-                                elapsed_frames = 0
-                        else:
-                            if current_location.distance(path[0]) < 5:
-                                print("Reached end")
-                                stopgo = True
-                        cnt += 1
+                    cnt += 1
                     if stopgo == True:
                         break
                     self.world.wait_for_tick()
