@@ -12,6 +12,8 @@ import os
 from tqdm import tqdm
 import matplotlib.pyplot as plt
 import requests
+from openpyxl import load_workbook
+
 
 # os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 # config = tf.ConfigProto()
@@ -318,10 +320,15 @@ for camera in range(10):
     traces[camera] = loaded
 
 path ="/home/spencer1/samplevideo/sim_csv/prev_full/"
+path1, dirs1, files1 = next(os.walk(path))
+file_count = len(files1)
+skip_file=0
+
 filenames = os.listdir(path)
-#filenames = filenames[::11]
+#filenames = filenames[::skip_file]
 
 MIN_LENGTH = 15
+MAX_SIM = 4000
 results = {}
 transitions = {}
 possible_transitions = {} # possible camera and time.
@@ -335,26 +342,39 @@ load_tmap_time = time.time()
 print("loaded tmap in {} seconds".format(load_tmap_time-start_time))
 time.sleep(2)
 name=0 # for excel file
+
+
+
 results_for_excel = pd.DataFrame(
     columns = ["filename", "percentage of frames processed / total number of frames", "percentage of target frames / total number of frames", "precision", "accuracy"]
 )
-#! maybe have an {time:activation} per scenario so we can draw one for example?
+
+activation_results = pd.DataFrame(
+    columns = ["dummy"]
+)
+gt_activation_results = pd.DataFrame(
+    columns = ["dummy"]
+)
+
 for file in tqdm(filenames):
     if '.csv' not in file:
         continue
     print(file)
     file_start_time=time.time()
     data = pd.read_csv(path + file)
-    
+    rowsize = len(data['Camera 1'])
+    #print(rowsize)
     cam_tracking = -1
 
     # data = pd.read_csv(args.path)
-    gr_truth = get_correct(data)
     handover_points = []
     
     recording = {i: [] for i in range(10)}
     processed_frames = {i: 0 for i in range(10)}
     cnt_seen_target= {i: 0 for i in range(10)}
+    number_of_activated_cameras = {i: 0 for i in range(MAX_SIM)}
+    gt_activated = {i: 0 for i in range(MAX_SIM)}
+
     available_states = ["rec", "trk", "trans"]
     state = "rec" # inital state
     cnt_ = {key: 0 for key in available_states}
@@ -371,6 +391,7 @@ for file in tqdm(filenames):
             value = row['Camera {}'.format(camera)]
             if '-1' not in value:
                 cnt_target+=1
+                gt_activated[index]+=1
                 break
         
         if state=="rec": #* recovery: turn on all cameras to search for the target.
@@ -378,6 +399,7 @@ for file in tqdm(filenames):
             for camera in range(10):
                 value = row['Camera {}'.format(camera)]
                 processed_frames[camera] += 1
+                number_of_activated_cameras[index]+=1
                 if '-1' not in value:
                     # * this is a new trk, 1) add new trk, 2) exit recovery mode.
                     cnt_seen_target[camera]+=1
@@ -393,6 +415,7 @@ for file in tqdm(filenames):
 
         elif state == "trk": #* tracking: 
             processed_frames[cam_tracking] +=1
+            number_of_activated_cameras[index]+=1
             # * We have a camera that is tracking, continue here
             camera = cam_tracking
             print("[INFO] in TRK in camera {} frame number {}".format(camera, index))
@@ -420,12 +443,16 @@ for file in tqdm(filenames):
             if container_boot_time ==0:
                 print("[INFO] in TRANS going to REC at frame number {}".format(index))
                 state="rec"
-                break
+                continue
             else:
                 print("[INFO] in TRANS:CONTAINER_BOOTING at frame number {}".format(index))
             container_boot_time -= 1
-            
+        if index==rowsize-1:
+            for i in range(rowsize-1, MAX_SIM):
+                number_of_activated_cameras[i] = -1
+                gt_activated[i] = -1
     #? calculate results for each iteration. 
+
     for k, v in processed_frames.items():
         sump += v
     for k, v in cnt_seen_target.items():
@@ -439,10 +466,22 @@ for file in tqdm(filenames):
     else:
         print("accuracy {}".format(100*sumst/cnt_target)) #* accuracy
         results_for_excel = results_for_excel.append(pd.Series(data=[file, 100*sump/(cnt_total*10), 100*cnt_target/(cnt_total*10), 100*sumst/sump, 100*sumst/cnt_target], index=results_for_excel.columns, name=name))
+
+    activation_results[file[:-4]+"_activenumber"] = pd.Series(number_of_activated_cameras)
+    gt_activation_results[file[:-4]+"_activenumber"] = pd.Series(gt_activated)
     name+=1
     file_end_time = time.time()
     print("file iteration time {}".format(file_end_time - file_start_time))
+
+
 sim_end_time = time.time()
-with pd.ExcelWriter("scenario_results_prev.xlsx", mode='a') as writer:
-    results_for_excel.to_excel(writer, sheet_name="bf-neighboring-containerboot")
 print("[INFO] total time {}".format(sim_end_time - start_time))        
+with pd.ExcelWriter("results/scenario_results_bf.xlsx", mode='a') as writer:
+    results_for_excel.to_excel(writer, sheet_name="bf-test-activation-of-cameras")
+
+with pd.ExcelWriter("activation_graph/bf_activation.xlsx", mode='a') as writer:
+    activation_results.to_excel(writer, sheet_name="test-activation_number")
+
+# with pd.ExcelWriter("activation_graph/gt_activation.xlsx", mode='a') as writer:
+#     gt_activation_results.to_excel(writer, sheet_name="test-activation_number")
+print("[INFO] DONE! ")

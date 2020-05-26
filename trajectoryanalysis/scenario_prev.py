@@ -37,7 +37,7 @@ transition_map = {
     5: [4, 6],
     6: [5, 7],
     7: [6, 3, 8],
-    8: [0,1,7,9],
+    8: [1,7,9],
     9: [0,8]
 }
 
@@ -332,8 +332,11 @@ for camera in range(10):
 path ="/home/spencer1/samplevideo/sim_csv/prev_full/"
 filenames = os.listdir(path)
 #filenames = filenames[::11]
+#skip_file=3000
+#filenames = filenames[1::skip_file]
 
 MIN_LENGTH = 15
+MAX_SIM = 4000
 results = {}
 transitions = {}
 possible_transitions = {} # possible camera and time.
@@ -352,7 +355,10 @@ name=0 # for excel file
 results_for_excel = pd.DataFrame(
     columns = ["filename", "percentage of frames processed / total number of frames", "percentage of target frames / total number of frames", "precision", "accuracy"]
 )
-#! maybe have an {time:activation} per scenario so we can draw one for example?
+activation_results = pd.DataFrame(
+    columns = ["dummy"]
+)
+
 
 for file in tqdm(filenames):
     if '.csv' not in file:
@@ -360,7 +366,8 @@ for file in tqdm(filenames):
     print(file)
     file_start_time = time.time()
     data = pd.read_csv(path + file)
-    
+    rowsize = len(data['Camera 1'])
+
     cam_tracking = -1
 
     perform_handover = (-1, -1)  # * Frame index; Camera
@@ -372,7 +379,7 @@ for file in tqdm(filenames):
     recording = {i: [] for i in range(10)}
     processed_frames = {i: 0 for i in range(10)}
     cnt_seen_target= {i: 0 for i in range(10)}
-
+    number_of_activated_cameras = {i: 0 for i in range(MAX_SIM)}
     available_states = ["rec", "trk", "trans"]
     state = "rec" # inital state
     cnt_ = {key: 0 for key in available_states}
@@ -398,6 +405,7 @@ for file in tqdm(filenames):
             for camera in range(10):
                 value = row['Camera {}'.format(camera)]
                 processed_frames[camera] += 1
+                number_of_activated_cameras[index]+=1
                 if '-1' not in value:
                     # * this is a new trk, 1) add new trk, 2) exit recovery mode.
                     recording[camera].append({
@@ -409,14 +417,15 @@ for file in tqdm(filenames):
                     cam_tracking=camera
                     state="trk"
                     cnt_seen_target[camera]+=1
-                    continue
+                    
+                    break
 
         elif state == "trk": #* tracking: 
             processed_frames[cam_tracking] +=1
+            number_of_activated_cameras[index]+=1
             # * We have a camera that is tracking, continue here
             camera = cam_tracking
             print("[INFO] in TRK in camera {} frame number {}".format(camera, index))
-
             value = row['Camera {}'.format(camera)]
             # * Increase the current trace's duration
             recording[camera][-1]['duration'] += 1
@@ -427,7 +436,7 @@ for file in tqdm(filenames):
                 cam_tracking = -1
                 state="trans"
                 for i in transition_map[camera]: # get neighboring cameras transition diff.
-                    if i != camera: #! bruteforce version requires a different version of the code, since there may not be a transition from 0-->2 
+                    if i != camera: #! maybe set a minimum transition time for possible transitions and wait until it finds it?
                         print("[INFO] possible transition from {} to {} at {} frames".format(camera, i, transition_times[str(camera)+"-->"+str(i)]))
                         #possible_transitions[i] = int(transition_times[str(camera)+"-->"+str(i)])-container_boot_time
                         possible_transitions[i] = int(transition_times[str(camera)+"-->"+str(i)])+index
@@ -435,7 +444,6 @@ for file in tqdm(filenames):
                         cnt_container[i]=15
                 continue
             else: # * If person is here, continue recording trace
-                state="trk"
                 cnt_seen_target[camera]+=1
                 recording[camera][-1]['tracks'].append(get_point(value))
                 
@@ -445,17 +453,16 @@ for file in tqdm(filenames):
 
             if not possible_transitions:
                 state = "rec"
-                break
+                continue
             for k, v in possible_transitions.items():
                 print("[INFO] possible transition point from camera {} to camera {} at {}th frame".format(prev_tracking, k, v))
                 if v <= index: #* check if transition index is earlier than current index.                    
                     camera=k
-                    processed_frames[camera] += 1
                     value = row['Camera {}'.format(camera)]
-
                     cnt_container[k] -= 1
                     if cnt_container[k] <= 0: #* CONTAINER BOOT TIME IS DONE! search in these cameras 
-
+                        processed_frames[camera] += 1
+                        number_of_activated_cameras[index]+=1
                         if '-1' not in value:
                             # * correct transfer.
                             print("[INFO] found target in camera {} in {}th frame".format(camera, index))
@@ -478,8 +485,13 @@ for file in tqdm(filenames):
                         possible_transitions.pop(k)
                         cnt_container.pop(k)
                         break
-            
+        if index==rowsize-1:
+            for i in range(rowsize-1, MAX_SIM):
+                number_of_activated_cameras[i] = -1
+
     #? calculate results for each iteration. 
+
+
     for k, v in processed_frames.items():
         sump += v
     for k, v in cnt_seen_target.items():
@@ -493,10 +505,18 @@ for file in tqdm(filenames):
     else:
         print("accuracy {}".format(100*sumst/cnt_target)) #* accuracy
         results_for_excel = results_for_excel.append(pd.Series(data=[file, 100*sump/(cnt_total*10), 100*cnt_target/(cnt_total*10), 100*sumst/sump, 100*sumst/cnt_target], index=results_for_excel.columns, name=name))
+    activation_results[file[:-4]+"_activenumber"] = pd.Series(number_of_activated_cameras)
+
     name+=1
     file_end_time = time.time()
     print("file iteration time {}".format(file_end_time - file_start_time))
 sim_end_time = time.time()
-with pd.ExcelWriter("scenario_results_prev.xlsx", mode='a') as writer:
-    results_for_excel.to_excel(writer, sheet_name="LeNC-neighboring-containerboot")
 print("[INFO] total time {}".format(sim_end_time - start_time))
+
+####! logfiles
+with pd.ExcelWriter("results/scenario_results_prev.xlsx", mode='a') as writer:
+    results_for_excel.to_excel(writer, sheet_name="LeNC-neighboring-containerboot")
+
+with pd.ExcelWriter("activation_graph/prev_activation.xlsx", mode='a') as writer:
+    activation_results.to_excel(writer, sheet_name="test-activation_number")
+print("[INFO] DONE! ")
