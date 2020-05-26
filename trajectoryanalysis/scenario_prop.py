@@ -143,8 +143,8 @@ def estimate_handover(source, dest, cur_path, len_cur_path, angle_lim=30, cutoff
     if len(remaining_durations) != 0:
         # TODO Calculate mean transition distance
         #print("[DEBUG] for {} -> {} ".format(source, dest))
-        return stats.mode(remaining_durations)[0][0], stats.mode(remaining_transitions)[0][0]
-        # return int(statistics.median(remaining_durations)), int(statistics.median(remaining_transitions))
+        #return stats.mode(remaining_durations)[0][0], stats.mode(remaining_transitions)[0][0]
+        return int(statistics.median(remaining_durations)), int(statistics.median(remaining_transitions))
     else:
         #print("[DEBUG] Nothing for {} -> {} ".format(source, dest))
         return -1, 0
@@ -192,7 +192,7 @@ def estimate_transition():
      
 
             for i, target in enumerate (choice):
-                #* handover_t: how long the left trace is.., transition_d: how long it took from camera a to b
+                #* handover_t: how long the trace is.., transition_d: how long it took from camera a to b
                 handover_t, transition_d = estimate_handover(camera, target, full_track, len_tracks, 10, False, False)
                 #print(target, handover_t, transition_d)
                 handover_time.append(handover_t)
@@ -200,7 +200,7 @@ def estimate_transition():
                 #print("[DEBUG] destination {}, handover_time {}, transition_dur {}".format(k, handover_t, transition_d)) 
                 # TODO Adjust handover time based on threshold and container_boot_time
                 if handover_t!=-1:
-                    perform_h = (handover_t + transition_d + index - container_boot_time, target) # - recording[camera][-1]['duration'], target)
+                    perform_h = (handover_t + transition_d + index - container_boot_time - recording[camera][-1]['duration'], target) # - recording[camera][-1]['duration'], target)
                     perform_handover[i]=(perform_h)
 
                     # * As we are tracking in this camera, we don't need to check the rest
@@ -379,7 +379,7 @@ for file in tqdm(filenames):
             for k, v in possible_transitions.items():
                 if v[0]<=index: #transition time == index
                     print("[DEBUG] possible transition point from camera {} to camera {} at {}th frame".format(prev_tracking, v[1], v[0]))
-
+                    number_of_activated_cameras[index]+=1
                     camera=v[1]
                     processed_frames[camera] += 1
                     value = row['Camera {}'.format(camera)]
@@ -387,7 +387,7 @@ for file in tqdm(filenames):
                         # * correct transfer.
                         print("[INFO] found target in camera {} in {}th frame".format(camera, index))
                         cnt_seen_target[camera]+=1
-                        number_of_activated_cameras[index]+=1
+                        
                         recording[camera].append({
                             "start": index,
                             "duration": 0,
