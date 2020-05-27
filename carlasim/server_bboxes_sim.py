@@ -1,48 +1,29 @@
-import glob
-import sys
-
+import sys, glob
 try:
     sys.path.append(
         glob.glob('carla-0.9.7-py3.5-linux-x86_64.egg')[0])
 except IndexError:
     pass
 
-# ==============================================================================
-# -- imports -------------------------------------------------------------------
-# ==============================================================================
-
-# noinspection PyUnresolvedReferences
 import carla
 
+import argparse
+import configparser
+import csv
 import json
 import logging
-import time
-import cv2
-import csv
+import os
 import queue
 import random
-import numpy as np
-import argparse
-import os
+import time
 from collections import OrderedDict
-import configparser
+from crowd_spawn import CrowdSpawn
+import cv2
+import numpy as np
+
+# noinspection PyUnresolvedReferences
+# import carla
 from bounding_boxes import ClientSideBoundingBoxes
-
-
-start_locations = []
-middle_locations = []
-end_locations = []
-
-
-# ==============================================================================
-# -- BasicSynchronousClient ----------------------------------------------------
-# ==============================================================================
-def xgen(start_end):
-    return random.uniform(start_end[0], start_end[1])
-
-
-def ygen(start_end):
-    return random.uniform(start_end[0], start_end[1])
 
 
 class BasicSynchronousClient(object):
@@ -78,6 +59,7 @@ class BasicSynchronousClient(object):
         self.view_height = 720  # //2
         self.view_fov = 110
         self.fps = 15
+        self.image_map = {}
         # self.G = map.Map().get_graph()
         # self.M = map.Map()
 
@@ -242,7 +224,8 @@ class BasicSynchronousClient(object):
                 # * Adding + 10 as it takes the -5 from {abs_left} and {abs_top} into account 
                 cropped = image[crop_top: min(self.view_height, int(abs_top + height + 10)), crop_left: min(self.view_width, int(abs_left + width + 10))]
                 # TODO Should save this in a folder
-                cv2.imwrite("novid/cam_{}_frame{}.jpg".format(cam_id, img.frame), cropped)
+                # cv2.imwrite("data/start_{}_end_{}_run_{}/cam_{}_frame_{}.jpg".format(cam_id, img.frame), cropped)
+                cv2.imwrite("data/cam_{}_frame_{}.jpg".format(cam_id, img.frame), cropped)
         # * Not found
         else:
             self.tracks[cam_id][img.frame] = (-1, -1)
@@ -264,8 +247,8 @@ class BasicSynchronousClient(object):
             if pos != (-1, -1):
                 try:
                     found = False
-                    for i in range(-30, 30):
-                        for j in range(-30, 30):
+                    for i in range(-10, 10):
+                        for j in range(-10, 10):
                             color = image[pos[1]+i, pos[0]+j]
                             if color[2] == 4:
                                 found = True
@@ -282,7 +265,7 @@ class BasicSynchronousClient(object):
 
     def save_track(self, start_zone, end_zone, run):
         # TODO Get folder/filename as argument
-        with open('novid/start_{}_end_{}_run_{}_track.csv'.format(start_zone, end_zone, run), mode='w') as file:
+        with open('data/start_{}_end_{}_run_{}_track.csv'.format(start_zone, end_zone, run), mode='w') as file:
             writer = csv.writer(file, delimiter=',',
                                 quotechar='"', quoting=csv.QUOTE_MINIMAL)
             hasTracks = True
@@ -341,89 +324,65 @@ class BasicSynchronousClient(object):
             # -------------
             # Spawn Walker
             # -------------
-            spawn_points = []
             spawn_point = carla.Transform()
             start_pos = path.pop(0)
             loc = carla.Location(x=start_pos[0], y=start_pos[1], z=1)
-            start_locations.append(loc)
-            if (loc != None):
-                spawn_point.location = loc
-                spawn_points.append(spawn_point)
-            # 1. Take spawn locations from json file
-            # TODO Need to add static people here
-            with open("locations.json", "r") as file:
-                spawn_data = json.loads(file)
-
-                for spawn in spawn_data:
-                    location = carla.Location(x=spawn['location']['x'], y=spawn['location']['y'], z=spawn['location']['z'])
-                    rotation = carla.Rotation(yaw=spawn['rotation']['yaw'])
-                    transform = carla.Transform(location, rotation)
-                    spawn_points.append(transform)
+            print(loc)
+            spawn_point.location = loc
+            
             # 2. we spawn the walker object
-            batch = []
-            cnt = 1
-            for spawn_point in spawn_points[1:]:
-                # Get blueprint from library; first because only one result is expected
-                bp_name = self.config['PEDESTRIAN_' + str(cnt)]['Blueprint']
-                walker_bp = self.world.get_blueprint_library().filter(bp_name)[
-                    0]
-                # set as not invincible
-                if walker_bp.has_attribute('is_invincible'):
-                    walker_bp.set_attribute('is_invincible', 'false')
-                batch.append(SpawnActor(walker_bp, spawn_point))
-                cnt += 1
-            results = self.client.apply_batch_sync(batch, True)
-            for i in range(len(results)):
-                if results[i].error:
-                    logging.error(results[i].error)
-                    failed = True
-                else:
-                    walkers_list.append({"id": results[i].actor_id})
+            bp_name = self.config['PEDESTRIAN_1']['Blueprint']
+            walker_bp = self.world.get_blueprint_library().filter(bp_name)[0]
+            # set as not invincible
+            if walker_bp.has_attribute('is_invincible'):
+                walker_bp.set_attribute('is_invincible', 'false')
+            carla_model = self.world.try_spawn_actor(walker_bp, spawn_point)
+
+            if carla_model:
+                walkers_list.append({"id": carla_model.id})
+                print("[INFO] Spawning Carla Succeeded")
+            else:
+                print("[ERROR] Spawning Carla Failed")
+            
+            # print("[INFO] Spawned Carla ", not failed)
             elapsed_frames = 0
             if not failed:
                 # 3. we spawn the walker controller
-                batch = []
                 walker_controller_bp = self.world.get_blueprint_library().find('controller.ai.walker')
-                for i in [0]:
-                    batch.append(SpawnActor(walker_controller_bp,
-                                            carla.Transform(), walkers_list[i]["id"]))
-                results = self.client.apply_batch_sync(batch, True)
-                for i in range(len(results)):
-                    if results[i].error:
-                        # logging.error(results[i].error)
-                        print(results[i].error)
-                    else:
-                        walkers_list[i]["con"] = results[i].actor_id
+                carla_actor = self.world.try_spawn_actor(walker_controller_bp, carla.Transform(), carla_model)
+                
                 # 4. we put altogether the walkers and controllers id to get the objects from their id
-                for i in range(len(walkers_list)):
-                    all_id.append(walkers_list[i]["con"])
-                    all_id.append(walkers_list[i]["id"])
-                all_actors = self.world.get_actors(all_id)
+                all_id.append(carla_actor)
+                all_id.append(carla_model)
+                    
+                crowd = CrowdSpawn(self.world)
+                all_id = crowd.spawn_people(all_id)
+                print("[INFO] Spawned crowd")
                 cnt = 1
-                # 5. initialize each controller and set target to walk to (list is [controler, actor, controller, actor ...])
-                for i in [0]:
-                    # start walker
-                    all_actors[i].start()
-                    # set walk to random point
-                    pedestrian = self.config['PEDESTRIAN_' + str(cnt)]
-                    # try Middle points
-                    # * Convert to carla location type and assign to dictionary
-                    path = [carla.Location(point[0], point[1], z=1)
-                            for point in path]
-                    # * Go to first waypoint
-                    print("Going to {}".format(path[0]))
-                    all_actors[i].go_to_location(path[0])
-                    # * Get start & end position for pedestrian
-                    # * Put into graph, get resulting path
-                    # * Spawn at start point and then add rest of points to middle points list
+                
+                # * Initialise Carla and start her journey
+                # start walker
+                carla_actor.start()
+                # set walk to random point
+                pedestrian = self.config['PEDESTRIAN_' + str(cnt)]
+                # try Middle points
+                # * Convert to carla location type and assign to dictionary
+                path = [carla.Location(point[0], point[1], z=1)
+                        for point in path]
+                # * Go to first waypoint
+                print("Going to {}".format(path[0]))
+                carla_actor.go_to_location(path[0])
+                # * Get start & end position for pedestrian
+                # * Put into graph, get resulting path
+                # * Spawn at start point and then add rest of points to middle points list
 
-                    # random max speed
-                    if pedestrian['Speed'] != 'random':
-                        all_actors[i].set_max_speed(float(pedestrian['Speed']))
-                    else:
-                        # max speed between 1 and 2 (default is 1.4 m/s)
-                        all_actors[i].set_max_speed(random.uniform(1.2, 2))
-                    cnt += 1
+                # random max speed
+                if pedestrian['Speed'] != 'random':
+                    carla_actor.set_max_speed(float(pedestrian['Speed']))
+                else:
+                    # max speed between 1 and 2 (default is 1.4 m/s)
+                    carla_actor.set_max_speed(random.uniform(1.2, 2))
+                cnt += 1
 
 
                 self.pedestrians = self.world.get_actors().filter('walker.pedestrian.0006')
@@ -440,15 +399,15 @@ class BasicSynchronousClient(object):
                     elapsed_frames += 1
                     # for i in range(0, len(all_id), 2):
                         # only if middle point exists
-                    current_location = all_actors[0].get_location()
+                    current_location = carla_actor.get_location()
                     if elapsed_frames > 300:
                         stopgo = True
                     if len(path) > 1:
                         if current_location.distance(path[0]) < 5:
                             print("Reached location {}".format(path.pop(0)))
-                            print("Going to {}".format(path[0]))
-                            all_actors[0].go_to_location(path[0])
-                            print(len(path))
+                            print("Going to {}, points remaining {}".format(path[0], len(path)))
+                            carla_actor.go_to_location(path[0])
+                            # print(len(path))
                             elapsed_frames = 0
                     else:
                         if current_location.distance(path[0]) < 5:
@@ -466,10 +425,10 @@ class BasicSynchronousClient(object):
                 camera.destroy()
 
             # stop walker controllers (list is [controller, actor, controller, actor ...])
-            for i in range(0, len(all_id), 2):
-                all_actors[i].stop()
+            # for i in range(0, len(all_id), 2):
+            carla_actor.stop()
 
-            print('\ndestroying %d walkers' % len(walkers_list))
+            print('\ndestroying %d walkers' % len(all_id))
             self.client.apply_batch(
                 [carla.command.DestroyActor(x) for x in all_id])
 
@@ -488,7 +447,8 @@ class BasicSynchronousClient(object):
                             except IndexError:
                                 pass
                     except KeyError:
-                        print("Camera {} frame id mismatch".format(cam))
+                        # print("Camera {} frame id mismatch".format(cam))
+                        pass
 
             if elapsed_frames < 300:
                 self.save_track(start_zone, end_zone, run)  # TODO Uncomment

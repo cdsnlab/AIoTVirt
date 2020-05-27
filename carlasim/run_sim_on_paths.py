@@ -48,7 +48,7 @@ paths = None
 with open("paths_4x4.json", "r") as f:
     paths = json.load(f)
 
-endzones = [3]
+endzones = [5]
 for zone in tqdm(endzones):
     zone = int(zone)
     counter = 0
@@ -62,4 +62,4 @@ for zone in tqdm(endzones):
         counter += 1
         print(time.time() - start)
         time.sleep(1)
-        break
+        # break
