@@ -42,6 +42,10 @@ def main():
         '--config',
         default='10_camera_new_config.ini',
         help='path to the configuration file (default: "config.ini")')
+    argparser.add_argument(
+        '--run',
+        default=0,
+        type=int)
 
     args = argparser.parse_args()
     paths = None
@@ -51,11 +55,13 @@ def main():
     startzone = args.startzone
     port = args.port
     config = args.config
+    run = args.run
     print(startzone)
     for endzone in tqdm(connections[startzone]):
         endzone = int(endzone)
-        counter = 0
+        counter = run
         tracks = paths["{}-{}".format(startzone, endzone)]
+        tracks = tracks[run:]
         for path in tqdm(tracks):
             start = time.time()
             client = server_bboxes_sim.BasicSynchronousClient(startzone, endzone, counter)
@@ -65,6 +71,9 @@ def main():
             counter += 1
             print(time.time() - start)
             time.sleep(1)
+        run = 0
+    args = argparser.parse_args()
+    paths = None
 
 if __name__ == '__main__':
     main()
