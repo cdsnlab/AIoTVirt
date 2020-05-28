@@ -31,7 +31,11 @@ class BasicSynchronousClient(object):
     Basic implementation of a synchronous client.
     """
 
-    def __init__(self):
+    def __init__(self, start_zone, end_zone, run):
+        self.start_zone = start_zone
+        self.end_zone = end_zone
+        self.run = run
+        os.mkdir("data/start_{0}_end_{1}_run_{2}".format(self.start_zone, self.end_zone, self.run))
         self.client = None
         self.world = None
 
@@ -45,7 +49,6 @@ class BasicSynchronousClient(object):
         self.semseg_images = {}
 
         self.config = None
-        self.args = None
 
         self.car = None
         self.image = None
@@ -59,72 +62,16 @@ class BasicSynchronousClient(object):
         self.view_height = 720  # //2
         self.view_fov = 110
         self.fps = 15
-        self.image_map = {}
+        
+        self.speed = 0
+        # * After going through the semseg camera, this should ONLY contain the indices where Carla is NOT visible
+        self.image_map = {cam: set() for cam in range(10)}
         # self.G = map.Map().get_graph()
         # self.M = map.Map()
 
-    def parse_config(self):
-        argparser = argparse.ArgumentParser(
-            description=__doc__)
-        argparser.add_argument(
-            '--host',
-            metavar='H',
-            default='localhost',
-            help='IP of the host server (default: 143.248.55.230 - desktop PC)')
-        argparser.add_argument(
-            '-p', '--port',
-            metavar='P',
-            default=2000,
-            type=int,
-            help='TCP port to listen to (default: 2000)')
-        argparser.add_argument(
-            '-n', '--number-of-vehicles',
-            metavar='N',
-            default=10,
-            type=int,
-            help='number of vehicles (default: 10)')
-        argparser.add_argument(
-            '-w', '--number-of-walkers',
-            metavar='W',
-            default=50,
-            type=int,
-            help='number of walkers (default: 50)')
-        argparser.add_argument(
-            '--safe',
-            action='store_true',
-            help='avoid spawning vehicles prone to accidents')
-        argparser.add_argument(
-            '--filterv',
-            metavar='PATTERN',
-            default='vehicle.*',
-            help='vehicles filter (default: "vehicle.*")')
-        argparser.add_argument(
-            '--filterw',
-            metavar='PATTERN',
-            default='walker.pedestrian.*',
-            help='pedestrians filter (default: "walker.pedestrian.*")')
-        argparser.add_argument(
-            '--config',
-            default='10_camera_config.ini',
-            help='path to the configuration file (default: "config.ini")')
-        argparser.add_argument(
-            '--foldername',
-            default='videos',
-            help='name of folder to save videos in')
-        argparser.add_argument(
-            '--likelihood',
-            type=float,
-            default=0.5,
-            help='Likelihood of walker changing speed')
-
-        self.args = argparser.parse_args()
-
+    def parse_config(self, config):
         self.config = configparser.ConfigParser()
-        self.config.read(self.args.config)
-        if 'config.ini' not in self.args.config:
-            fname = self.args.foldername
-        else:
-            fname = self.args.config.replace('_config.ini', '')
+        self.config.read(config)
         self.cam_count = int(self.config['GENERAL']['Cameras'])
 
         self.view_width = int(self.config['GENERAL']['Image_Size_X'])
@@ -214,7 +161,7 @@ class BasicSynchronousClient(object):
             # * Visible and in-image
             else:
                 self.tracks[cam_id][img.frame] = (
-                    point[0][0], point[0][1], width, height, coords[0][0], coords[0][1], coords[1][0], coords[1][1])
+                    point[0][0], point[0][1], width, height, coords[0][0], coords[0][1], coords[1][0], coords[1][1], self.speed)
                 # * Crops box from the image and save image
                 abs_left = point[0][0] - int(width / 2) - 5
                 abs_top  = point[0][1] - int(height / 2) - 5
@@ -225,7 +172,8 @@ class BasicSynchronousClient(object):
                 cropped = image[crop_top: min(self.view_height, int(abs_top + height + 10)), crop_left: min(self.view_width, int(abs_left + width + 10))]
                 # TODO Should save this in a folder
                 # cv2.imwrite("data/start_{}_end_{}_run_{}/cam_{}_frame_{}.jpg".format(cam_id, img.frame), cropped)
-                cv2.imwrite("data/cam_{}_frame_{}.jpg".format(cam_id, img.frame), cropped)
+                cv2.imwrite("data/start_{}_end_{}_run_{}/cam_{}_frame_{}.jpg".format(self.start_zone, self.end_zone, self.run, cam_id, img.frame), cropped)
+                self.image_map[cam_id].add(img.frame)
         # * Not found
         else:
             self.tracks[cam_id][img.frame] = (-1, -1)
@@ -252,6 +200,7 @@ class BasicSynchronousClient(object):
                             color = image[pos[1]+i, pos[0]+j]
                             if color[2] == 4:
                                 found = True
+                                self.image_map[cam_id].remove(index)
                                 break
                         if found:
                             break
@@ -263,9 +212,9 @@ class BasicSynchronousClient(object):
         except KeyError:
             pass
 
-    def save_track(self, start_zone, end_zone, run):
+    def save_track(self):
         # TODO Get folder/filename as argument
-        with open('data/start_{}_end_{}_run_{}_track.csv'.format(start_zone, end_zone, run), mode='w') as file:
+        with open('data/start_{0}_end_{1}_run_{2}/start_{0}_end_{1}_run_{2}track.csv'.format(self.start_zone, self.end_zone, self.run), mode='w') as file:
             writer = csv.writer(file, delimiter=',',
                                 quotechar='"', quoting=csv.QUOTE_MINIMAL)
             hasTracks = True
@@ -281,8 +230,20 @@ class BasicSynchronousClient(object):
                     writer.writerow([rowNumber] + row)
                 except IndexError:
                     pass
+                
+    def remove_blank_images(self):
+        """ At the end of the simulation, we are deleting the images which have been found to not
+        contain the tracked target (by the semseg camera)
+        """
+        for camera, frames in self.image_map.items():
+            for frame in frames:
+                try:
+                    os.remove("data/start_{}_end_{}_run_{}/cam_{}_frame_{}.jpg".format(self.start_zone, self.end_zone, self.run, camera, frame))
+                except:
+                    pass
+        pass
 
-    def game_loop(self, path, start_zone, end_zone, run):
+    def game_loop(self, path):
         """
         Main program loop.
         """
@@ -381,7 +342,8 @@ class BasicSynchronousClient(object):
                     carla_actor.set_max_speed(float(pedestrian['Speed']))
                 else:
                     # max speed between 1 and 2 (default is 1.4 m/s)
-                    carla_actor.set_max_speed(random.uniform(1.2, 2))
+                    self.speed = random.uniform(1.2, 2)
+                    carla_actor.set_max_speed(self.speed)
                 cnt += 1
 
 
@@ -444,6 +406,8 @@ class BasicSynchronousClient(object):
                                 color = image[pos[1], pos[0]]
                                 if color[2] != 4:
                                     self.tracks[cam][index] = (-1, -1)
+                                else:
+                                    self.image_map[cam].remove(index)
                             except IndexError:
                                 pass
                     except KeyError:
@@ -451,7 +415,8 @@ class BasicSynchronousClient(object):
                         pass
 
             if elapsed_frames < 300:
-                self.save_track(start_zone, end_zone, run)  # TODO Uncomment
+                self.save_track()  # TODO Uncomment
+                self.remove_blank_images()
 
             for key, value in self.frames_count.items():
                 print("Camera {} : Frames - {}".format(key, value))
@@ -459,24 +424,3 @@ class BasicSynchronousClient(object):
             # TODO Print Ground Truth results
 
             time.sleep(0.5)
-
-
-# ==============================================================================
-# -- main() --------------------------------------------------------------------
-# ==============================================================================
-
-
-def main():
-    """
-    Initializes the client-side bounding box demo.
-    """
-
-    try:
-        client = BasicSynchronousClient()
-        client.game_loop()
-    finally:
-        print('EXIT')
-
-
-if __name__ == '__main__':
-    main()

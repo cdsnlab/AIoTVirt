@@ -11,7 +11,7 @@ import carla
 
 class CrowdSpawn(object):
     def __init__(self, world):
-        self.M = map.Map()
+        self.M = map.Map(merge=1)
         self.world = world
         self.walkers_list = []
         self.blueprintsWalkers = [
@@ -29,16 +29,16 @@ class CrowdSpawn(object):
             self.world.get_blueprint_library().find("walker.pedestrian.0013"),
             self.world.get_blueprint_library().find("walker.pedestrian.0014")]
         self.zones = {
-            1: ((0, 0), (3, 3)),
-            2: ((0, 7), (3, 9)),
-            3: ((0, 13), (3, 15)),
-            4: ((1, 18), (3, 20)),
-            5: ((1, 22), (2, 25)),
-            6: ((4, 26), (6, 28)),
-            7: ((13, 26), (14, 28)),
-            8: ((14, 13), (14, 16)),
-            9: ((13, 7), (14, 9)),
-            10: ((13, 0), (14, 2)),
+            1: ((6, 4), (23, 13)),
+            2: ((9, 28), (24, 37)),
+            3: ((8, 55), (22, 61)),
+            4: ((5, 71), (14, 81)),
+            5: ((8, 96), (20, 105)),
+            6: ((47, 106), (56, 116)),
+            7: ((52, 76), (56, 95)),
+            8: ((37, 54), (50, 59)),
+            9: ((40, 29), (52, 33)),
+            10: ((46, 2), (56, 13)),
         }
         
         
