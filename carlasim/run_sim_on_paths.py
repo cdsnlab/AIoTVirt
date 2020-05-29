@@ -46,6 +46,10 @@ def main():
         '--run',
         default=0,
         type=int)
+    argparser.add_argument(
+        '-ci', '--conn_index',
+        default=0,
+        type=int)
 
     args = argparser.parse_args()
     paths = None
@@ -56,8 +60,9 @@ def main():
     port = args.port
     config = args.config
     run = args.run
+    conn_index = args.conn_index
     print(startzone)
-    for endzone in tqdm(connections[startzone]):
+    for endzone in tqdm(connections[startzone][conn_index:]):
         endzone = int(endzone)
         counter = run
         tracks = paths["{}-{}".format(startzone, endzone)]
@@ -72,8 +77,6 @@ def main():
             print(time.time() - start)
             time.sleep(1)
         run = 0
-    args = argparser.parse_args()
-    paths = None
 
 if __name__ == '__main__':
     main()
