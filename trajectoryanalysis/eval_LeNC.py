@@ -1,3 +1,8 @@
+
+'''
+this program evaluates the transition time of LENC (boyan)
+'''
+
 import json
 import time
 

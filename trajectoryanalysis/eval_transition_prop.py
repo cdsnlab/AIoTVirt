@@ -1,3 +1,8 @@
+'''
+this program evaluates camera transition time of the proposed scheme 
+'''
+
+
 import filtering
 import matplotlib.pyplot as plt
 import plotly.graph_objects as go
@@ -73,7 +78,7 @@ for camera in range(10):
         # fig.write_html("results/cam_{}_target_{}.html".format(camera, target))
         # del fig
 
-with pd.ExcelWriter("results_full.xlsx") as writer:
+with pd.ExcelWriter("evaluation_transition_time_prop.xlsx") as writer:
     duration_results.to_excel(writer, sheet_name="Duration")
     transition_results.to_excel(writer, sheet_name="Transition")
     combined_results.to_excel(writer, sheet_name="Combined")

@@ -27,43 +27,7 @@ import glob
 # }
 # 
 
-def get_sequences(data):
-    seq_traces = []
 
-    labels = []
-    cameras = {}
-    for i in range(10):
-        camera = []
-        current_sequence = 0
-        start = 0
-        labels.append('{}'.format(i))
-        for end, value in data['{}'.format(i)].items():
-#            print(value)
-            if '-1' not in value:
-                if current_sequence == 0:
-                    start = end
-                current_sequence += 1
-            else:
-                if current_sequence != 0 and current_sequence > 5:
-                    camera.append((start, current_sequence))
-                    seq_traces.append({
-                        "start": start,
-                        "end": end,
-                        "duration": current_sequence,
-                        "camera": i
-                    })
-                current_sequence = 0
-        if current_sequence != 0 and current_sequence > 5:
-            camera.append((start, current_sequence))
-            # seq_traces.append(Trace(start, end, current_sequence, i))
-            seq_traces.append({
-                        "start": start,
-                        "end": end,
-                        "duration": current_sequence,
-                        "camera": i
-                    })
-        cameras[i] = camera
-    return seq_traces, cameras, labels
 
 # # Gets all sequences in a file - does not actually label 
 # def get_sequences_p37(data: pd.DataFrame):
@@ -264,39 +228,82 @@ def get_cam_order(traces):
 #         # np.save("new_labeling/test_{}".format(cam), ncontent)
 #     return train_set
 
-path="/home/spencer1/samplevideo/start1"
+def get_sequences(data):
+    seq_traces = []
+
+    labels = []
+    cameras = {}
+    for i in range(10):
+        camera = []
+        current_sequence = 0
+        start = 0
+        labels.append('{}'.format(i))
+        if 'Camera {}'.format(i) in data:
+    
+            for end, value in data['Camera {}'.format(i)].items():
+                if '-1' not in value:
+                    if current_sequence == 0:
+                        start = end
+                    current_sequence += 1
+                else:
+                    if current_sequence != 0 and current_sequence > 5:
+                        camera.append((start, current_sequence))
+                        seq_traces.append({
+                            "start": start,
+                            "end": end,
+                            "duration": current_sequence,
+                            "camera": i
+                        })
+                    current_sequence = 0
+            if current_sequence != 0 and current_sequence > 5:
+                camera.append((start, current_sequence))
+                # seq_traces.append(Trace(start, end, current_sequence, i))
+                seq_traces.append({
+                            "start": start,
+                            "end": end,
+                            "duration": current_sequence,
+                            "camera": i
+                        })
+            cameras[i] = camera
+    return seq_traces, cameras, labels
+
+
+path="/home/spencer1/samplevideo/new_sim_csv/"
 extension = 'csv'
 os.chdir(path)
-result = glob.glob('*.{}'.format(extension))
-#print(result)
+results = glob.glob('*.{}'.format(extension))
+#print(results)
 
 # the input to get_cam_order and get_simple is :
-data = pd.read_csv(path + "/" + "start_1_end_4_run_6.csv")
-#traces, _, _ = get_sequences(data)
-#traces = sorted(traces, key=lambda t: t.start)
-# if original:
-#     traces = get_cam_order(traces)
-# if simple:
-#     traces = get_simple(traces)
-# if neighbour:
-#     traces = get_neighbour(traces)
-# 
-traces, cameras, labels  = get_sequences(data)
-traces = sorted(traces, key=lambda t: t["start"])
-#print(traces)
-#print(get_cam_order(traces))
+for result in results:
+    print("[INFO] saving ".format(result))
+    data = pd.read_csv(path+"/"+result)
+    #print(data)
+    #traces, _, _ = get_sequences(data)
+    #traces = sorted(traces, key=lambda t: t.start)
+    # if original:
+    #     traces = get_cam_order(traces)
+    # if simple:
+    #     traces = get_simple(traces)
+    # if neighbour:
+    #     traces = get_neighbour(traces)
+    # 
+    traces, cameras, labels  = get_sequences(data)
+    traces = sorted(traces, key=lambda t: t["start"])
+    #print(traces)
+    #print(get_cam_order(traces))
 
-fig, ax  = plt.subplots()
+    fig, ax  = plt.subplots()
 
-i = 1
-for c in cameras.values():
-    print(c)
-    ax.broken_barh(c, (i*10, 8))
-    i += 1
+    i = 1
+    for c in cameras.values():
+        #print(c)
+        ax.broken_barh(c, (i*10, 8))
+        i += 1
 
-ax.set_yticks([14, 24, 34, 44, 54, 64, 74, 84, 94, 104])
-#ax.set_yticklabels(labels)
-ax.set_xlim(0, 1600)
-ax.grid(True)
-plt.show()
+    ax.set_yticks([14, 24, 34, 44, 54, 64, 74, 84, 94, 104])
+    ax.set_yticklabels(labels)
+    ax.set_xlim(0, 1600)
+    ax.grid(True)
+    plt.show()
 

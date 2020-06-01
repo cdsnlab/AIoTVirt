@@ -1,4 +1,6 @@
-
+'''
+this program finds the transition time between two camera with LENC. (spencer)
+'''
 import json
 import time
 
@@ -62,9 +64,19 @@ def get_cam_order(traces):
 
 def averagetransitiontime(k,v):
     v = (sorted(v))
-    print(k, statistics.median(v))    
+    #print(k, statistics.median(v))    
     return k, statistics.median(v)
 
+def gettransitiontime(tmap, direction):
+    for k in (tmap):
+        if k == direction:
+            return tmap[k]
+    return -1
+
+def stdoverlap(k, v):
+    v = (sorted(v))
+    #print(k, statistics.median(v))    
+    return k, statistics.stdev(v)
 
 def get_sequences(data: pd.DataFrame):
     seq_traces = []
@@ -110,6 +122,8 @@ def get_transition_dist(path, naive=False):
     filenames = os.listdir(path)
     transition = {}
     tmap={}
+    atransition={}
+    stransition={}
     for file in filenames:
         if '.csv' in file:
             #print(file)
@@ -123,20 +137,29 @@ def get_transition_dist(path, naive=False):
             # get transition time (distribution)    
             for i, trace in enumerate(traces[1:]):
                 #print(str(traces[i]['camera'])+"-->"+str(trace['camera']))
-                if str(traces[i]["camera"])+"-->"+str(trace["camera"]) not in transition:
-                    transition[str(traces[i]['camera'])+"-->"+str(trace['camera'])] = [trace['start'] - traces[i]['end']]
-                else:
-                    transition[str(traces[i]['camera'])+"-->"+str(trace['camera'])].append(trace['start'] - traces[i]['end'])
+                if traces[i]["camera"] != trace["camera"]:
+                    if traces[i]['end'] < trace['start']:
+                        if str(traces[i]["camera"])+"-->"+str(trace["camera"]) not in transition:
+                            transition[str(traces[i]['camera'])+"-->"+str(trace['camera'])] = [trace['start'] - traces[i]['end']]
+                        else:
+                            transition[str(traces[i]['camera'])+"-->"+str(trace['camera'])].append(trace['start'] - traces[i]['end'])
 
-    for k, v in transition.items(): # get transition time btw two locs.
-        t, tt=averagetransitiontime(k,v)
-        tmap[t]=tt
 
+    for k, v in transition.items():
+        if len(v) > 1:
+            t, tt = averagetransitiontime(k,v)
+            s, ss = stdoverlap(k,v)
+            #print(tt)
+            atransition[t]=tt
+            stransition[s]=ss
+
+    print (atransition)
+    print (stransition)
     transition_results = pd.DataFrame(columns=["source_cam", "target_cam", "mse", "rmse", "mae"])
     name = 0
     predy=[]
     acty=[]
-
+    '''
     for file in filenames:
         if '.csv' in file:
             print(file)
@@ -153,34 +176,10 @@ def get_transition_dist(path, naive=False):
                 acty.append(trace['start'] - traces[i]['end'])
                 transition_results = transition_results.append(pd.Series(data=[str(traces[i]["camera"]), str(trace["camera"]), mse(acty, predy), rmse(acty, predy), mae(acty, predy)], index=transition_results.columns, name=name))
             name+=1
-    with pd.ExcelWriter("/home/spencer1/AIoTVirt/trajectoryanalysis/prev_results_full.csv") as writer:
+    with pd.ExcelWriter("evaluation_transition_time_prev.csv") as writer:
         transition_results.to_excel(writer, sheet_name="previous approach")
     #return traces, cameras, labels, transition
-
-def gettransitiontime(tmap, direction):
-    for k in (tmap):
-        if k == direction:
-            return tmap[k]
-    return -1
-
-def chunkIt(seq, num):
-    avg = len(seq) / float(num)
-    out = []
-    last = 0.0
-
-    while last < len(seq):
-        out.append(seq[int(last):int(last + avg)])
-        last += avg
-
-    return out
-
-def divideintoequalsize(key, value, n):
-    if len(value) < n:
-        print("too little data.. skipping")
-        print(k, v)
-    else:
-        print(k, chunkIt(v, n))
-
+    '''
 
 argparser = argparse.ArgumentParser(
     description="welcome")
@@ -192,5 +191,5 @@ argparser.add_argument(
 args = argparser.parse_args()
 
 #traces, cameras, labels, transition = 
-get_transition_dist('/home/spencer1/samplevideo/sim_csv/start1_endall_csv', False)
+get_transition_dist('/home/spencer1/samplevideo/new_sim_csv/', False)
 
