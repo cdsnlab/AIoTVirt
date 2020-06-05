@@ -46,24 +46,22 @@ def load_traces(camera):
     return baseline_traces, traces[partition:]
 
 
-def split_traces():
-    output = []
+def split_traces(npy_path="/home/spencer1/AIoTVirt/trajectoryanalysis/npy/connected_nodup", out_file="traces_train_test"):
+    output = {}
     for camera in range(10):
-        traces = np.load("/home/boyan/out_label_neighb_irw/{}.npy".format(camera), allow_pickle=True)
+        traces = np.load("{}/{}.npy".format(npy_path, camera), allow_pickle=True)
         cam_traces = {i:[] for i in range(10) if i != camera}
         for entry in traces:
             cam_traces[entry[1]].append(entry)
 
-        # print(output.)
-        # TODO Get only 80% of each list
         cam_out = []
         for k, v in cam_traces.items():
             partition = int(0.8 * len(v))
             train, test = v[:partition], v[partition:]
             cam_out.append((train, test))
-        output.append(cam_out)
+        output['cam_{}'.format(camera)] = np.array(cam_out)
 
-    np.savez_compressed("out", np.array(output))
+    np.savez_compressed(out_file, **output)
 
 
 def estimate_handover(dest, cur_path, len_cur_path, traces, angle_lim=30, cutoff_long=False, cutoff_short=False):
