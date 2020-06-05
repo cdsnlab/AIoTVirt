@@ -46,7 +46,7 @@ def load_traces(camera):
     return baseline_traces, traces[partition:]
 
 
-def split_traces(npy_path="/home/spencer1/AIoTVirt/trajectoryanalysis/npy/connected_nodup", out_file="traces_train_test"):
+def split_traces(npy_path="/home/spencer1/AIoTVirt/trajectoryanalysis/npy/connected_nodup", out_file="transitions/traces_train_test"):
     output = {}
     for camera in range(10):
         traces = np.load("{}/{}.npy".format(npy_path, camera), allow_pickle=True)
@@ -54,15 +54,16 @@ def split_traces(npy_path="/home/spencer1/AIoTVirt/trajectoryanalysis/npy/connec
         for entry in traces:
             cam_traces[entry[1]].append(entry)
 
-        cam_out = []
+        cam_train = []
+        cam_test = []
         for k, v in cam_traces.items():
             partition = int(0.8 * len(v))
             train, test = v[:partition], v[partition:]
-            cam_out.append((train, test))
-        output['cam_{}'.format(camera)] = np.array(cam_out)
+            cam_train += train
+            cam_test += test
+        output['cam_{}'.format(camera)] = np.array((cam_train, cam_test))
 
     np.savez_compressed(out_file, **output)
-
 
 def estimate_handover(dest, cur_path, len_cur_path, traces, angle_lim=30, cutoff_long=False, cutoff_short=False):
     """[summary]
@@ -90,7 +91,7 @@ def estimate_handover(dest, cur_path, len_cur_path, traces, angle_lim=30, cutoff
 
     cur_vector = translate_vector((cur_path[0], cur_path[-1]))
 
-    for path, label, transition in traces:
+    for path, label, transition, duration in traces:
         if label == dest:
             # * Calculate current target trace distance
             # ? Can we calculate it only the first time we encounter the trace?
