@@ -1,7 +1,7 @@
 from keras import Sequential, optimizers
 from keras.models import load_model
 import keras
-from keras.layers import Input, LSTM, Dense, Conv1D, BatchNormalization, Activation, GlobalAveragePooling1D, MaxPooling1D
+from keras.layers import Input, LSTM, Dense, Conv1D, BatchNormalization, Activation, GlobalAveragePooling1D, MaxPooling1D, Flatten
 from keras.utils import to_categorical
 import numpy as np
 from sklearn.model_selection import train_test_split
@@ -29,12 +29,11 @@ camera = 7
 sampling = ["ed", "sw-o", "sw-no", "rw", "irw"]
 sampling_id = 4
 seq_length = 30
-test_slice_part = 60
-print(1111111111111111111111111)
+test_slice_part = 80 #! some traces were way too short for this. 60 -> 80
 
 def get_data(camera):
-    train = np.load("/home/boyan/new_labeling/train_{}.npy".format(camera), allow_pickle=True)
-    test = np.load("/home/boyan/new_labeling/test_{}.npy".format(camera), allow_pickle=True)
+    train = np.load("/home/spencer1/AIoTVirt/trajectoryanalysis/npy/train_multi_output/{}.npy".format(camera), allow_pickle=True)
+    test = np.load("/home/spencer1/AIoTVirt/trajectoryanalysis/npy/test_multi_output/{}.npy".format(camera), allow_pickle=True)
 
     trainX, trainY = np.hsplit(train,2)
     trainX = np.array([trace[0] for trace in trainX])
@@ -57,17 +56,23 @@ def gen_data(camera, sampling_id, seq_length, test_slice_part, labeling):
     if labeling == 0:
         data = np.load("/home/boyan/out_full_fixed/{}.npy".format(camera), allow_pickle=True)
     elif labeling == 1:
-        data = np.load("/home/boyan/model_out_label_neighb/{}.npy".format(camera), allow_pickle=True)
-    # print(data[0][0].shape)
+        #data = np.load("/home/spencer1/AIoTVirt/trajectoryanalysis/npy/train_multi_output/{}.npy".format(camera), allow_pickle=True)
+        data = np.load("/home/spencer1/AIoTVirt/trajectoryanalysis/npy/connected/{}.npy".format(camera), allow_pickle=True)
+    #print(data[0][0].shape)
+    #print(data)
     # * Training set
     x, y = [], []
-    # print(data.shape)
-    for series, label in data:
+    #print(data.shape)
+    for series, label, tracelen, transitiontime in data: #* for new sim_data
         x.append(series)
         y.append(label)
     print(set(y))
     out_dim = max(set(y)) + 1
-    y = to_categorical(y, num_classes=10)     #! 
+    #out_dim = np.max(y)
+    #out_dim = 10
+    print("out_dim {}".format(out_dim))
+    #y = to_categorical(y, num_classes=10) #* original version
+    y = to_categorical(y, num_classes=out_dim) #! spencer modification
     trainX, testX, trainY, testY = train_test_split(np.array(x), np.array(y), test_size=0.20, shuffle=False)
 
     trainData = []
@@ -89,6 +94,7 @@ def gen_data(camera, sampling_id, seq_length, test_slice_part, labeling):
     # out_dim = max(set(trainY)) + 1
     # trainY = to_categorical(trainY)
     # testY = to_categorical(testY)
+    print(trainX.shape, trainY.shape, testX.shape, testY.shape)
     return trainX, trainY, testX, testY, out_dim
 
 
@@ -122,7 +128,9 @@ def conv_lstm(seq_length, out_dim):
 
     model.add(MaxPooling1D(pool_size=2))
     model.add(LSTM(seq_length))
+    #model.add(Flatten()) #! spencer try
     model.add(Dense(out_dim, activation='softmax'))
+    model.summary()
 
     return model
 
@@ -160,29 +168,33 @@ outs = ['orig', 'neighbour']
 for labeling in [1]:
     # data = 
     for camera in range(0,10):
+        print("Processing camera # {}".format(camera))
         sampling = 4
-        # trainX, trainY, testX, testY, out_dim = get_data(camera)
+        #trainX, trainY, testX, testY, out_dim = get_data(camera)
         trainX, trainY, testX, testY, out_dim = gen_data(camera, sampling_id, seq_length, test_slice_part,1)
 
-    #     optimizer = optimizers.Adam(learning_rate=0.001)
-    #     reduce_lr = keras.callbacks.ReduceLROnPlateau(monitor='loss', factor=0.5, patience=50, min_lr=0.0001)
-    #     cam_best_result = 0
-    #     for i in range(5):
-    #         slacknoti("`[MEWTWO]` Training for camera `{}` iteration `{}` at time `{}`".format(camera, i, time.strftime("%H:%M:%S", time.localtime())))
-    #         model = conv_lstm(seq_length, out_dim)
-    #         # model = models.ResNet((seq_length,2), out_dim)
-    #         model.compile(optimizer=optimizer, loss='categorical_crossentropy', metrics=['accuracy'])
-    #         model.fit(trainX, trainY, batch_size=int(len(trainY)/ 5), epochs=150, validation_split=0.15, callbacks=[reduce_lr])
-    #         # print(testX)
-    #         result = model.evaluate(testX, testY)
-    #         slacknoti("`[MEWTWO]` Loss `{}` Accuracy `{}` at time `{}`".format(result[0], result[1], time.strftime("%H:%M:%S", time.localtime())))
-    #         if result[1] > cam_best_result:
-    #             cam_best_result = result[1]
-    #             model.save('model_new_label/cam_{}.h5'.format(camera))
-    #     class_report[camera] = cam_best_result
+        optimizer = optimizers.Adam(learning_rate=0.001)
+        reduce_lr = keras.callbacks.ReduceLROnPlateau(monitor='loss', factor=0.5, patience=50, min_lr=0.0001)
+        cam_best_result = 0
+        for i in range(5):
+            print("`[MEWTWO]` Training for camera `{}` iteration `{}` at time `{}`".format(camera, i, time.strftime("%H:%M:%S", time.localtime())))
+            slacknoti("`[MEWTWO]` Training for camera `{}` iteration `{}` at time `{}`".format(camera, i, time.strftime("%H:%M:%S", time.localtime())))
+            model = conv_lstm(seq_length, out_dim)
+            # model = models.ResNet((seq_length,2), out_dim)
+            model.compile(optimizer=optimizer, loss='categorical_crossentropy', metrics=['accuracy'])
+            #print(trainX.shape, trainY.shape)
+            #print(trainY)
+            model.fit(trainX, trainY, batch_size=int(len(trainY)/ 5), epochs=150, validation_split=0.15, callbacks=[reduce_lr])
+            print(testX.shape, testY.shape)
+            result = model.evaluate(testX, testY)
+            slacknoti("`[MEWTWO]` Loss `{}` Accuracy `{}` at time `{}`".format(result[0], result[1], time.strftime("%H:%M:%S", time.localtime())))
+            if result[1] > cam_best_result:
+                cam_best_result = result[1]
+                model.save('models/connected_new_sim/cam_{}.h5'.format(camera))
+        class_report[camera] = cam_best_result
 
-    # with open("results/lstm_new_label.json", "w") as file:
-    #     file.write(json.dumps(class_report))
+    with open("models/connected_new_sim/lstm_new_label.json", "w") as file:
+        file.write(json.dumps(class_report))
 
 # for camera in [8,7,4,1,0]:
 #     best_result = 0

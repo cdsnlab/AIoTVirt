@@ -21,7 +21,6 @@ def get_transition_dist(path, naive=False):
             lengths.append(len(data))
     print(statistics.mean(lengths))
     print(statistics.stdev(lengths))
-    print(statistics.)
 
 
 get_transition_dist('/home/spencer1/samplevideo/new_sim_csv/', False)

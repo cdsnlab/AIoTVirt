@@ -191,5 +191,5 @@ argparser.add_argument(
 args = argparser.parse_args()
 
 #traces, cameras, labels, transition = 
-get_transition_dist('/home/spencer1/samplevideo/new_sim_csv/', False)
+get_transition_dist('/home/spencer1/samplevideo/train_new_sim_csv/', False)
 

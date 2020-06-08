@@ -36,7 +36,7 @@ def preprocessing(dataset, sr:int, vl:int, opt:str): # docnpy file path, cam id,
     for series, label in dataset:
         s = []
         for x,y in series:
-            s.append(np.array([x / 1280, y / 720]))
+            s.append(np.array([x / 2560, y / 1440]))
         data.append(np.array([s, label]))
 
     dataset = np.array(data)

@@ -37,8 +37,9 @@ def slacknoti(contentstr):
     requests.post(webhook_url, data=json.dumps(payload), headers={'Content-Type': 'application/json'})
 
 def get_point(strpoint):
-    point = strpoint.replace('(', '').replace(')', '').split(',')
+    point = strpoint.replace('(', '').replace(')', '').split(',')[0:2]
     point = [int(p) for p in point]
+    #print(point)
     # return np.array(point)
     return point
 
@@ -190,11 +191,12 @@ def get_correct(filedata):
     return ground_truth
 
 
-for camera in range(10):
-    loaded = np.load("/home/boyan/out_label_trans/{}.npy".format(camera), allow_pickle=True)
-    traces[camera] = loaded
+# for camera in range(10):
+#     #loaded = np.load("/home/boyan/out_label_trans/{}.npy".format(camera), allow_pickle=True)
+#     loaded = np.load("/home/spencer1/AIoTVirt/trajectoryanalysis/npy/train_multi_output/{}.npy".format(camera), allow_pickle=True)
+#     traces[camera] = loaded
 
-path ="/home/spencer1/samplevideo/sim_csv/prev_full/"
+path ="/home/spencer1/samplevideo/test_new_sim_csv/"
 path1, dirs1, files1 = next(os.walk(path))
 file_count = len(files1)
 skip_file=0
@@ -202,6 +204,7 @@ skip_file=0
 filenames = os.listdir(path)
 #filenames = filenames[::skip_file]
 
+shname = "adaptive_rec"
 MIN_LENGTH = 15
 MAX_SIM = 4000
 results = {}
@@ -250,6 +253,9 @@ for file in tqdm(filenames):
     number_of_activated_cameras = {i: 0 for i in range(MAX_SIM)}
     gt_activated = {i: 0 for i in range(MAX_SIM)}
 
+    actaivated_camera_indexs = {i: [] for i in range(MAX_SIM)}
+    actaivated_gt_indexs = {i: [] for i in range(MAX_SIM)}
+
     available_states = ["rec", "trk", "trans"]
     state = "rec" # inital state
     cnt_ = {key: 0 for key in available_states}
@@ -257,24 +263,38 @@ for file in tqdm(filenames):
     cnt_target =0 #* howmany valid frames there are in this file
     sump=0
     sumst=0
+    trktimer=0
+    begin=True
+
     for index, row in data.iterrows(): #* read frame by frame.
         # * Spencers approach * #
         cnt_[state]+=1
         cnt_total+=1
         
+        #* if you reach the end, fill it with -1
+        if index==rowsize-1:
+            for i in range(rowsize-1, MAX_SIM):
+                actaivated_camera_indexs[i].append(-1)
+                number_of_activated_cameras[i] = -1
+                actaivated_gt_indexs[i].append(-1)
+
         for camera in range(10):
             value = row['Camera {}'.format(camera)]
             if '-1' not in value:
                 cnt_target+=1
-                gt_activated[index]+=1
-                break
+                actaivated_gt_indexs[index].append(camera)
+                
         
         if state=="rec": #* recovery: turn on all cameras to search for the target.
+            
             print("[INFO] in REC at frame number {}".format(index))
             for camera in range(10):
+                if begin != True:
+                    processed_frames[camera] += 1
+                    number_of_activated_cameras[index]+=1
+                    actaivated_camera_indexs[index].append(camera)
+                
                 value = row['Camera {}'.format(camera)]
-                processed_frames[camera] += 1
-                number_of_activated_cameras[index]+=1
                 if '-1' not in value:
                     # * this is a new trk, 1) add new trk, 2) exit recovery mode.
                     cnt_seen_target[camera]+=1
@@ -286,30 +306,40 @@ for file in tqdm(filenames):
                     })
                     cam_tracking=camera
                     state="trk"
+                    begin=False
                     break
 
         elif state == "trk": #* tracking: 
-            processed_frames[cam_tracking] +=1
-            number_of_activated_cameras[index]+=1
-            # * We have a camera that is tracking, continue here
             camera = cam_tracking
+            processed_frames[camera] +=1
+            number_of_activated_cameras[index]+=1
+            actaivated_camera_indexs[index].append(camera)
+            # * We have a camera that is tracking, continue here
+            
             print("[INFO] in TRK in camera {} frame number {}".format(camera, index))
 
             value = row['Camera {}'.format(camera)]
             # * Increase the current trace's duration
             recording[camera][-1]['duration'] += 1
             if '-1' in value: # * If person not here, end current trace
+                print("+++[INFO] should be here")
                 # handover_points.append((index, cam_tracking, perform_handover[1]))
-                recording[cam_tracking][-1]['end'] = index
-                prev_tracking = cam_tracking
-                cam_tracking = -1
-                state="trans"
-                container_boot_time = 15 #* this means that it suffers 15 bootup time for all other cameras.
+                trktimer+=1
+                #! sit at this camera until saying gone
+                if trktimer >15:
+                    print("===[INFO] Fcuk i m out")
+
+                    recording[cam_tracking][-1]['end'] = index
+                    prev_tracking = cam_tracking
+                    cam_tracking = -1
+                    container_boot_time = 15 #* this means that it suffers 15 bootup time for all other cameras.
+                    trktimer=0
+                    state="trans"
 
             else: # * If person is here, continue recording trace
-                state="trk"
                 recording[camera][-1]['tracks'].append(get_point(value))
                 cnt_seen_target[camera]+=1
+                trktimer=0
                 
 
         elif state == "trans": #* in between cams
@@ -322,10 +352,7 @@ for file in tqdm(filenames):
             else:
                 print("[INFO] in TRANS:CONTAINER_BOOTING at frame number {}".format(index))
             container_boot_time -= 1
-        if index==rowsize-1:
-            for i in range(rowsize-1, MAX_SIM):
-                number_of_activated_cameras[i] = -1
-                gt_activated[i] = -1
+
     #? calculate results for each iteration. 
 
     for k, v in processed_frames.items():
@@ -342,8 +369,8 @@ for file in tqdm(filenames):
         print("accuracy {}".format(100*sumst/cnt_target)) #* accuracy
         results_for_excel = results_for_excel.append(pd.Series(data=[file, 100*sump/(cnt_total*10), 100*cnt_target/(cnt_total*10), 100*sumst/sump, 100*sumst/cnt_target], index=results_for_excel.columns, name=name))
 
-    activation_results[file[:-4]+"_activenumber"] = pd.Series(number_of_activated_cameras)
-    gt_activation_results[file[:-4]+"_activenumber"] = pd.Series(gt_activated)
+    activation_results[file[:-4]] = pd.Series(actaivated_camera_indexs)
+    gt_activation_results[file[:-4]] = pd.Series(actaivated_gt_indexs)
     name+=1
     file_end_time = time.time()
     print("file iteration time {}".format(file_end_time - file_start_time))
@@ -351,12 +378,12 @@ for file in tqdm(filenames):
 
 sim_end_time = time.time()
 print("[INFO] total time {}".format(sim_end_time - start_time))        
-with pd.ExcelWriter("results/scenario_results_bf.xlsx", mode='a') as writer:
-    results_for_excel.to_excel(writer, sheet_name="bf-test-activation-of-cameras")
+with pd.ExcelWriter("results/scenario_results_newsimdata_bf.xlsx", mode='a') as writer:
+    results_for_excel.to_excel(writer, sheet_name=shname)
 
-with pd.ExcelWriter("activation_graph/bf_activation.xlsx", mode='a') as writer:
-    activation_results.to_excel(writer, sheet_name="test-activation_number")
+with pd.ExcelWriter("activation_graph/bf_newsimdata_activation.xlsx", mode='a') as writer:
+    activation_results.to_excel(writer, sheet_name=shname)
 
-# with pd.ExcelWriter("activation_graph/gt_activation.xlsx", mode='a') as writer:
-#     gt_activation_results.to_excel(writer, sheet_name="test-activation_number")
+with pd.ExcelWriter("activation_graph/gt_newsimdata_activation.xlsx", mode='a') as writer:
+    gt_activation_results.to_excel(writer, sheet_name=shname)
 print("[INFO] DONE! ")
