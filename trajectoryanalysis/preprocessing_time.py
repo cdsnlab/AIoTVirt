@@ -51,7 +51,8 @@ def preprocessing(dataset, sr:int, vl:int, opt:str): # docnpy file path, cam id,
                     break
                 #print(i, series[i:i+vl])
                 trainX.append(series[i:i+vl])
-                trainY.append(len(series) - i - vl) 
+                # trainY.append(len(series) - i - vl) 
+                trainY.append(label)
                 # trainY.append(label) 
 
     elif opt == "sw-no": # sliding window no-overlap
@@ -138,7 +139,12 @@ def preprocessing(dataset, sr:int, vl:int, opt:str): # docnpy file path, cam id,
                     trainX.append(np.array(tmpx))
                     trainY.append(len(series[startloc:endloc]) + label)
 
-    
+    elif opt=="last":
+        for series, label in dataset:
+            if(len(series) < vl):
+                continue
+            trainX.append(series[-vl:])
+            trainY.append(label)
 
     # trainX = np.array(trainX).reshape(len(trainX), vl*2)
     # trainY = np.array(trainY).reshape(len(trainY), )
