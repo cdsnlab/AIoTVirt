@@ -46,11 +46,11 @@ def load_traces(camera):
     return baseline_traces, traces[partition:]
 
 
-def split_traces(npy_path="/home/spencer1/AIoTVirt/trajectoryanalysis/npy/connected_nodup", out_file="transitions/traces_train_test"):
+def split_traces(npy_path="/home/spencer1/AIoTVirt/trajectoryanalysis/npy/connected", out_file="transitions/traces_train_test_cam_dups"):
     output = {}
     for camera in range(10):
         traces = np.load("{}/{}.npy".format(npy_path, camera), allow_pickle=True)
-        cam_traces = {i:[] for i in range(10) if i != camera}
+        cam_traces = {i:[] for i in range(10)}
         for entry in traces:
             cam_traces[entry[1]].append(entry)
 
