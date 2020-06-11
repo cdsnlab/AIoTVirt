@@ -16,7 +16,7 @@ import csv
 import pickle
 
 
-os.environ['CUDA_VISIBLE_DEVICES'] = '1'
+os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 config = tf.ConfigProto()
 config.gpu_options.allow_growth = True
 session = tf.InteractiveSession(config=config)
@@ -46,17 +46,23 @@ transition_map = {
 
 
 
-models = {cam: load_model('/home/boyan/LSTM_Cam_pred/model_100epochs/cam_{}.h5'.format(cam), compile=False) for cam in range(10)}
+#models_time = {cam: load_model('/home/boyan/AIoTVirt/trajectoryanalysis/models/cam_{}.h5'.format(cam), compile=False) for cam in range(10)}
+models = {cam: load_model('/home/spencer1/AIoTVirt/trajectoryanalysis/models/connected_new_sim/cam_{}.h5'.format(cam), compile=False) for cam in range(10)}
+#models = {cam: load_model('/home/spencer1/AIoTVirt/trajectoryanalysis/model_new_sim/cam_{}.h5'.format(cam), compile=False) for cam in range(10)}
+#models = {cam: load_model('/home/boyan/LSTM_Cam_pred/model_100epochs/cam_{}.h5'.format(cam), compile=False) for cam in range(10)}
 #models = {cam: load_model('/home/boyan/LSTM_Cam_pred/model_new_label/cam_{}.h5'.format(cam), compile=False) for cam in range(10)}
 passed_frames = 0
 
 for camera in range(10):
-    loaded = np.load("/home/boyan/out_label_trans/{}.npy".format(camera), allow_pickle=True)
+    #loaded = np.load("/home/boyan/out_label_trans/{}.npy".format(camera), allow_pickle=True)
     #loaded = np.load("/home/boyan/out_label_neighb_irw/{}.npy".format(camera), allow_pickle=True)
     # loaded = np.load("/home/boyan/out_label_neighb/{}.npy".format(camera), allow_pickle=True)
+    #loaded = np.load("/home/spencer1/AIoTVirt/trajectoryanalysis/npy/train_multi_output/{}.npy".format(camera), allow_pickle=True)
+    loaded = np.load("/home/spencer1/AIoTVirt/trajectoryanalysis/npy/connected/{}.npy".format(camera), allow_pickle=True)
     traces[camera] = loaded
 
 threshold = 30
+enable_filter=True
 
 
 def slacknoti(contentstr):
@@ -86,7 +92,7 @@ def translate_vector(vec):
 
 
 def get_point(strpoint):
-    point = strpoint.replace('(', '').replace(')', '').split(',')
+    point = strpoint.replace('(', '').replace(')', '').split(',')[0:2]
     point = [int(p) for p in point]
     # return np.array(point)
     return point
@@ -105,7 +111,7 @@ def estimate_handover(source, dest, cur_path, len_cur_path, angle_lim=30, cutoff
     cur_vector = translate_vector((cur_path[0], cur_path[-1]))
     if dest == -1:
         return -1, 0
-    for path, label, transition in traces[source][:-1]:
+    for path, label, length, transition in traces[source][:-1]:
         if label == dest:
             # * Calculate current target trace distance
             # ? Can we calculate it only the first time we encounter the trace?
@@ -150,7 +156,7 @@ def estimate_handover(source, dest, cur_path, len_cur_path, angle_lim=30, cutoff
         return -1, 0
 
 
-def preprocess_track(track, vl):
+def preprocess_track(track, vl): #*ED
     # if len(track) < vl:
     #     continue
     # TODO NORMALIZE THIS FUCKING TRACK
@@ -162,14 +168,16 @@ def preprocess_track(track, vl):
         if len(output) == vl:
             break
         else:
-            output.append((x / 1280, y / 720))
+            output.append((x / 2560, y / 1440))
     return np.array([output])
 
-
-
+def resnet_handover(src_camera, full_track, vl=30):
+    track=preprocess_track(full_track, 30)
+    return int(models_time[src_camera].predict(track)[0][0])
+    
 
 def estimate_transition():
-    global perform_handover, transition, models, cam_tracking, passed_frames
+    global perform_handover, transition, models, cam_tracking, passed_frames, enable_filter
     # transition[camera][-1]['tracks'].append(get_point(value))
     if passed_frames % 5 == 0:
         if recording[camera][-1]['duration'] > threshold:
@@ -194,14 +202,20 @@ def estimate_transition():
 
             for i, target in enumerate (choice):
                 #* handover_t: how long the trace is.., transition_d: how long it took from camera a to b
-                handover_t, transition_d = estimate_handover(camera, target, full_track, len_tracks, 10, False, False)
+                if not enable_filter:
+                    handover_td = resnet_handover(camera, full_track,30)
+                    handover_t, transition_d = handover_td, 0
+                else:
+                    handover_t, transition_d = estimate_handover(camera, target, full_track, len_tracks, 10, False, False)
+                
                 #print(target, handover_t, transition_d)
-                handover_time.append(handover_t)
-                transition_duration.append(transition_d)
+                #handover_time.append(handover_t)
+                #transition_duration.append(transition_d)
                 #print("[DEBUG] destination {}, handover_time {}, transition_dur {}".format(k, handover_t, transition_d)) 
                 # TODO Adjust handover time based on threshold and container_boot_time
                 if handover_t!=-1:
-                    perform_h = (handover_t + transition_d + index - container_boot_time - recording[camera][-1]['duration'], target) # - recording[camera][-1]['duration'], target)
+                    #perform_h = (handover_t + transition_d + index - container_boot_time - recording[camera][-1]['duration'], target) # - recording[camera][-1]['duration'], target)
+                    perform_h = (handover_t + transition_d - container_boot_time - recording[camera][-1]['start'], target) 
                     perform_handover[i]=(perform_h)
 
                     # * As we are tracking in this camera, we don't need to check the rest
@@ -210,13 +224,14 @@ def estimate_transition():
 
 
 
-path ="/home/spencer1/samplevideo/sim_csv/prev_full/"
+#path ="/home/spencer1/samplevideo/sim_csv/prev_full/"
+path ="/home/spencer1/samplevideo/test_new_sim_csv/"
 
 path1, dirs1, files1 = next(os.walk(path))
 file_count = len(files1)
 skip_file=2
 #shname="even"
-shname="odd-early-late-eval"
+shname="adaptive_rec"
 filenames = os.listdir(path)
 filenames = filenames[1::skip_file]
 #filenames = filenames[::skip_file]
@@ -282,6 +297,9 @@ for file in tqdm(filenames):
     recording = {i: [] for i in range(10)}
     processed_frames = {i: 0 for i in range(10)}
     cnt_seen_target= {i: 0 for i in range(10)}
+
+    actaivated_camera_indexs = {i: [] for i in range(MAX_SIM)}
+
     cnt_camera_choice ={}
     cnt_camera_ans ={}
     available_states = ["rec", "trk", "trans"]
@@ -294,15 +312,17 @@ for file in tqdm(filenames):
     cnt_trans=0 #* how long you were in TRANS state
     sump=0
     sumst=0
+    trktimer=0
+    begin=True
     for index, row in data.iterrows(): #* read frame by frame.
         # * Spencers approach * #
         cnt_[state]+=1
         cnt_total+=1
 
-        if index==rowsize-1:
-            for i in range(rowsize-1, MAX_SIM):
+        if index==rowsize-2:
+            for i in range(rowsize-2, MAX_SIM):
                 number_of_activated_cameras[i] = -1
-        
+                actaivated_camera_indexs[i].append(-1)
         #* to see if transition is wrong or time is wrong.
         cnt_camera_=[]
         for camera in range(10):
@@ -311,8 +331,7 @@ for file in tqdm(filenames):
                 cnt_camera_.append(camera)
         if not cnt_camera_:
             cnt_camera_.append(-1)
-        cnt_camera_ans[index] = cnt_camera_
-                
+        cnt_camera_ans[index] = cnt_camera_   
         
         for camera in range(10):
             value = row['Camera {}'.format(camera)]
@@ -323,11 +342,16 @@ for file in tqdm(filenames):
         if state=="rec": #* recovery: turn on all cameras to search for the target.
             cnt_rec+=1
             print("[INFO] in REC at frame number {}".format(index))
+
             cnt_camera_choice[index] = [-1]
             for camera in range(10):
+                if begin != True:
+                    processed_frames[camera] += 1
+                    number_of_activated_cameras[index]+=1
+                    actaivated_camera_indexs[index].append(camera)
+
                 value = row['Camera {}'.format(camera)]
-                processed_frames[camera] += 1
-                number_of_activated_cameras[index]+=1
+                
                 if '-1' not in value:
                     # * this is a new trk, 1) add new trk, 2) exit recovery mode.
                     recording[camera].append({
@@ -340,27 +364,35 @@ for file in tqdm(filenames):
                     state="trk"
                     cnt_seen_target[camera]+=1
                     cnt_camera_choice[index] = [camera]
+                    begin=False
                     break
 
         elif state == "trk": #* tracking: 
             cnt_trk+=1
-            processed_frames[cam_tracking] +=1
             camera = cam_tracking
+
+            processed_frames[camera] +=1
             number_of_activated_cameras[index]+=1
+            actaivated_camera_indexs[index].append(camera)
+
             value = row['Camera {}'.format(camera)]
             missing = 0
             early=0
             wrong = 0
 
             if '-1' in value: # * If person not here, end current trace
-                print("[INFO] STOP TRK in camera {} frame number {}".format(camera, index))
-                recording[cam_tracking][-1]['end'] = index
-                prev_tracking = cam_tracking
-                cnt_camera_choice[index] = [-1]
-                #cam_tracking = -1
-                state="trans" #! check if there is any handover points in the future.
-
-                continue
+                print("+++[INFO] should be here {} frame number {}".format(camera, index))
+                trktimer+=1
+                
+                if trktimer > 15:
+                    print("===[INFO] Fcuk i m out")
+                    recording[cam_tracking][-1]['end'] = index
+                    prev_tracking = cam_tracking
+                    cnt_camera_choice[index] = [-1]
+                    #cam_tracking = -1
+                    state="trans" 
+                    trktimer=0
+                
             else: # * If person is here, continue recording trace
                 # * We have a camera that is tracking, continue here
                 
@@ -371,16 +403,17 @@ for file in tqdm(filenames):
  
                 # * Increase the current trace's duration
                 recording[camera][-1]['duration'] += 1
+                trktimer=0
                             
             estimate_transition() #! check if the index of the prediction matches current index
 
             for k, v in perform_handover.items(): #! regardless of if the person is there or not, keep updating possible transitions.
                 print("[INFO] these are possible transitions {}".format(v))
-                if v[0] != -1:
+                if v[1] != -1:
+
                     possible_transitions[k] = v
                     rec_counter[k] = 0
                
-
         elif state == "trans": #* in between cams
             # ! can we know if its there but they are missing it? 
             el_gt = []
@@ -402,6 +435,7 @@ for file in tqdm(filenames):
                 if v[0]<=index: #transition time == index #? IT ONLY CHECKS when the predictions are smaller than current index!
                     print("[DEBUG] possible transition point from camera {} to camera {} at {}th frame".format(prev_tracking, v[1], v[0]))
                     number_of_activated_cameras[index]+=1
+                    actaivated_camera_indexs[index].append(camera)
                     camera=v[1]
                     processed_frames[camera] += 1
                     value = row['Camera {}'.format(camera)]
@@ -429,7 +463,6 @@ for file in tqdm(filenames):
                     print("[DEBUG] waiting until {}th frame to camera {}".format(v[0], v[1]))
                     el_p.append(-1)
           
-                #elif v[0] < index: 
                 if rec_counter[k] >= 30: #* give 30 frames until calling missing.
                     print("[INFO] pop transition destination for {} at {}th frame".format(k, index))
                     possible_transitions.pop(k)
@@ -454,11 +487,15 @@ for file in tqdm(filenames):
                 if early > valutearly[file]:
                     valutearly[file]=early
                 early+=1
-        
+                print(index, rowsize-2)
+        elif state == "a-rec": #* in semi-rec status
+            print("[INFO] in A-REC at frame number {}".format(index))
 
-    print("late {}".format(valutmissing))
-    print("wrong {}".format(valutwrong))               
-    print("early {}".format(valutearly))
+
+
+    #print("late {}".format(valutmissing))
+    #print("wrong {}".format(valutwrong))               
+    #print("early {}".format(valutearly))
     #? calculate results for each iteration. 
     for k, v in processed_frames.items():
         sump += v
@@ -480,7 +517,7 @@ for file in tqdm(filenames):
     #camera_evaluation_results = camera_evaluation_results.append(pd.Series)
     camera_evaluation_results['gt_'+str(name)] = pd.Series(cnt_camera_ans)
     camera_evaluation_results['prop_'+str(name)] = pd.Series(cnt_camera_choice)
-    activation_results[file[:-4]+"_activenumber"] = pd.Series(number_of_activated_cameras)
+    activation_results[file[:-4]] = pd.Series(actaivated_camera_indexs)
 
     file_end_time = time.time()
     name+=1
@@ -496,16 +533,16 @@ early_late_results["late"] = pd.Series(valutmissing)
 early_late_results["wrong"] = pd.Series(valutwrong)
 early_late_results["early"] = pd.Series(valutearly)
 
-with pd.ExcelWriter("results/scenario_results_prop.xlsx", mode='a') as writer:
+with pd.ExcelWriter("results/scenario_results_newsimdata_prop.xlsx", mode='a') as writer:
    results_for_excel.to_excel(writer, sheet_name=shname)
-with pd.ExcelWriter("activation_graph/prop_activation.xlsx", mode='a') as writer:
+with pd.ExcelWriter("activation_graph/prop_newsimdata_activation.xlsx", mode='a') as writer:
     activation_results.to_excel(writer, sheet_name=shname)
 
 #* to test if camera selection is wrong or camera time transition is wrong.
-with pd.ExcelWriter("evaluate_prop_dir_or_time.xlsx", mode='a') as writer:
-    camera_evaluation_results.to_excel(writer, sheet_name=shname)
+# with pd.ExcelWriter("evaluate_prop_dir_or_time.xlsx", mode='a') as writer:
+#     camera_evaluation_results.to_excel(writer, sheet_name=shname)
 
-with pd.ExcelWriter("early_late_evaluation.xlsx", mode='a') as writer:
-    early_late_results.to_excel(writer, sheet_name=shname)
+# with pd.ExcelWriter("early_late_evaluation.xlsx", mode='a') as writer:
+#     early_late_results.to_excel(writer, sheet_name=shname)
 
 print("[INFO] DONE! ")

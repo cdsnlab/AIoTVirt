@@ -153,6 +153,7 @@ def label_files(path, naive=False, timestamp_thresh=0.8):
                 cam = trace.camera
                 label = traces[i+1].camera
                 seq = data['Camera {}'.format(cam)][trace.start:trace.end].values
+                print(seq)
                 seq = [[int(p) for p in point.replace('(', '').replace(')','').split(',')] for point in seq]
                 s = np.array(seq)
                 # print(s, label)
@@ -163,8 +164,8 @@ def label_files(path, naive=False, timestamp_thresh=0.8):
 
     for cam, content in files.items():
         ncontent = np.array(content)
-        # print(cam, ncontent)
-        # np.save("out_dual_label/{}".format(cam), ncontent)
+        print(cam, ncontent)
+        np.save("simple_npy/{}".format(cam), ncontent)
     return files
 
     
@@ -186,7 +187,7 @@ start = time.time()
 # label_files('multi10zone_npy', False, timestamp_thresh=0.85)
 # print(time.time() - start)
         
-all_traces = label_files('multi10zone_npy', False)
+all_traces = label_files('/home/spencer1/samplevideo/train_new_sim_csv/', False)
 
 durs = []
 x = []
@@ -200,16 +201,16 @@ for path, label in all_traces[0]:
 
 plt.scatter(x,durs)
 plt.savefig('durations.png', dpi=350)
-fs = [
-    "multi10zone_npy/start_2_end_9_run_12.csv",
-    "multi10zone_npy/start_2_end_9_run_16.csv",
-    "multi10zone_npy/start_2_end_8_run_97.csv",
-    "multi10zone_npy/start_2_end_9_run_8.csv",
-    "multi10zone_npy/start_2_end_8_run_77.csv",
-    "multi10zone_npy/start_2_end_8_run_87.csv",
-    "multi10zone_npy/start_2_end_8_run_72.csv",
-    "multi10zone_npy/start_2_end_7_run_8.csv",
-]
+# fs = [
+#     "multi10zone_npy/start_2_end_9_run_12.csv",
+#     "multi10zone_npy/start_2_end_9_run_16.csv",
+#     "multi10zone_npy/start_2_end_8_run_97.csv",
+#     "multi10zone_npy/start_2_end_9_run_8.csv",
+#     "multi10zone_npy/start_2_end_8_run_77.csv",
+#     "multi10zone_npy/start_2_end_8_run_87.csv",
+#     "multi10zone_npy/start_2_end_8_run_72.csv",
+#     "multi10zone_npy/start_2_end_7_run_8.csv",
+# ]
 
 # data = pd.read_csv(fs[3])
 # # data = pd.read_csv("multi10zone_npy/start_9_end_5_run_48.csv")
