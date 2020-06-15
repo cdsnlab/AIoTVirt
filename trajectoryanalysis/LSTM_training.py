@@ -190,7 +190,7 @@ for labeling in [1]:
             slacknoti("`[MEWTWO]` Loss `{}` Accuracy `{}` at time `{}`".format(result[0], result[1], time.strftime("%H:%M:%S", time.localtime())))
             if result[1] > cam_best_result:
                 cam_best_result = result[1]
-                model.save('models/connected_new_sim/cam_{}.h5'.format(camera))
+                model.save('models/ed_new_sim/cam_{}.h5'.format(camera))
         class_report[camera] = cam_best_result
 
     with open("models/connected_new_sim/lstm_new_label.json", "w") as file:

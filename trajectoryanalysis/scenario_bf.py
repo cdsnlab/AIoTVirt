@@ -204,7 +204,7 @@ skip_file=0
 filenames = os.listdir(path)
 #filenames = filenames[::skip_file]
 
-shname = "adaptive_rec"
+shname = "dt_swo7"
 MIN_LENGTH = 15
 MAX_SIM = 4000
 results = {}

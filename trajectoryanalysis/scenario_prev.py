@@ -215,7 +215,7 @@ filenames = os.listdir(path)
 #filenames = filenames[::11]
 #skip_file=3000
 #filenames = filenames[1::skip_file]
-shname = "adaptive_rec"
+shname = "fixed_waiting_time"
 MIN_LENGTH = 15
 MAX_SIM = 4000
 results = {}
@@ -324,9 +324,10 @@ for file in tqdm(filenames):
 
                 for i in transition_map[camera]: # get neighboring cameras transition diff.
                     if i != camera: #! maybe set a minimum transition time for possible transitions and wait until it finds it?
-                        print("[INFO] possible transition from {} to {} after {} frames".format(camera, i, transition_min[str(camera)+"-->"+str(i)]))
+                        print("[INFO] possible transition from {} to {} after {} frames".format(camera, i, index+container_boot_time))
                         #possible_transitions[i] = int(transition_min[str(camera)+"-->"+str(i)])-container_boot_time
-                        possible_transitions[i] = int(transition_min[str(camera)+"-->"+str(i)])+index
+                        #possible_transitions[i] = int(transition_min[str(camera)+"-->"+str(i)])+index
+                        possible_transitions[i] = index+container_boot_time
                         #rec_counter[i]=0
                         rec_counter[i]= int(transition_max[str(camera)+"-->"+str(i)])
                         cnt_container[i]=15
