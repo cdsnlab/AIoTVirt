@@ -37,9 +37,12 @@ def preprocessing(dataset, sr:int, vl:int, opt:str): # docnpy file path, cam id,
         s = []
         for x,y in series:
             s.append(np.array([x / 2560, y / 1440]))
-        data.append(np.array([s, label]))
+            
+        data.append([s, label])
+    #print(data)
+        # data.append(np.array([s, label]))
 
-    dataset = np.array(data)
+    dataset = data
     # slice ratio logic here.
     if opt == "sw-o": # sliding window complete overlap
         for series, label in dataset:   
@@ -49,9 +52,11 @@ def preprocessing(dataset, sr:int, vl:int, opt:str): # docnpy file path, cam id,
             for i, (x, y) in enumerate(series):
                 if i+vl > trainportion:
                     break
-                #print(i, series[i:i+vl])
+                #print(i, series[i:i+vl]) # [array([x,y]), array([x,y])... ]
                 trainX.append(series[i:i+vl])
                 trainY.append(label) 
+        #print(trainX)
+        #print(trainY)
 
     elif opt == "sw-no": # sliding window no-overlap
         for series, label in dataset:
@@ -136,11 +141,19 @@ def preprocessing(dataset, sr:int, vl:int, opt:str): # docnpy file path, cam id,
                     trainX.append(np.array(tmpx))
                     trainY.append(label)
 
-    
-
+    elif opt=="last":
+        for series, label in dataset:
+            if(len(series) < vl):
+                continue
+            trainX.append(series[-vl:])
+            trainY.append(label)
+                    # break 
+            # trainX.append(series[-vl:])
+            # trainY.append(label) 
+            #print(type(series[-vl:]))
+                   
     # trainX = np.array(trainX).reshape(len(trainX), vl*2)
-    # trainY = np.array(trainY).reshape(len(trainY), )
-    #testX = testX.reshape(len(testX), vl*2)
+    # trainX = np.array(trainX).reshape(len(trainX), vl*2)
     #testY = testY.reshape(len(testY), )
     # return np.array(trainX), np.array(testX), np.array(trainY), np.array(testY)
     return np.array(trainX), np.array(trainY)

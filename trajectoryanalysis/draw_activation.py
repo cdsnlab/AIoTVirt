@@ -6,11 +6,14 @@ path_bf ="/home/spencer1/AIoTVirt/trajectoryanalysis/activation_graph/bf_newsimd
 path_prev ="/home/spencer1/AIoTVirt/trajectoryanalysis/activation_graph/prev_newsimdata_activation.xlsx"
 path_prop ="/home/spencer1/AIoTVirt/trajectoryanalysis/activation_graph/prop_newsimdata_activation.xlsx"
 
-shname = "resnet_test"
+shname = "final"
+prevshname = "fixed_wait_time"
+propshname = "resnet_last0.4"
+
 data_gt = pd.read_excel(path_gt, sheet_name=shname)
 data_bf = pd.read_excel(path_bf, sheet_name=shname)
-data_prev = pd.read_excel(path_prev, sheet_name=shname)
-data_prop = pd.read_excel(path_prop, sheet_name=shname)
+data_prev = pd.read_excel(path_prev, sheet_name=prevshname)
+data_prop = pd.read_excel(path_prop, sheet_name=propshname)
 
 
 def getpoints(li, points):
@@ -58,7 +61,7 @@ for index, col in enumerate(data_prop.columns):
     #plt.yticks(i for i in range(10), ['1','2','3','4','5','6','7','8','9','10'])
 
     #plt.show()
-    plt.savefig("/home/spencer1/AIoTVirt/trajectoryanalysis/activation_graph/graph/"+col+".png")
+    plt.savefig("/home/spencer1/AIoTVirt/trajectoryanalysis/activation_graph/graph/"+col+"_dt.png")
     plt.clf()
     cnt+=1
     # if cnt > 2:

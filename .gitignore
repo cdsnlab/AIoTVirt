@@ -155,3 +155,5 @@ fabric.properties
 *.png
 *.npy
 *.h5
+*.joblib
+*.xlsx
