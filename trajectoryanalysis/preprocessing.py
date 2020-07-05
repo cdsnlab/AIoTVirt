@@ -73,7 +73,7 @@ def preprocessing(dataset, sr:int, vl:int, opt:str): # docnpy file path, cam id,
                 else:
                     pass
     
-    elif opt == "ed": # evenly distributed 
+    elif opt == "ed" or (opt == "irw" and sr != 100): # evenly distributed 
         for series, label in dataset: 
             trainportion = int(len(series)/100*sr)
 
@@ -93,30 +93,30 @@ def preprocessing(dataset, sr:int, vl:int, opt:str): # docnpy file path, cam id,
             trainX.append(tmpx)
             trainY.append(label)
 
-    elif opt == "irw" and sr!=100: # inverse reducing window but testing at different sr.
-        portions = [10, 20, 30, 40, 50, 60, 70, 80, 90]
-        trainportion = int(len(series)/100*sr)
+    # elif opt == "irw" and sr!=100: # inverse reducing window but testing at different sr.
+    #     portions = [10, 20, 30, 40, 50, 60, 70, 80, 90]
+    #     trainportion = int(len(series)/100*sr)
 
-        for series, label in dataset:
-            for prt in portions:
-                startloc = int(len(series)/100*prt)
-                tmpx, tmpy= [], []
-                cnt = 0
-                btw = math.floor((trainportion-startloc) / float(vl))
-                if (trainportion-startloc) < vl: # if there are less plots than vl
-                    continue
-                for x, y in series[startloc:trainportion:btw]:
+    #     for series, label in dataset:
+    #         for prt in portions:
+    #             startloc = int(len(series)/100*prt)
+    #             tmpx, tmpy= [], []
+    #             cnt = 0
+    #             btw = math.floor((trainportion-startloc) / float(vl))
+    #             if (trainportion-startloc) < vl: # if there are less plots than vl
+    #                 continue
+    #             for x, y in series[startloc:trainportion:btw]:
 
-                    if cnt == vl:
-                        break
-                    else:
-                        tmpx.append(np.array([x,y]))
-                    cnt+=1
-                #tmpy.append(label)
-                if len(tmpx) < vl:
-                    continue
-                trainX.append(np.array(tmpx))
-                trainY.append(label)
+    #                 if cnt == vl:
+    #                     break
+    #                 else:
+    #                     tmpx.append(np.array([x,y]))
+    #                 cnt+=1
+    #             #tmpy.append(label)
+    #             if len(tmpx) < vl:
+    #                 continue
+    #             trainX.append(np.array(tmpx))
+    #             trainY.append(label)
 
     elif opt == "irw": # inverse reducing window 10 - 100, 20 - 100, etc # for training
         portions = [10, 20, 30, 40, 50, 60, 70, 80, 90]
@@ -141,7 +141,7 @@ def preprocessing(dataset, sr:int, vl:int, opt:str): # docnpy file path, cam id,
                     trainX.append(np.array(tmpx))
                     trainY.append(label)
 
-    elif opt=="last":
+    elif opt=="last" or (opt == "sw-o" and sr != 100):
         for series, label in dataset:
             if(len(series) < vl):
                 continue

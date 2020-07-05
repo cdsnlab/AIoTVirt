@@ -15,7 +15,7 @@ def gen_data(camera, sampling_id, seq_length, test_slice_part, labeling, mode):
     elif labeling == 1:
         data = np.load("/home/boyan/AIoTVirt/transitions/traces_train_test.npz", allow_pickle=True)
         
-    predictions = np.load("trajectoryanalysis/models/mae_cam_last_predictions.npz", allow_pickle=True)
+    predictions = np.load("trajectoryanalysis/models/mae_cam_last_resnet_predictions.npz", allow_pickle=True)
     data = data['cam_{}'.format(camera)]
     train = data[0]
     test = data[1]
