@@ -204,7 +204,7 @@ skip_file=0
 filenames = os.listdir(path)
 #filenames = filenames[::skip_file]
 
-shname = "dt_swo7"
+shname = "bf_no_containerboottime"
 MIN_LENGTH = 15
 MAX_SIM = 4000
 results = {}
@@ -283,11 +283,12 @@ for file in tqdm(filenames):
             if '-1' not in value:
                 cnt_target+=1
                 actaivated_gt_indexs[index].append(camera)
+                break
                 
         
         if state=="rec": #* recovery: turn on all cameras to search for the target.
             
-            print("[INFO] in REC at frame number {}".format(index))
+            #print("[INFO] in REC at frame number {}".format(index))
             for camera in range(10):
                 if begin != True:
                     processed_frames[camera] += 1
@@ -297,7 +298,6 @@ for file in tqdm(filenames):
                 value = row['Camera {}'.format(camera)]
                 if '-1' not in value:
                     # * this is a new trk, 1) add new trk, 2) exit recovery mode.
-                    cnt_seen_target[camera]+=1
                     recording[camera].append({
                         "start": index,
                         "duration": 0,
@@ -306,6 +306,8 @@ for file in tqdm(filenames):
                     })
                     cam_tracking=camera
                     state="trk"
+                    cnt_seen_target[camera]+=1
+
                     begin=False
                     break
 
@@ -316,25 +318,25 @@ for file in tqdm(filenames):
             actaivated_camera_indexs[index].append(camera)
             # * We have a camera that is tracking, continue here
             
-            print("[INFO] in TRK in camera {} frame number {}".format(camera, index))
+            #print("[INFO] in TRK in camera {} frame number {}".format(camera, index))
 
             value = row['Camera {}'.format(camera)]
             # * Increase the current trace's duration
             recording[camera][-1]['duration'] += 1
             if '-1' in value: # * If person not here, end current trace
-                print("+++[INFO] should be here")
+                #print("+++[INFO] should be here")
                 # handover_points.append((index, cam_tracking, perform_handover[1]))
                 trktimer+=1
                 #! sit at this camera until saying gone
-                if trktimer >15:
-                    print("===[INFO] Fcuk i m out")
+                # if trktimer >15:
+                #     #print("===[INFO] Fcuk i m out")
 
-                    recording[cam_tracking][-1]['end'] = index
-                    prev_tracking = cam_tracking
-                    cam_tracking = -1
-                    container_boot_time = 15 #* this means that it suffers 15 bootup time for all other cameras.
-                    trktimer=0
-                    state="trans"
+                recording[cam_tracking][-1]['end'] = index
+                prev_tracking = cam_tracking
+                cam_tracking = -1
+                #     container_boot_time = 0 #* this means that it suffers 15 bootup time for all other cameras.
+                #     trktimer=0
+                state="trans"
 
             else: # * If person is here, continue recording trace
                 recording[camera][-1]['tracks'].append(get_point(value))
@@ -346,7 +348,7 @@ for file in tqdm(filenames):
             #print("[INFO] in TRANS at frame number {}".format(index))
             # 1) look at each camera one by one.
             if container_boot_time ==0:
-                print("[INFO] in TRANS going to REC at frame number {}".format(index))
+                #print("[INFO] in TRANS going to REC at frame number {}".format(index))
                 state="rec"
                 continue
             else:

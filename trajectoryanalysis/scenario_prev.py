@@ -29,18 +29,29 @@ args = argparser.parse_args()
 
 traces = {}
 transition_map = {
-    0: [1, 2, 9],
-    1: [0, 2, 8],
-    2: [1, 3, 7],
-    3: [2, 4],
+    0: [1, 2, 9, 0],
+    1: [0, 2, 8, 1],
+    2: [1, 3, 7, 8, 0],
+    3: [2, 4, 3],
     4: [2, 3, 5],
     5: [4, 6],
-    6: [5, 7, 8],
-    7: [2, 3, 6],
-    8: [1, 2, 9],
-    9: [0, 6, 9]
+    6: [5, 7, 8, 9, 4],
+    7: [2, 3, 6, 9],
+    8: [1, 2, 9, 6],
+    9: [0, 6, 8, 7]
 }
-
+# transition_map = {
+#     0: [1, 9],
+#     1: [0, 2],
+#     2: [1, 3],
+#     3: [2, 4],
+#     4: [2, 3],
+#     5: [4, 6],
+#     6: [5, 7],
+#     7: [2, 3, 6],
+#     8: [1, 2, 9],
+#     9: [0, 6, 9]
+# }
 def slacknoti(contentstr):
     webhook_url = "https://hooks.slack.com/services/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"
     payload = {"text": contentstr}
@@ -177,7 +188,7 @@ def get_transition_dist(path, naive=False):
                     transition[str(traces[i]['camera'])+"-->"+str(trace['camera'])].append(trace['start'] - traces[i]['end'])
 
     for k, v in transition.items(): # get transition time btw two locs.
-
+        #print(k)
         v = (sorted(v))
         if min(v) < 0:
             tmapmin[k]=0
@@ -212,10 +223,11 @@ path ="/home/spencer1/samplevideo/test_new_sim_csv/"
 path_full = "/home/spencer1/samplevideo/train_new_sim_csv/"
 
 filenames = os.listdir(path)
+nei = 3
 #filenames = filenames[::11]
 #skip_file=3000
 #filenames = filenames[1::skip_file]
-shname = "fixed_waiting_time"
+shname = "3nei_"
 MIN_LENGTH = 15
 MAX_SIM = 4000
 results = {}
@@ -247,7 +259,7 @@ for file in tqdm(filenames):
     file_start_time = time.time()
     data = pd.read_csv(path + file)
     rowsize = len(data['Camera 1'])
-    print(rowsize)
+    #print(rowsize)
 
     cam_tracking = -1
 
@@ -285,7 +297,7 @@ for file in tqdm(filenames):
                 break
         
         if state=="rec": #* recovery: turn on all cameras to search for the target.
-            print("[INFO] in REC at frame number {}".format(index)) #! this is the reason for low precision
+            #print("[INFO] in REC at frame number {}".format(index)) #! this is the reason for low precision
             for camera in range(10):
                 if begin != True:
                     processed_frames[camera] += 1
@@ -315,16 +327,16 @@ for file in tqdm(filenames):
             number_of_activated_cameras[index]+=1
             actaivated_camera_indexs[index].append(camera)
             # * We have a camera that is tracking, continue here
-            print("[INFO] in TRK in camera {} frame number {}".format(camera, index))
+            #print("[INFO] in TRK in camera {} frame number {}".format(camera, index))
             value = row['Camera {}'.format(camera)]
             # * Increase the current trace's duration
             recording[camera][-1]['duration'] += 1
             if '-1' in value: # * If person not here, end current trace
                 trktimer+=1
 
-                for i in transition_map[camera]: # get neighboring cameras transition diff.
+                for i in transition_map[camera][:nei]: # get neighboring cameras transition diff.
                     if i != camera: #! maybe set a minimum transition time for possible transitions and wait until it finds it?
-                        print("[INFO] possible transition from {} to {} after {} frames".format(camera, i, index+container_boot_time))
+                        #print("[INFO] possible transition from {} to {} after {} frames".format(camera, i, index+container_boot_time))
                         #possible_transitions[i] = int(transition_min[str(camera)+"-->"+str(i)])-container_boot_time
                         #possible_transitions[i] = int(transition_min[str(camera)+"-->"+str(i)])+index
                         possible_transitions[i] = index+container_boot_time
@@ -332,7 +344,7 @@ for file in tqdm(filenames):
                         rec_counter[i]= int(transition_max[str(camera)+"-->"+str(i)])
                         cnt_container[i]=15
                 if trktimer > 15: #! waits couple frames until saying its gone.
-                    print("===[INFO] Fcuk i m out")
+                    #print("===[INFO] Fcuk i m out")
                     recording[cam_tracking][-1]['end'] = index
                     prev_tracking = cam_tracking
                     cam_tracking = -1
@@ -346,13 +358,13 @@ for file in tqdm(filenames):
                 trktimer=0
                 
         elif state == "trans": #* in between cams
-            print("[INFO] in TRANS at frame number {}".format(index))
+            #print("[INFO] in TRANS at frame number {}".format(index))
 
             if not possible_transitions:
                 state = "rec"
                 continue
             for k, v in possible_transitions.items():
-                print("[INFO] possible transition point from camera {} to camera {} at {}th frame".format(prev_tracking, k, v))
+                #print("[INFO] possible transition point from camera {} to camera {} at {}th frame".format(prev_tracking, k, v))
                 if v <= index: #* check if transition index is earlier than current index.                    
                     camera=k
                     value = row['Camera {}'.format(camera)]
@@ -363,7 +375,7 @@ for file in tqdm(filenames):
                         actaivated_camera_indexs[index].append(camera)
                         if '-1' not in value:
                             # * correct transfer.
-                            print("[INFO] found target in camera {} in {}th frame".format(camera, index))
+                            #print("[INFO] found target in camera {} in {}th frame".format(camera, index))
                             cnt_seen_target[camera]+=1
 
                             recording[camera].append({
@@ -376,10 +388,10 @@ for file in tqdm(filenames):
                             cam_tracking=camera
                             possible_transitions={} #* clear the transition points
                             break
-                        print(k, rec_counter[k])
+                        #print(k, rec_counter[k])
                         rec_counter[k]-=1 #* to show if there is an object here.
                     if rec_counter[k] < 0: #* give 15 frames until calling missing.
-                        print("[INFO] pop transition destination for {} at {}th frame".format(k, index))
+                        #print("[INFO] pop transition destination for {} at {}th frame".format(k, index))
                         possible_transitions.pop(k)
                         cnt_container.pop(k)
                         break
@@ -413,9 +425,9 @@ for file in tqdm(filenames):
 sim_end_time = time.time()
 print("[INFO] total time {}".format(sim_end_time - start_time))
 ####! logfiles
-with pd.ExcelWriter("results/scenario_results_newsimdata_prev.xlsx", mode='a') as writer:
+with pd.ExcelWriter("results/scenario_results_newsimdata_prev.xlsx", mode='w') as writer:
     results_for_excel.to_excel(writer, sheet_name=shname)
 
-with pd.ExcelWriter("activation_graph/prev_newsimdata_activation.xlsx", mode='a') as writer:
+with pd.ExcelWriter("activation_graph/prev_newsimdata_activation.xlsx", mode='w') as writer:
     activation_results.to_excel(writer, sheet_name=shname)
 print("[INFO] DONE! ")

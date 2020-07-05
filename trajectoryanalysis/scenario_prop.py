@@ -72,12 +72,6 @@ def scenario_prop(vl=30, transitionmodel="conv_lstm", timemodel="ResNet", prepro
         traces[camera] = loaded
 
 
-    def slacknoti(contentstr):
-        webhook_url = "https://hooks.slack.com/services/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"
-        payload = {"text": contentstr}
-        requests.post(webhook_url, data=json.dumps(payload), headers={'Content-Type': 'application/json'})
-
-
     def unit_vector(vector):
         """ Returns the unit vector of the vector.  """
         return vector / np.linalg.norm(vector)
@@ -272,9 +266,9 @@ def scenario_prop(vl=30, transitionmodel="conv_lstm", timemodel="ResNet", prepro
                 predicted_camera = models[camera].predict(track)
                 p = predicted_camera[0].argsort()
                 #print("First option {}: {}, second option {}: {}".format(predicted_camera[0][p[-2:][::-1][0]], p[-2:][::-1][0], predicted_camera[0][p[-2:][::-1][1]], p[-2:][::-1][1])) #* p[-a:][::-b][::-c] a:how many predictions, b:? c: which one do u want
-                for i in range(2):
+                for i in range(1):
                     if p[-2:][::-1][i] != camera:
-                        if predicted_camera[0][p[-2:][::-1][i]]>0.4: #! this is cuz all classes must add up to 1. 
+                        if predicted_camera[0][p[-2:][::-1][i]]>0.35: #! this is cuz all classes must add up to 1. 
                             #print("[DEBUG] added {} as {} option".format(p[-2:][::-1][i], i ))
                             choice.append(p[-2:][::-1][i])
                         else:
@@ -441,7 +435,7 @@ def scenario_prop(vl=30, transitionmodel="conv_lstm", timemodel="ResNet", prepro
     time.sleep(2)
     name=0 # for excel file
     results_for_excel = pd.DataFrame(
-        columns = ["filename", "percentage of frames processed / total number of frames", "percentage of target frames / total number of frames", "precision", "accuracy"]
+        columns = ["filename", "percentage of frames processed / total number of frames", "percentage of target frames / total number of frames", "precision", "accuracy", "pf-gt"]
     )
 
     camera_evaluation_results = pd.DataFrame(
@@ -523,7 +517,7 @@ def scenario_prop(vl=30, transitionmodel="conv_lstm", timemodel="ResNet", prepro
             
             if state=="rec": #* recovery: turn on all cameras to search for the target.
                 cnt_rec+=1
-                print("[INFO] in REC at frame number {}".format(index))
+                # print("[INFO] in REC at frame number {}".format(index))
 
                 cnt_camera_choice[index] = [-1]
                 for camera in range(10):
@@ -563,11 +557,11 @@ def scenario_prop(vl=30, transitionmodel="conv_lstm", timemodel="ResNet", prepro
                 wrong = 0
 
                 if '-1' in value: # * If person not here, end current trace
-                    print("+++[TRK] should be here {} frame number {}".format(camera, index))
+                    # print("+++[TRK] should be here {} frame number {}".format(camera, index))
                     trktimer+=1
                     
                     if trktimer > 15:
-                        print("===[TRK] Fcuk i m out")
+                        # print("===[TRK] Fcuk i m out")
                         recording[cam_tracking][-1]['end'] = index
                         prev_tracking = cam_tracking
                         cnt_camera_choice[index] = [-1]
@@ -581,7 +575,7 @@ def scenario_prop(vl=30, transitionmodel="conv_lstm", timemodel="ResNet", prepro
                     cnt_camera_choice[index] = [cam_tracking]
                     cnt_seen_target[camera]+=1
                     recording[camera][-1]['tracks'].append(get_point(value))
-                    print("[TRK] in TRK in camera {} frame number {}".format(camera, index))
+                    # print("[TRK] in TRK in camera {} frame number {}".format(camera, index))
     
                     # * Increase the current trace's duration
                     recording[camera][-1]['duration'] += 1
@@ -590,7 +584,7 @@ def scenario_prop(vl=30, transitionmodel="conv_lstm", timemodel="ResNet", prepro
                 estimate_transition() 
 
                 for k, v in perform_handover.items(): #! regardless of if the person is there or not, keep updating possible transitions.
-                    print("[TRK] these are possible transitions {}".format(v))
+                    # print("[TRK] these are possible transitions {}".format(v))
                     if v[1] != -1:
 
                         possible_transitions[k] = v
@@ -607,12 +601,12 @@ def scenario_prop(vl=30, transitionmodel="conv_lstm", timemodel="ResNet", prepro
                                 
                 cnt_trans+=1
                 cnt_camera_choice[index]=[-1]
-                print("[TRANS] in TRANS at frame number {}".format(index))
+                # print("[TRANS] in TRANS at frame number {}".format(index))
                 if not possible_transitions:
-                    print("[TRANS] going to A-REC")
+                    # print("[TRANS] going to A-REC")
                     for i in transition_map[prev_tracking]: # get neighboring cameras transition diff.
                         if i != prev_tracking: #! maybe set a minimum transition time for possible transitions and wait until it finds it?
-                            print("[TRANS] possible transition from {} to {} after {} frames".format(prev_tracking, i, transition_min[str(prev_tracking)+"-->"+str(i)]))
+                            # print("[TRANS] possible transition from {} to {} after {} frames".format(prev_tracking, i, transition_min[str(prev_tracking)+"-->"+str(i)]))
                             #possible_transitions[i] = int(transition_min[str(camera)+"-->"+str(i)])-container_boot_time
                             possible_transitions[i] = (int(transition_min[str(prev_tracking)+"-->"+str(i)])+index, i)
                             #rec_counter[i]=0
@@ -622,7 +616,7 @@ def scenario_prop(vl=30, transitionmodel="conv_lstm", timemodel="ResNet", prepro
                     continue
                 for k, v in possible_transitions.items():
                     if v[0]<=index: #transition time == index #? IT ONLY CHECKS when the predictions are smaller than current index!
-                        print("[TRANS] possible transition point from camera {} to camera {} at {}th frame".format(prev_tracking, v[1], v[0]))
+                        # print("[TRANS] possible transition point from camera {} to camera {} at {}th frame".format(prev_tracking, v[1], v[0]))
                         number_of_activated_cameras[index]+=1
                         camera=v[1]
                         actaivated_camera_indexs[index].append(camera)
@@ -631,7 +625,7 @@ def scenario_prop(vl=30, transitionmodel="conv_lstm", timemodel="ResNet", prepro
                         el_p.append(camera)
                         if '-1' not in value:
                             # * correct transfer.
-                            print("[TRANS] found target in camera {} in {}th frame".format(camera, index))
+                            # print("[TRANS] found target in camera {} in {}th frame".format(camera, index))
                             cnt_seen_target[camera]+=1
                             
                             recording[camera].append({
@@ -649,11 +643,11 @@ def scenario_prop(vl=30, transitionmodel="conv_lstm", timemodel="ResNet", prepro
                             break
                         rec_counter[k]+=1
                     else: #! what if they are far ahead? do nothing until it reaches that number.
-                        print("[TRANS] waiting until {}th frame to camera {}".format(v[0], v[1]))
+                        # print("[TRANS] waiting until {}th frame to camera {}".format(v[0], v[1]))
                         el_p.append(-1)
             
                     if rec_counter[k] >= 60: #* give 30 frames until calling missing.
-                        print("[TRANS] pop transition destination for {} at {}th frame".format(k, index))
+                        # print("[TRANS] pop transition destination for {} at {}th frame".format(k, index))
                         possible_transitions.pop(k)
                         break
                 #! check ehre
@@ -679,7 +673,7 @@ def scenario_prop(vl=30, transitionmodel="conv_lstm", timemodel="ResNet", prepro
                     #print(index, rowsize-2)
             
             elif state == "a-rec": #* in semi-rec status
-                print("[A-REC] in A-REC at frame number {}".format(index))
+                # print("[A-REC] in A-REC at frame number {}".format(index))
 
                 for k, v in possible_transitions.items():
                     number_of_activated_cameras[index]+=1
@@ -692,7 +686,7 @@ def scenario_prop(vl=30, transitionmodel="conv_lstm", timemodel="ResNet", prepro
                     rec_counter[camera] -=1
 
                     if '-1' not in value:
-                        print("[A-REC] found target in camera {} in {}th frame".format(camera, index))
+                        # print("[A-REC] found target in camera {} in {}th frame".format(camera, index))
                         cnt_seen_target[camera]+=1
                         
                         recording[camera].append({
@@ -708,7 +702,7 @@ def scenario_prop(vl=30, transitionmodel="conv_lstm", timemodel="ResNet", prepro
                         cnt_camera_choice[index]=[camera]
 
                 if rec_counter[camera] < 0 : #! waits couple frames until saying its gone.
-                    print("[A-REC] going to REC")
+                    # print("[A-REC] going to REC")
 
                     cam_tracking = -1
                     possible_transitions = {}
@@ -733,10 +727,10 @@ def scenario_prop(vl=30, transitionmodel="conv_lstm", timemodel="ResNet", prepro
         
         if cnt_target ==0:
             print("accuracy {}".format(0)) #* accuracy
-            results_for_excel = results_for_excel.append(pd.Series(data=[file, 100*sump/(cnt_total*10), 100*cnt_target/(cnt_total*10), 100*sumst/sump, 0], index=results_for_excel.columns, name=name))
+            results_for_excel = results_for_excel.append(pd.Series(data=[file, 100*sump/(cnt_total*10), 100*cnt_target/(cnt_total*10), 100*sumst/sump, 0, (sump - cnt_target)], index=results_for_excel.columns, name=name))
         else:
             print("accuracy {}".format(100*sumst/cnt_target)) #* accuracy
-            results_for_excel = results_for_excel.append(pd.Series(data=[file, 100*sump/(cnt_total*10), 100*cnt_target/(cnt_total*10), 100*sumst/sump, 100*sumst/cnt_target], index=results_for_excel.columns, name=name))
+            results_for_excel = results_for_excel.append(pd.Series(data=[file, 100*sump/(cnt_total*10), 100*cnt_target/(cnt_total*10), 100*sumst/sump, 100*sumst/cnt_target, (sump - cnt_target)], index=results_for_excel.columns, name=name))
 
         #camera_evaluation_results = camera_evaluation_results.append(pd.Series)
         camera_evaluation_results['gt_'+str(name)] = pd.Series(cnt_camera_ans)
@@ -762,12 +756,12 @@ def scenario_prop(vl=30, transitionmodel="conv_lstm", timemodel="ResNet", prepro
     else:
         with pd.ExcelWriter("/home/spencer1/AIoTVirt/trajectoryanalysis/results/scenario_newsimdata_prop_variation.xlsx", mode='w') as writer:
             results_for_excel.to_excel(writer, sheet_name=shname)
-    # if os.path.exists("/home/spencer1/AIoTVirt/trajectoryanalysis/activation_graph/scenario_newsimdata_prop_variation.xlsx"):
-    #     with pd.ExcelWriter("/home/spencer1/AIoTVirt/trajectoryanalysis/activation_graph/scenario_newsimdata_prop_variation.xlsx", mode='a') as writer:
-    #         activation_results.to_excel(writer, sheet_name=shname)
-    # else:
-    #     with pd.ExcelWriter("/home/spencer1/AIoTVirt/trajectoryanalysis/activation_graph/scenario_newsimdata_prop_variation.xlsx", mode='w') as writer:
-    #         activation_results.to_excel(writer, sheet_name=shname)
+    if os.path.exists("/home/spencer1/AIoTVirt/trajectoryanalysis/activation_graph/scenario_newsimdata_prop_variation.xlsx"):
+        with pd.ExcelWriter("/home/spencer1/AIoTVirt/trajectoryanalysis/activation_graph/scenario_newsimdata_prop_variation.xlsx", mode='a') as writer:
+            activation_results.to_excel(writer, sheet_name=shname)
+    else:
+        with pd.ExcelWriter("/home/spencer1/AIoTVirt/trajectoryanalysis/activation_graph/scenario_newsimdata_prop_variation.xlsx", mode='w') as writer:
+            activation_results.to_excel(writer, sheet_name=shname)
 
     #* to test if camera selection is wrong or camera time transition is wrong.
     # with pd.ExcelWriter("evaluate_prop_dir_or_time.xlsx", mode='a') as writer:

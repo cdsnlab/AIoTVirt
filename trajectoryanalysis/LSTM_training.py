@@ -11,10 +11,16 @@ import tensorflow as tf
 import os
 import models
 import requests, time, csv, json
+from keras.utils.vis_utils import model_to_dot
 
 # print(tf.test.is_gpu_available())
 
 # os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
+def visualize_model(model):
+    return model_to_dot(model).create(prog='dot', format='pdf')
+
+#keras.utils.vis_utils.pydot = pydot
+
 def slacknoti(contentstr):
     
     webhook_url = "https://hooks.slack.com/services/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"
@@ -180,6 +186,7 @@ for labeling in [1]:
             print("`[MEWTWO]` Training for camera `{}` iteration `{}` at time `{}`".format(camera, i, time.strftime("%H:%M:%S", time.localtime())))
             slacknoti("`[MEWTWO]` Training for camera `{}` iteration `{}` at time `{}`".format(camera, i, time.strftime("%H:%M:%S", time.localtime())))
             model = conv_lstm(seq_length, out_dim)
+            tf.keras.utils.plot_model(model, to_file ='wow.png', show_shapes=True, show_layer_names=True)
             # model = models.ResNet((seq_length,2), out_dim)
             model.compile(optimizer=optimizer, loss='categorical_crossentropy', metrics=['accuracy'])
             #print(trainX.shape, trainY.shape)
