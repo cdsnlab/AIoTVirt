@@ -30,6 +30,11 @@ from pandas import ExcelFile   # 엑셀파일 가져오기
 # XX 06 -> 14까지. 파일 명이 ID.
 # '/home/spencer1/samplevideo/gps_datasets/t-drive_dataset/XX/YYYY.txt'
 
+#location=[37.566345, 126.977893], # seoul
+#location=[39.914991, 116.398286], # beijing
+#location=[39.90745772086431, 116.35544946451571 ] # t-drive average
+
+
 #df = pd.read_csv('/home/spencer1/samplevideo/gps_datasets/t-drive_dataset/')
 #print(df.head())
 allfiles=[]
@@ -64,33 +69,24 @@ for (path, dir, files) in os.walk("/home/spencer1/samplevideo/gps_datasets/t-dri
 #             #print(sum(avgx_iter) / len(avgx_iter), sum(avgy_iter) / len(avgy_iter), statistics.stdev(avgx_iter), statistics.stdev(avgy_iter))
 #         avgx_iter, avgy_iter =[], []
 # print(sum(avgx) / len(avgx), sum(avgy) / len(avgy), statistics.stdev(stdx), statistics.stdev(stdy))
+tdrive_avg_lat = 39.90745772086431
+tdrive_avg_lon = 116.35544946451571
 
 allplots=[]
+count=0
 for file in allfiles: #* each ID
+    if count == 100:
+        break
     print(file)
     if os.stat(file).st_size !=0: #* if not empty, read df.
         df = pd.read_csv(file, header=None)
         
         #first find the min max long, latitude
-        for index, row in df.iterrows():
-            if row[2] !=0.0 or row[3]!=0.0: 
-                allplots.append([row[3], row[2]])
-
-
-
-#* do the following to map iterrows
-# m = folium.Map( #* for t-drive mapping
-#     #location=[37.566345, 126.977893], # seoul
-#     location=[39.914991, 116.398286], # beijing
-#     #location=[39.90745772086431, 116.35544946451571 ] # t-drive average
-#     tiles="Stamen Toner",    
-#     zoom_start=12
-# )
-# folium_static(m)
-# map_data = pd.DataFrame(
-#     np.random.randn(1000, 2) / [50, 50] + [39.914991, 116.398286], # TODO: need to put from dataset
-#     columns=['lat', 'lon'],
-#     )
+        for index, row in df.iterrows(): #[2]->lon, [3]->lat
+            if abs(row[2]-tdrive_avg_lon) < 2 and abs(row[3]-tdrive_avg_lat) <2:
+                if row[2] !=0.0 or row[3]!=0.0: 
+                    allplots.append([row[3], row[2]])
+    count+=1
 
 map_data = pd.DataFrame(
     allplots,
@@ -100,4 +96,5 @@ map_data = pd.DataFrame(
 st.map(map_data, zoom=12)
 
 
-#! for every time tick, it needs to print a point on the map...
+#! for every time tick, it needs to print a point on the map... so there isn't a reason to draw it on the map... 
+how should the datastructure be 
