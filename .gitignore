@@ -137,6 +137,7 @@ pip-selfcheck.json
 
 # IntelliJ
 /out/
+*/.vscode
 
 # mpeltonen/sbt-idea plugin
 .idea_modules/
@@ -151,10 +152,9 @@ crashlytics-build.properties
 fabric.properties
 
 
-# images
-*.jpg
+# DATA
 *.png
-*.joblib
-*.h5
 *.npy
+*.h5
+*.joblib
 *.xlsx

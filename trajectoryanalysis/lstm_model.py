@@ -6,7 +6,7 @@ from keras.utils import to_categorical
 import numpy as np
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import classification_report
-from preprocessing import preprocessing
+#from preprocessing import preprocessing
 import tensorflow as tf
 import os
 import models
@@ -38,21 +38,24 @@ def get_data(camera):
     train = np.load("/home/spencer1/AIoTVirt/trajectoryanalysis/samplednpy/train_{}.npy".format(camera), allow_pickle=True)
     test = np.load("/home/spencer1/AIoTVirt/trajectoryanalysis/samplednpy/test_{}.npy".format(camera), allow_pickle=True)
 
-
-    trainX, trainY = np.hsplit(train,2)
+    #print(train)
+    trainX, trainY, trainTranstime = np.hsplit(train,3)
     trainX = np.array([trace[0] for trace in trainX])
     trainY = np.array([trace[0] for trace in trainY])
-
-    testX, testY = np.hsplit(test,2)
+    trainTranstime = np.array([trace[0] for trace in trainTranstime])
+    #print (len(trainY), len(trainTranstime))
+    testX, testY, testTranstime = np.hsplit(test,3)
     testX = np.array([trace[0] for trace in testX])
     testY = np.array([trace[0] for trace in testY])
+    testTranstime = np.array([trace[0] for trace in testTranstime])
 
     out_dim = np.max(trainY) + 1
 
     trainY = to_categorical(trainY)
     testY = to_categorical(testY)
 
-    return trainX, trainY, testX, testY, out_dim
+    return trainX, trainTranstime, testX, testTranstime, out_dim
+    #return trainX, trainY, testX, testY, out_dim
 
 def gen_data(camera, sampling_id, seq_length, test_slice_part, labeling):
     sampling = ["ed", "sw-o", "sw-no", "rw", "irw"]
@@ -118,13 +121,26 @@ def FCN(seq_length, out_dim):
 def conv_lstm(seq_length, out_dim):
     model = Sequential()
 
-    model.add(Conv1D(filters=64, kernel_size=16, padding='same', input_shape=(seq_length, 2)))
+    model.add(Conv1D(filters=64, kernel_size=16, padding='same', input_shape=(seq_length, 4)))
     model.add(BatchNormalization())
     model.add(Activation(activation='relu'))
 
     model.add(MaxPooling1D(pool_size=2))
     model.add(LSTM(seq_length))
     model.add(Dense(out_dim, activation='softmax'))
+
+    return model
+
+def conv_lstm_trans(seq_length, out_dim):
+    model = Sequential()
+
+    model.add(Conv1D(filters=64, kernel_size=16, padding='same', input_shape=(seq_length, 4)))
+    model.add(BatchNormalization())
+    model.add(Activation(activation='relu'))
+
+    model.add(MaxPooling1D(pool_size=2))
+    model.add(LSTM(seq_length))
+    model.add(Dense(1, activation='linear'))
 
     return model
 
@@ -153,6 +169,37 @@ results = []
 #     if result[1] > 0.76:
 #         model.save('conv_lstm_rw.h5')
 #         break
+
+##### dual output
+# rows = []
+# names = ["FCN", "CONV_LSTM", "RESNET"]
+# opts = ["SGD", "RMSProp", "Adagrad", "Adam"]
+# class_report = {}
+# for camera in range(0,10):
+#     sampling = 3
+    
+#     trainX, trainY, testX, testY, out_dim = get_data(camera) #gen_data(camera, sampling, seq_length, test_slice_part)
+#     optimizer = optimizers.Adam(learning_rate=0.01)
+#     reduce_lr = keras.callbacks.ReduceLROnPlateau(monitor='loss', factor=0.5, patience=50, min_lr=0.0001)
+#     cam_best_result = 0
+#     for i in range(10):
+#         slacknoti("`[MEWTWO]` Training for camera `{}` iteration `{}` at time `{}`".format(camera, i, time.strftime("%H:%M:%S", time.localtime())))
+#         model = conv_lstm(seq_length, out_dim)
+#         model.compile(optimizer=optimizer, loss=['categorical_crossentropy', 'mean_squared_error'], metrics=['accuracy'])
+#         model.summary()
+#         model.fit(trainX, np.array([trainY[0], trainY[1]]), batch_size=int(len(trainY)/ 40), epochs=30, validation_split=0.1, callbacks=[reduce_lr])
+#         result = model.evaluate(testX, np.array([testY[0], testY[1]]),)
+#         slacknoti("`[MEWTWO]` Loss `{}` Accuracy `{}` at time `{}`".format(result[0], result[1], time.strftime("%H:%M:%S", time.localtime())))
+#         if result[1] > cam_best_result:
+#             cam_best_result = result[1]
+#             #model.save('all_models/cam_{}_model_{}.h5'.format(camera, i))
+#     class_report[camera] = cam_best_result
+#     break
+
+# with open("/home/spencer1/AIoTVirt/trajectoryanalysis/results/new_report.json", "w") as file:
+#     file.write(json.dumps(class_report))
+
+### original
 rows = []
 names = ["FCN", "CONV_LSTM", "RESNET"]
 opts = ["SGD", "RMSProp", "Adagrad", "Adam"]
@@ -161,7 +208,7 @@ class_report = {}
 outs = ['orig', 'neighbour']
 for labeling in [1]:
     # data = 
-    for camera in range(0,10):
+    for camera in range(0,1):
         sampling = 4
         trainX, trainY, testX, testY, out_dim = get_data(camera)
         optimizer = optimizers.Adam(learning_rate=0.001)
@@ -169,21 +216,23 @@ for labeling in [1]:
         cam_best_result = 0
         for i in range(5):
             slacknoti("`[MEWTWO]` Training for camera `{}` iteration `{}` at time `{}`".format(camera, i, time.strftime("%H:%M:%S", time.localtime())))
-            model = conv_lstm(seq_length, out_dim)
+            model = conv_lstm_trans(seq_length, 1)
             # model = models.ResNet((seq_length,2), out_dim)
-            model.compile(optimizer=optimizer, loss='categorical_crossentropy', metrics=['accuracy'])
+            model.compile(optimizer=optimizer, loss='mean_squared_error', metrics=['accuracy'])
             model.fit(trainX, trainY, batch_size=int(len(trainY)/ 5), epochs=150, validation_split=0.15, callbacks=[reduce_lr])
             # print(testX)
             result = model.evaluate(testX, testY)
             slacknoti("`[MEWTWO]` Loss `{}` Accuracy `{}` at time `{}`".format(result[0], result[1], time.strftime("%H:%M:%S", time.localtime())))
             if result[1] > cam_best_result:
                 cam_best_result = result[1]
-                model.save('model_new_label/cam_{}.h5'.format(camera))
+                #model.save('model_new_label/cam_{}.h5'.format(camera))
         class_report[camera] = cam_best_result
 
-    with open("results/lstm_new_label.json", "w") as file:
+    with open("/home/spencer1/AIoTVirt/trajectoryanalysis/results/lstm_new_label.json", "w") as file:
         file.write(json.dumps(class_report))
 
+
+####
 # for camera in [8,7,4,1,0]:
 #     best_result = 0
 #     for sampling_id in range(4):
