@@ -1,4 +1,5 @@
-# What this folder contains
+# Objectives 
+This folder transfroms raw mobility GPS data to the map.
 
 ## ****_to_mdb.py files
 these files reads from raw (lon, lat) coordinates and saves them to mongo db for later use.
