@@ -6,11 +6,11 @@ import plotly.graph_objects as go
 from pymongo import MongoClient
 
 client = MongoClient('localhost', 27017)
-db = client['koln']
+db = client['geolife']
 mdb = db['plots']  #* collection name
 
-koln_avg_lat = 39.90745772086431
-koln_avg_lon = 116.35544946451571
+geolife_avg_lat = 39.90745772086431
+geolife_avg_lon = 116.35544946451571
 
 MAXPLOTS = 100
 
@@ -51,8 +51,8 @@ fig.update_layout(
         accesstoken=mapbox_access_token,
         bearing=0,
         center=dict(
-            lat=koln_avg_lat,
-            lon=koln_avg_lon
+            lat=geolife_avg_lat,
+            lon=geolife_avg_lon
         ),
         pitch=0,
         zoom=9
