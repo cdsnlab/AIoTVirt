@@ -12,6 +12,8 @@ mdb = db['plots']  #* collection name
 tdrive_avg_lat = 39.90745772086431
 tdrive_avg_lon = 116.35544946451571
 
+MAXPLOTS = 100
+
 
 #* for streamlit built in func ---
 # map_data = pd.DataFrame(
@@ -23,15 +25,24 @@ tdrive_avg_lon = 116.35544946451571
 #* for plotly + streamlit ---
 mapbox_access_token = open(".mapbox_token").read()
 
-#TODO loop this to create multiple ones.
-fig = go.Figure(go.Scattermapbox(
-    lat=latplots,
-    lon=lonplots,    
-    mode='markers',
-    marker=go.scattermapbox.Marker(
-        size = 3
-    ),
-))
+gpscoordinates = {}
+for i in range(MAXPLOTS):
+    myquery = {"index": str(i)}
+    # doc contains lats and lons 
+    doc=list(mdb.find(myquery, {"_id":0, "lat": 1, "lon": 1}))
+    
+    gpscoordinates[i]=doc
+
+fig = go.Figure()
+for i in range(MAXPLOTS):
+    fig.add_trace(go.Scattermapbox(
+        lat=gpscoordinates[i][0]['lat'], 
+        lon=gpscoordinates[i][0]['lon'],
+        mode='markers',
+        marker=go.scattermapbox.Marker(
+            size=3
+        ),
+    ))
 
 fig.update_layout(
     autosize=True,
