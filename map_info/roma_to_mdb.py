@@ -4,9 +4,6 @@ import pandas as pd
 import datetime
 from pymongo import MongoClient
 from tqdm import tqdm
-import streamlit as st
-import plotly.graph_objects as go
-
 
 #! 3 already give upto 2500 unique traces
 MAXIDS=3

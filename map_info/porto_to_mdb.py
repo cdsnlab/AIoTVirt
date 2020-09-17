@@ -33,9 +33,10 @@ for i in range (len(trajectories)):
     res=json.loads(trajectories[i]) 
     print(len(res))
     for j in range(len(res)):
-        allplots.append([res[j][1], res[j][0]])
-        latplots.append(res[j][1])
-        lonplots.append(res[j][0])
+        if abs(res[j][1]-porto_avg_lat) < 2 and abs(res[j][0]-porto_avg_lon) <2:
+            allplots.append([res[j][1], res[j][0]])
+            latplots.append(res[j][1])
+            lonplots.append(res[j][0])
     row = {"index": str(count), "lon": lonplots, "lat": latplots, "both": allplots}
     mdb.insert_one(row)
     print(row)
