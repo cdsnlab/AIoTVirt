@@ -5,8 +5,6 @@ this program writes all [ID, camera, x, y]
 import os, sys, time
 from tqdm import tqdm
 import pandas as pd
-import numpy as np
-import re
 from collections import defaultdict
 from pymongo import MongoClient
 
@@ -17,9 +15,8 @@ mdb = db['draw_traces']
 
 allfiles=[]
 
-
 def get_camera_id(filename):
-    print(filename)
+    #print(filename)
     items = filename.split('/')
     for item in items:
         if item.startswith("c0"):
@@ -36,14 +33,11 @@ count=0
 for file in tqdm(allfiles):
     xplots = []
     yplots = []
-    # if count == 20:
-    #     break
-    #print(file)
+    #print(count)
     if os.stat(file).st_size != 0:
         df = pd.read_csv(file, header=None, delimiter=',')
         items = defaultdict(lambda: defaultdict(list))
         camid = get_camera_id(file)
-        print(camid)
         for index, row in df.iterrows(): #[frame, ID, left, top, width, height, 1, -1, -1, -1]
             #* however many ids there are.            
             centx = row[2] + (row[4] / 2)
@@ -51,11 +45,15 @@ for file in tqdm(allfiles):
 
             items[row[1]]["x"].append(centx) #id, x: list, y: list
             items[row[1]]["y"].append(centy)
+            #print(row[1])
 
             
         #print(items[row[1]]["x"], items[row[1]]["y"])   
-        inputrow = {"uid": str(row[1]),"camid": str(camid), "x": items[row[1]]["x"], "y": items[row[1]]["y"]}
-        print(inputrow)
-        mdb.insert_one(inputrow)
-        # count+=1
-        
+        #print(len(items))
+        for i in (items):
+            #print(i)
+            inputrow = {"uid": str(i),"camid": str(camid), "x": items[i]["x"], "y": items[i]["y"]}
+            #print(inputrow)
+            mdb.insert_one(inputrow)
+            count+=1
+
