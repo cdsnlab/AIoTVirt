@@ -15,12 +15,15 @@ mdb = db['draw_traces']
 
 allfiles=[]
 
-def get_camera_id(filename):
-    #print(filename)
+def get_camid_section(filename):
+    camid, section = None, None
     items = filename.split('/')
     for item in items:
         if item.startswith("c0"):
-            return item
+            camid = item
+        if item.startswith("S"):
+            section = item
+    return camid, section
 
 #* iterate through folder to find all gt.txt files.
 for (path, dir, files) in os.walk ("/home/spencer1/samplevideo/AIC20_track3_MTMC/"):
@@ -37,7 +40,7 @@ for file in tqdm(allfiles):
     if os.stat(file).st_size != 0:
         df = pd.read_csv(file, header=None, delimiter=',')
         items = defaultdict(lambda: defaultdict(list))
-        camid = get_camera_id(file)
+        camid, section = get_camid_section(file)
         for index, row in df.iterrows(): #[frame, ID, left, top, width, height, 1, -1, -1, -1]
             #* however many ids there are.            
             centx = row[2] + (row[4] / 2)
@@ -52,8 +55,8 @@ for file in tqdm(allfiles):
         #print(len(items))
         for i in (items):
             #print(i)
-            inputrow = {"uid": str(i),"camid": str(camid), "x": items[i]["x"], "y": items[i]["y"]}
-            #print(inputrow)
+            inputrow = {"uid": str(i), "section": str(section), "camid": str(camid), "x": items[i]["x"], "y": items[i]["y"]}
+            print(inputrow)
             mdb.insert_one(inputrow)
             count+=1
 
