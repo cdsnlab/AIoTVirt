@@ -1,4 +1,5 @@
 '''
+[DONE]
 this program visualizes gt traces to the scene
 
 '''
