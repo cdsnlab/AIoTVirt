@@ -5,3 +5,5 @@
 - visualize_traces.py: pulls all gt traces frmo mongo db and plots them on top of each camera views
 - spatio_temporal.py: finds relationship btw cameras in terms of time and pairs
 
+
+<span style="color:red">Cameras 41 ~ 46 does not have ground truth data! </span>
