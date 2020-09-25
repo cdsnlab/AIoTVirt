@@ -52,7 +52,7 @@ for file in tqdm(allfiles):
         #print(len(items))
         for i in (items):
             #print(items[i][0], items[i][-1])
-            inputrow = {"uid": str(i), "section": str(section), "camid": str(camid), "trace": list(items[i])}
+            inputrow = {"uid": str(i), "section": str(section), "camid": str(camid), "trace": list(items[i]), "start": int(items[i][0]), "end": int(items[i][-1])}
             print(inputrow)
             mdb.insert_one(inputrow)
             count+=1
