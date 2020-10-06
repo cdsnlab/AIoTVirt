@@ -1,10 +1,10 @@
 '''
-[Prog]
+[DONE]
 this program finds the matchings between cameras by reading the db.
 - which cameras has relationship btw each other. (spatio)
 - how much time it takes for a car to travel from one to another. (temporal)
 INPUT: All traces with the same UID
-OUTPUT:
+OUTPUT: save spatio-temporal relationship btw two cameras
 1) camera relationships
 2) Time btw each pair of cameras
 '''
@@ -26,14 +26,14 @@ client = MongoClient('localhost', 27017)
 db = client['aic_mtmc']
 mdb = db['uid_traces']
 stdb = db['spatio_temporal']
-UIDMAX = 0
+MAXUID = 0
 
 
 allfind = mdb.find() #* get all UIDs
 for trace in allfind: 
     #print(trace["uid"])
-    if int(trace["uid"]) >UIDMAX:
-        UIDMAX = int(trace["uid"])
+    if int(trace["uid"]) >MAXUID:
+        MAXUID = int(trace["uid"])
 
 def remove_samestarts(doc): # incase they are seen in multiple "start" views
     while len(doc) > 1:
@@ -84,7 +84,7 @@ def pairwise(doc1, doc2, pairs):
 
 pairs = defaultdict(list)
 
-for i in range(1, UIDMAX):
+for i in range(1, MAXUID):
     myquery = {"uid": str(i)}
     doc = list(mdb.find(myquery,  {"uid":1, "camid": 1, "start":1, "end": 1} ).sort([("start", 1)]))
     print("i: {}".format(i))
