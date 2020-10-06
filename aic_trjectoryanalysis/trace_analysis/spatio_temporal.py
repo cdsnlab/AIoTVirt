@@ -99,7 +99,6 @@ for i in range(1, MAXUID):
         #print(pairs) 
 
 for k in pairs:
-    inputrow = {"pairs": k, "temporal": pairs[k]}
+    inputrow = {"pairs": k, "src": k[0], "dst": k[1], "temporal": pairs[k]}
     print(inputrow)
     stdb.insert_one(inputrow)
-    #print (pairs[k])
