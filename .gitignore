@@ -154,6 +154,7 @@ fabric.properties
 
 # DATA
 *.png
+*.jpg
 *.npy
 *.h5
 *.joblib
