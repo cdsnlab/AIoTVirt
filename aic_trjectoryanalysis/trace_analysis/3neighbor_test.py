@@ -6,10 +6,9 @@ This program finds the number of cameras which needs to be turned on to track a 
 #?Each simulation ends when the vehicle is no long in the network. Should we give it additonal time (e.g. 100 frames = 10seconds) ???
 """
 
-import os, sys, time
+import os, time
 from tqdm import tqdm
 import pandas as pd
-from collections import defaultdict
 from pymongo import MongoClient
 
 def get_camid_section(filename):
@@ -177,8 +176,9 @@ for ids in tqdm(range(7,MAXUID)): # for all ids
                     break
         
 #!10/07 TODO
-# -> 이것부터 해보자. spatio-temporal 연관성
-# ---> 1) camera 단위로 + Sector 단위로 
+# -> 이것부터 해보자. spatio-temporal 연관성 ---
+# ---> 1) camera 단위로 + Sector 단위로 ---
+# ---> 그리고 그리기 
 # SUM REID 개수 샐것. 
 # accuracy metric 넣을 것. 
 
