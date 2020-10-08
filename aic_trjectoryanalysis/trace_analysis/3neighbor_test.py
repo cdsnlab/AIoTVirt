@@ -10,6 +10,7 @@ import os, time
 from tqdm import tqdm
 import pandas as pd
 from pymongo import MongoClient
+import random
 
 def get_camid_section(filename):
     camid, section = None, None
@@ -76,10 +77,31 @@ def get_maxiter(ids):
     print ("Maximum iteration:{}".format(maxlen))
     return maxlen
 
+def target_generator(max, order, req, iteration): #* MAXUID, ORDER: seq/rand, REQ: number of concurrent UIDs, ITER: number of iterations
+    cnt =1
+    runable = []
+    if order == "s":
+        for i in range(iteration):
+            tmp  = []
+            for j in range(req):
+                tmp.append(cnt)
+                cnt+=1
+            runable.append(tmp)
+
+    elif order == "r":
+        for i in range(iteration):
+            tmp = []
+            for j in range(req):
+                tmp.append(random.randint(1, max))
+            runable.append(tmp)
+    print (runable)
+
+
 client = MongoClient('localhost', 27017)
 db = client['aic_mtmc']
 iddb = db['uid_traces']
 stdb = db['spatio_temporal']
+stalldb = db['st_all']
 
 allfiles=[]
 all_cameras = []
@@ -91,7 +113,7 @@ for (path, dir, files) in os.walk ("/home/spencer1/samplevideo/AIC20_track3_MTMC
             #print("%s/%s" % (path, filename))
             camid, section = get_camid_section(path+"/"+filename)
             all_cameras.append(camid)
-print(all_cameras)
+#print(all_cameras)
 
 
 #* iterate through DB to find maximum number of ids.
@@ -105,6 +127,14 @@ for trace in allfind:
 count=0
 print("MAXUID: {}".format(MAXUID))
 
+#* creates k number of target ID's to track. 
+#* can choose, sequential vs random
+#req = [[1], [2], [3], [4], [5]]
+#* Maximum UID, returns sequential, number of target(s) UIDs to search concurrently, how many iterations
+#req = target_generator(MAXUID, "sequential", 2, 5)
+req = target_generator(MAXUID, "s", 1, 10)
+
+#! req에 맞게 변환.
 for ids in tqdm(range(7,MAXUID)): # for all ids
     MAXITER = get_maxiter(ids)
     #print(doc['trace'])
@@ -174,12 +204,14 @@ for ids in tqdm(range(7,MAXUID)): # for all ids
                     STATUS = ("NF", "TRK", cam)
                     print("[INFO] Found at {}".format(cam))
                     break
-        
+
 #!10/07 TODO
 # -> 이것부터 해보자. spatio-temporal 연관성 ---
 # ---> 1) camera 단위로 + Sector 단위로 ---
-# ---> 그리고 그리기 
-# SUM REID 개수 샐것. 
-# accuracy metric 넣을 것. 
+# ---> 그리고 그리기 ---
 
-# BF 구현                
+#! 10/08 TODO
+# multi로 해야될 것 같은데?
+# SUM REID 개수 샐것. (대략적으로)
+# accuracy metric 넣을 것. ()
+# BF 구현
