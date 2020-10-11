@@ -10,7 +10,21 @@ import os, time
 from tqdm import tqdm
 import pandas as pd
 from pymongo import MongoClient
+from collections import defaultdict
 import random
+import operator
+
+client = MongoClient('localhost', 27017)
+db = client['aic_mtmc']
+iddb = db['uid_traces']
+stdb = db['spatio_temporal']
+idlistdb = db['idlists']
+stalldb = db['st_all']
+gtdb = db['gt']
+
+# S01, S02 has only 4, 5 camera involved.
+# S03, S04, S05 has 6, 23, 19 cameras involved.
+SECTORTYPE = "S05" 
 
 def get_camid_section(filename):
     camid, section = None, None
@@ -22,69 +36,70 @@ def get_camid_section(filename):
             section = item
     return camid, section
 
-def get_candidates(framenumber, af, ids): # 같은 framenumber에 있는 모든 물체 반환. 없으면 상관 없음. 
+def get_items_in_all_views(sector, framenumber):
     items = []
-    for file in af:
-        if os.stat(file).st_size != 0:
-            df = pd.read_csv(file, header=None, delimiter=',')
-            allobjects = df[(df[0])==framenumber] # all vehicles in that framenumber
-            sfn = df[(df[0]==framenumber)&(df[1]==ids)] # target vehicle in that framenumber
-            camid, section = get_camid_section(file) 
-            if len(allobjects) !=0:
-                items.append((camid, section, len(allobjects), sfn.values.tolist()))
-    #print(items)
-    return items
-
-def checkifsame(camid, items):
-    for item in items:
-        if str(camid) == str(item[0]):
-            if item[3]:
-                return True
-    return False
-    
-def searchnextcamcandidates(src):
-    stitems={}
-    srclookup={"src": str(src)}
-    doc=list(stdb.find(srclookup, {"_id":0, "src":1, "dst": 1, "temporal":1}))
+    lookup = {"sector": sector, "framenumber": framenumber}
+    doc=list(gtdb.find(lookup, {'_id': 0, "sector":1, "framenumber":1, "id":1, 'camera':1, 'xmin':1, 'ymin':1, 'width':1, 'height':1}))
+    #print(doc)
     for d in doc:
+        #allobjects={"camera": d['camera'], "framenumber": framenumber} #* per camera bases.
+        #ao=list(gtdb.find(allobjects, {"_id": 0, "camera":1, "sector": 1, "framenumber":1 , "id":1}))
+        #print(ao)
+        items.append((framenumber, sector, d['camera'], d['id'], [d['xmin'], d['ymin'], d['width'], d['height']] ))
+    return items
+    
+
+def search_next_cam_candidates(src, src_sector):
+    stitems={}
+    srclookup={"src": src}
+    #srclookup={"src": src, "src_s": src_sector}
+    #print(srclookup)
+    doc=list(stalldb.find(srclookup, {"_id":0, "src":1, "dst": 1, "temporal":1}))
+    #print(doc)
+    for d in doc:
+        #print(min(d['temporal']), max(d['temporal']))
         stitems[d['dst']] = (min(d['temporal']), max(d['temporal']))
-        #sum(d['temporal']) / len(d['temporal'])
-    #print(stitems)
+    stitems[src] = (0, 20)
     return stitems
-    #what should this return?   
-    # next cameras, earliest possible start time.
 
 def compare_both(predicted_cam, all_things):
-    for i in predicted_cam:
-        for j in all_things:
-            #print(i,j)
-            if j[0] == i:
-                if j[3]:
-                    return i
+    # print(predicted_cam, all_things)
+    # for i in predicted_cam:
+    for j in all_things:
+        # print(j[2], predicted_cam)
+        if j[2]==predicted_cam:
+            return predicted_cam
     return -1
 
 def get_maxiter(ids):
-    dblookup = {"uid": str(ids)}
-    doc=list(iddb.find(dblookup, {"_id":0, "camid":1, "trace":1}))
-    i=0
     maxlen = 0
-    for d in doc:
-        #print(d['trace'][-1])
-        if int(d['trace'][-1]) > maxlen:
-            #print(maxlen)
-            maxlen = int(d['trace'][-1])
-        i+=1
-    print ("Maximum iteration:{}".format(maxlen))
-    return maxlen
+    maxvalue={}
+    for id in ids:
+        dblookup = {"id": str(id)}
+        doc=list(iddb.find(dblookup, {"_id":0, "camid":1, "trace":1}))
+        for d in doc:
+            #print(d['trace'][-1])
+            if int(d['trace'][-1]) > maxlen:
+                #print(maxlen)
+                maxlen = int(d['trace'][-1]) 
+        maxvalue[id]=maxlen
+        print ("Maximum iteration for {}:{}".format(id, maxlen))
+    #print(maxvalue)
+    return maxvalue
 
-def target_generator(max, order, req, iteration): #* MAXUID, ORDER: seq/rand, REQ: number of concurrent UIDs, ITER: number of iterations
-    cnt =1
+
+def target_generator(sector_type, order, req, iteration): #* Sector, ORDER: seq/rand, REQ: number of concurrent UIDs, ITER: how many sets do you want
+    lookup = {"sectors": sector_type}
+    doc=list(idlistdb.find(lookup, {"_id":0, "ids":1, "sectors":1}))
+    #print(doc)
+    cnt =0
     runable = []
     if order == "s":
         for i in range(iteration):
             tmp  = []
             for j in range(req):
-                tmp.append(cnt)
+                #print(doc[0]['ids'][cnt])
+                tmp.append(doc[0]['ids'][cnt])
                 cnt+=1
             runable.append(tmp)
 
@@ -92,126 +107,121 @@ def target_generator(max, order, req, iteration): #* MAXUID, ORDER: seq/rand, RE
         for i in range(iteration):
             tmp = []
             for j in range(req):
-                tmp.append(random.randint(1, max))
+                tmp.append(doc[0]['ids'][random.randint(1,len(doc[0]['ids']))])
+                #tmp.append(random.randint(1, max))
             runable.append(tmp)
-    print (runable)
-
-
-client = MongoClient('localhost', 27017)
-db = client['aic_mtmc']
-iddb = db['uid_traces']
-stdb = db['spatio_temporal']
-stalldb = db['st_all']
-
-allfiles=[]
-all_cameras = []
-for (path, dir, files) in os.walk ("/home/spencer1/samplevideo/AIC20_track3_MTMC/"):
-    for filename in files:
-        ext = os.path.splitext(filename)[-1]
-        if ext == ".txt" and "gt" in os.path.splitext(filename)[0]:
-            allfiles.append(path+"/"+filename)
-            #print("%s/%s" % (path, filename))
-            camid, section = get_camid_section(path+"/"+filename)
-            all_cameras.append(camid)
-#print(all_cameras)
-
-
-#* iterate through DB to find maximum number of ids.
-MAXUID = 0
-allfind = iddb.find() #* get all UIDs
-for trace in allfind: 
-    #print(trace["uid"])
-    if int(trace["uid"]) >MAXUID:
-        MAXUID = int(trace["uid"])
-
-count=0
-print("MAXUID: {}".format(MAXUID))
+    #print (runable)
+    return runable
 
 #* creates k number of target ID's to track. 
 #* can choose, sequential vs random
 #req = [[1], [2], [3], [4], [5]]
-#* Maximum UID, returns sequential, number of target(s) UIDs to search concurrently, how many iterations
-#req = target_generator(MAXUID, "sequential", 2, 5)
-req = target_generator(MAXUID, "s", 1, 10)
+#* Sector number, returns sequential, number of target(s) UIDs to search concurrently, how many iterations
+req = target_generator(SECTORTYPE, "s", 2, 2)
 
-#! req에 맞게 변환.
-for ids in tqdm(range(7,MAXUID)): # for all ids
-    MAXITER = get_maxiter(ids)
-    #print(doc['trace'])
+for ids in tqdm(req): #* ids is a list
+    MAXITER = get_maxiter(ids) #dict
+    STATES = defaultdict(lambda: defaultdict(dict))
+    GSTATUS=defaultdict(list)
     items = None
-    cumulative_processed =0 # cumulative number of frames looked at. this include frames that may not contain target vehicle in the view.
-    cumulative_reid = 0 # cumulative number of objects being reid'd
-    STATUS = ("NF", "NF", -1) # (prev status, cur status, camera number) # to get if it has 
+    STATUS={}
     possible_transitions ={}
-    pt_start ={}
-    pt_end = {}
-    for framenumber in range(1, MAXITER): # run through all gt files to find it at that framenumber. 
-        print("[INFO] framenumber: {}, STATUS {}, MAXITER {}".format(framenumber, STATUS, MAXITER))
-        items = get_candidates(framenumber, allfiles, ids) # (camid, sector, number of vehicles in the view, location of the target vehicle in the view) #* all instance seen across all cameras
+    for i in ids: #* initalize states.
+        #STATES[i] = ("NF", "NF", -1) # (prev status, cur status, camera number) # to get if it has 
+        STATES[i]['prev'] = "NF"
+        STATES[i]['cur'] = "NF"
+        STATES[i]['camera'] = -1
+        STATES[i]['possible_trans'] = {}
+        STATES[i]['pt_start'] = {}
+        STATES[i]['pt_end'] = {}
+    
+    #print(max(MAXITER.items(), key=operator.itemgetter(1))[1])
+    for framenumber in range(1, max(MAXITER.items(), key=operator.itemgetter(1))[1]): # run through all gt files to find it at that framenumber. 
+        print("[INFO] framenumber: {}, MAXITER {}".format(framenumber, max(MAXITER.items(), key=operator.itemgetter(1))[1]))
+        items = get_items_in_all_views(SECTORTYPE, framenumber)
+        # print(items)
         tvcandidates = []
+        
+        for i in ids:
+            print("[INFO] id: {}, STATES {}".format(i, STATES[i]))
+            if STATES[i]['cur'] == "NF":
+                for item in items:
+                    if item[3] == i: #애초에 존재하는 물체 모두 return하기 때문에, 같은 id가 없으면 xywh도 없다고 보면 됨.
+                        print("Found at {}".format(item[2]))
+                        STATES[i]['cur']="TRK"
+                        STATES[i]['camera']=item[2]
+                        break
+            elif STATES[i]['cur'] =="TRK":
+                for item in items: 
+                    if item[2] == str(STATES[i]['camera']): # 이전에 봤던 물건이랑 같이 일치하는지 확인.
+                        STATES[i]['cur']="TRK"
+                        print("Still at {}".format(item[2]))
+                        break
+                    else: # 없다면 TRS로 변경.
+                        STATES[i]['cur']="TRS"
+                        STATES[i]['prev']="TRK"
+                        STATES[i]['possible_trans'] = search_next_cam_candidates(STATES[i]['camera'], SECTORTYPE) 
+                        for key, value in STATES[i]['possible_trans'].items(): #! 애초에 DB에 넣을때 start와 end만 넣지, 중간에 보였다가 다시 보이는 케이스가 안 다뤄져있음. 따라서 self transition 추가
+                            STATES[i]['pt_start'][key] = value[0] + framenumber
+                            STATES[i]['pt_end'][key] = value[1] + framenumber
 
-        if STATUS[1] == "NF":
-            for item in items: #* instances of the same TV thats seen at "framenumber"
-                if item[3]:
-                    tvcandidates.append(item)
-            print(tvcandidates)
-            if tvcandidates: #* found TV in one of tvcandidates
-                STATUS = ("NF", "TRK", tvcandidates[0][0])
-            else:
-                print("[INFO] Not seen yet")
+            elif STATES[i]['cur'] =="TRS":
+                if not STATES[i]['possible_trans']:
+                    STATES[i]['cur']="L"
+                    STATES[i]['prev']="TRS"
+                    continue
+                for k, v in STATES[i]['possible_trans'].items(): #! 여기서 찾을 것은, 카메라임. ID가 아니라
+                    # print(k, STATES[i]['pt_start'][k], STATES[i]['pt_end'][k])
+                    if STATES[i]['pt_start'][k] <= framenumber and STATES[i]['pt_end'][k] > framenumber:
+                        existence = compare_both(k, items)
+                        if existence!=-1:
+                            STATES[i]['cur']="TRK"
+                            STATES[i]['prev'] ="TRS"
+                            STATES[i]['camera']=existence
+                            print("[INFO] Found at {}".format(existence))
+                            #* clearing possible transitions
+                            STATES[i]['possible_trans'] = {}
+                            STATES[i]['pt_start'] = {}
+                            STATES[i]['pt_end'] = {}
+                            break #* found  it, lets go back to tracking
+                    elif STATES[i]['pt_start'][k]  > framenumber and STATES[i]['pt_end'][k] > framenumber:
+                        print("Lets wait")
+                    elif STATES[i]['pt_start'][k] < framenumber and STATES[i]['pt_end'][k] < framenumber:
+                        STATES[i]['possible_trans'].pop(k)
+                        STATES[i]['pt_start'].pop(k)
+                        STATES[i]['pt_end'].pop(k)
+                        print("poped: {}".format(k))
+                        break
+            elif STATES[i]['cur'] =="L":
+                for item in items:
+                    if item[3] == i: # 해당 하는 ID가 있는지 확인.
+                        print("Found at {}".format(item[2]))
 
-        elif STATUS[1] == "TRK":
-            for item in items: #* instances of the same TV thats seen at "framenumber"
-                if item[3]:
-                    tvcandidates.append(item)
-            print(tvcandidates)
-            if tvcandidates and checkifsame(STATUS[2], tvcandidates): #* TV is seen from the same camera
-                continue
-            elif tvcandidates and not checkifsame(STATUS[2], tvcandidates): #* TV is seen from a different camera
-                STATUS = ("TRK", "TRK", tvcandidates[0][0])
-                print("[INFO] changing camera to {}".format(tvcandidates[0][0]))
-            elif not tvcandidates: #* None of the cameras see TV
-                STATUS = ("TRK", "TRS", STATUS[2])
-                possible_transitions = searchnextcamcandidates(STATUS[2])
-                for key, value in possible_transitions.items():
-                    pt_start[key] = value[0] + framenumber
-                    pt_end[key] = value[1] + framenumber
-                print(pt_start, pt_end)
-        elif STATUS[1] == "TRS":
-            if not possible_transitions:
-                STATUS = ("TRS", "L", STATUS[2])
-                continue
-            for k, v in possible_transitions.items():
-                print(framenumber, pt_start[k] , pt_end[k])
-                if pt_start[k] <= framenumber and pt_end[k] > framenumber:
-                    existence = compare_both(k, items)
-                    if existence!=-1:
-                        STATUS = ("TRS", "TRK", existence)
-                        possible_transitions={}
-                elif pt_start[k]  > framenumber and pt_end[k] > framenumber:
-                    print("Lets wait")
-                elif pt_start[k] < framenumber and pt_end[k] < framenumber:
-                    possible_transitions.pop(k)
-                    pt_start.pop(k)
-                    pt_end.pop(k)
-                    print("poped: {}".format(k))
-                    break
+                        STATES[i]['cur']="TRK"
+                        STATES[i]['prev']="L"
+                        STATES[i]['camera']=item[2]
+                        print("[INFO] Found at {}".format(item[2]))
+                        break
                 
             
-        elif STATUS[1] == "L":  
-            for cam in all_cameras: #* FIXMI FIRST do BF until you find it 
-                if checkifsame(cam, items):
-                    STATUS = ("NF", "TRK", cam)
-                    print("[INFO] Found at {}".format(cam))
-                    break
-
+        for k, v in MAXITER.items(): # make sure to pop id if it hits any of the maxiter values.
+            if v == framenumber:
+                print("=============pop {}".format(k))
+                del STATES[k]
+                ids.remove(k)
+    
 #!10/07 TODO
 # -> 이것부터 해보자. spatio-temporal 연관성 ---
 # ---> 1) camera 단위로 + Sector 단위로 ---
 # ---> 그리고 그리기 ---
 
 #! 10/08 TODO
-# multi로 해야될 것 같은데?
-# SUM REID 개수 샐것. (대략적으로)
+# concurrent UID input로 변경? ---
+# ### 각각 ID에 대한 STATUS로 변경. ---
+#! 10/09 TODO
+# DB 수정. 
+
+#! 10/11 TODO
+# SUM REID 개수 샐것. 
 # accuracy metric 넣을 것. ()
 # BF 구현
