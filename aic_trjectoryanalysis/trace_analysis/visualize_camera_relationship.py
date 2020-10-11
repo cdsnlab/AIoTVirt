@@ -4,10 +4,14 @@ This program reads gt files from AIC,
 draws relationship btw cameras in terms of directed graphs. 
 '''
 CAMERA_SECTION ={ #* S05 is a mix of cameras from Section 03 to 04
+    #* train folder
     "S01": {"c001", "c002", "c003", "c004", "c005"},
-    "S02": {"c006", "c007", "c008", "c009"},
     "S03": {"c010", "c011", "c012", "c013", "c014", "c015"},
     "S04": {"c016", "c017", "c018", "c019", "c020", "c021", "c022", "c023", "c024", "c025", "c026", "c027", "c028", "c029", "c030", "c031", "c032", "c033", "c034", "c035", "c036", "c037", "c038", "c039", "c040"},
+    #* validation folder
+    "S02": {"c006", "c007", "c008", "c009"},
+    "S05": {"c010", "c016", "c017", "c018", "c019", "c020", "c021", "c022", "c023", "c024", "c025", "c026", "c027", "c028", "c029", "c033", "c034", "c035", "c036"}
+    #* test folder
     #"S06": {"c041", "c042", "c043", "c044", "c045", "c046"} #! does not contain gt
 }
 

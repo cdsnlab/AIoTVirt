@@ -1,9 +1,7 @@
 '''
 [DONE]
 this program visualizes gt traces to the scene
-
 '''
-
 import os, sys, time
 from tqdm import tqdm
 import streamlit as st

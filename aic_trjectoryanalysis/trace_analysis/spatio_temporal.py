@@ -10,13 +10,6 @@ OUTPUT: save spatio-temporal relationship btw two cameras
 
 !!!Difference between spatio_temporal_all_relationship.py is that this one prunes overlapping cases.
 '''
-CAMERA_SECTION ={ #* S05 is a mix of cameras from Section 03 to 04
-    "S01": {"c001", "c002", "c003", "c004", "c005"},
-    "S02": {"c006", "c007", "c008", "c009"},
-    "S03": {"c010", "c011", "c012", "c013", "c014", "c015"},
-    "S04": {"c016", "c017", "c018", "c019", "c020", "c021", "c022", "c023", "c024", "c025", "c026", "c027", "c028", "c029", "c030", "c031", "c032", "c033", "c034", "c035", "c036", "c037", "c038", "c039", "c040"},
-    "S06": {"c041", "c042", "c043", "c044", "c045", "c046"} #! does not contain gt
-}
 
 import os, sys, time
 from tqdm import tqdm
@@ -30,12 +23,13 @@ iddb = db['uid_traces']
 stdb = db['spatio_temporal']
 MAXUID = 0
 
-
-allfind = iddb.find() #* get all UIDs
+allfind = iddb.find() #* get all UIDs from each train / validation folder
+#* note that ids in train does not appear in validation folder and vica versa. 
+#* so we can safely assume that spatio-temporal relationship between two cameras doesn't matter here.
 for trace in allfind: 
     #print(trace["uid"])
-    if int(trace["uid"]) >MAXUID:
-        MAXUID = int(trace["uid"])
+    if int(trace["id"]) >MAXUID:
+        MAXUID = int(trace["id"])
 
 def remove_samestarts(doc): # incase they are seen in multiple "start" views
     while len(doc) > 1:
@@ -87,8 +81,8 @@ def pairwise(doc1, doc2, pairs):
 pairs = defaultdict(list)
 
 for i in range(1, MAXUID):
-    myquery = {"uid": str(i)}
-    doc = list(iddb.find(myquery,  {"uid":1, "camid": 1, "start":1, "end": 1} ).sort([("start", 1)]))
+    myquery = {"id": str(i)}
+    doc = list(iddb.find(myquery,  {"id":1, "camid": 1, "start":1, "end": 1} ).sort([("start", 1)]))
     #print("i: {}".format(i))
     
     doc = remove_samestarts(doc) #* removes all "same start frame candidates". That is, same starting frame numbers!
@@ -102,4 +96,4 @@ for i in range(1, MAXUID):
 for k in pairs:
     inputrow = {"pairs": k, "src": k[0], "dst": k[1], "temporal": pairs[k]}
     print(inputrow)
-    #stdb.insert_one(inputrow)
+    stdb.insert_one(inputrow)

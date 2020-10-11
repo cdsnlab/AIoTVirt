@@ -11,5 +11,12 @@
 ### spatio_temporal.py : 
 - finds relationship btw cameras in terms of time and pairs and saved in [aic_mtmc][spatio_temporal] MongoDB
 
+Do run the following command line to put gt files in to mongodb for later use. 
+```
+awk '{print "c005, S01, " $0}' ~/samplevideo/AIC20_track3_MTMC/train/S01/c005/gt/gt.txt >> ~/samplevideo/AIC20_track3_MTMC/train/S01/c005/gt/gt.out
+```
 
-<span style="color:red">Cameras 41 ~ 46 does not have ground truth data. </span>
+```
+ mongoimport --db=aic_mtmc --collection=gt --type=csv --columnsHaveTypes --fields="camera.string(), sector.string(), framenumber.int32(), id.int32(), xmin.int32(), ymin.int32(), width.int32(), height.int32(), holder1.int32(), holder2.int32(), holder3.int32(), holder4.int32()" --file= ~/samplevideo/AIC20_track3_MTMC/train/S01/c001/gt/gt.out
+```
+<span style="color:red">Cameras 41 ~ 46 does not have ground truth data and vehicles from these cameras don't appear in train set. </span>

@@ -8,9 +8,8 @@ OUTPUT: save spatio-temporal relationship btw two cameras
 1) camera relationships
 2) Time btw each pair of cameras
 
-!!!Difference between spatio_temporal.py is that this one insert all possible .
+!!!Difference between spatio_temporal.py is that this one insert all possible transitions once the trace is over.
 '''
-import networkx as networkx
 from tqdm import tqdm
 import pandas as pd
 from collections import defaultdict
@@ -23,18 +22,22 @@ stalldb = db['st_all']
 MAXUID = 0
 
 CAMERA_SECTION ={ #* S05 is a mix of cameras from Section 03 to 04
+    #* train folder
     "S01": {"c001", "c002", "c003", "c004", "c005"},
-    "S02": {"c006", "c007", "c008", "c009"},
     "S03": {"c010", "c011", "c012", "c013", "c014", "c015"},
     "S04": {"c016", "c017", "c018", "c019", "c020", "c021", "c022", "c023", "c024", "c025", "c026", "c027", "c028", "c029", "c030", "c031", "c032", "c033", "c034", "c035", "c036", "c037", "c038", "c039", "c040"},
-    "S06": {"c041", "c042", "c043", "c044", "c045", "c046"} #! does not contain gt
+    #* validation folder
+    "S02": {"c006", "c007", "c008", "c009"},
+    "S05": {"c010", "c016", "c017", "c018", "c019", "c020", "c021", "c022", "c023", "c024", "c025", "c026", "c027", "c028", "c029", "c033", "c034", "c035", "c036"}
+    #* test folder
+    #"S06": {"c041", "c042", "c043", "c044", "c045", "c046"} #! does not contain gt
 }
 
 allfind = iddb.find() #* get all UIDs
 for trace in allfind: 
     #print(trace["uid"])
-    if int(trace["uid"]) >MAXUID:
-        MAXUID = int(trace["uid"])
+    if int(trace["id"]) >MAXUID:
+        MAXUID = int(trace["id"])
 
 def get_sector(camid):
     for cs in CAMERA_SECTION:
@@ -48,8 +51,8 @@ def pairwise(doc1, doc2, time, pairs):
 pairs = defaultdict(list)
 
 for i in range(1, MAXUID):
-    myquery = {"uid": str(i)}
-    doc = list(iddb.find(myquery,  {"uid":1, "camid": 1, "start":1, "end": 1} ).sort([("start", 1)]))
+    myquery = {"id": str(i)}
+    doc = list(iddb.find(myquery,  {"id":1, "camid": 1, "start":1, "end": 1} ).sort([("start", 1)]))
     print("i: {}, doc: {}".format(i, doc))
     
     count = 0
@@ -60,12 +63,12 @@ for i in range(1, MAXUID):
             time = 0
             if count == l:
                 continue
-            if int(doc[l]['start']) < int(doc[count]['end']):
+            if int(doc[l]['start']) < int(doc[count]['end']): 
                 if int(doc[l]['end']) <= int(doc[count]['end']):
                     continue
                 elif int(doc[l]['end']) > int(doc[count]['end']):
+                    #* 여기 minor 오류 있음. 둘이 겹치는 구간을 구한건 아님.
                     time = (int(doc[count]['end']) - int(doc[l]['start']))*-1
-                    
                     pass
             
             if int(doc[l]['start']) > int(doc[count]['end']):
@@ -82,5 +85,5 @@ for k in pairs:
     src_sector = get_sector(k[0])
     dst_sector = get_sector(k[1])
     inputrow = {"pairs": k, "src": k[0], "src_s":src_sector, "dst": k[1], "dst_s": dst_sector, "temporal": pairs[k]}
-    print(inputrow)
-    #stalldb.insert_one(inputrow)
+    #print(inputrow)
+    # stalldb.insert_one(inputrow)
