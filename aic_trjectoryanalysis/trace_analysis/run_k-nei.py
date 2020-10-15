@@ -1,5 +1,5 @@
 """
-[Prog]
+[DONE]
 INPUT: gt db
 OUTPUT: number of frames processed, number of reid-ed objects (vehicles) per frame -> to db
 This program finds the number of cameras which needs to be turned on to track a vehicle "while using k-nei scheme". GIVEN that all re-id is PERFECT.
@@ -10,6 +10,7 @@ from tqdm import tqdm
 from pymongo import MongoClient
 from collections import defaultdict
 from functionalities import get_items_in_all_views, search_next_cam_candidates, compare_both, get_maxiter, get_number_of_obj_in_same_cam, target_generation_all, target_generation_partial, target_generator
+from slack_noti import slacknoti
 import random
 import operator
 
@@ -19,28 +20,26 @@ iddb = db['uid_traces']
 idlistdb = db['idlists']
 stalldb = db['st_all']
 # stdb = db['spatio_temporal'] #* does not contain immidiate transitions between cams when it ends with a trace
-gtdb = db['gt']
+gtdb = db['gt_s05']
 
-rtresdb = db['runtime_results'] #* saves [Scheme, Framenumber, IDs, Sector, Reid counts per frame, Cams looked at per frame]
+rtresdb = db['rt_results'] #* saves [Scheme, Framenumber, IDs, Sector, Reid counts per frame, Cams looked at per frame]
 
 # S01, S02 has only 4, 5 camera involved.
 # S03, S04, S05 has 6, 23, 19 cameras involved.
 SECTORTYPE = "S05" 
 
 
-
-#* creates k number of target ID's to track. 
-#* can choose, sequential vs random
-
 #* Sector number, returns sequential, number of target(s) UIDs to search concurrently, how many iterations
-#req = target_generator(SECTORTYPE, "s", 2, 2) #? 테스트용으로 일부 셋트 만드는 것.
-#req = target_generation_partial(SECTORTYPE, "s", 5) #? n개 조합, 
-req=target_generation_all(SECTORTYPE, "s") #? 전체 시뮬레이션에 필요한 loop개수, 1~10대까지 조합 만들어서 return. ==> 모든 조합은 불가능/불필요
+# req = target_generator(SECTORTYPE, "s", 2, 2) #? 테스트용으로 일부 셋트 만드는 것.
+req = target_generation_partial(SECTORTYPE, "s", 3) #? n개 조합, 
+# req=target_generation_all(SECTORTYPE, "s") #? 전체 시뮬레이션에 필요한 loop개수, 1~5대까지 조합 만들어서 return. ==> 모든 조합은 불가능/불필요
 #req = [[1], [2], [3], [4], [5]] # req example
+# req=[[335, 341]]
 print(req)
+loopcnt = 0
 for ids in tqdm(req): #* ids is a list
-    initids = ids
-    
+    slacknoti("{} / {}: ids {}".format(loopcnt, len(req), ids), "g")
+    initids = ids.copy() 
     MAXITER = get_maxiter(ids) #dict
     #STATES = defaultdict(lambda: defaultdict(dict))
     STATES = defaultdict(dict)
@@ -56,11 +55,14 @@ for ids in tqdm(req): #* ids is a list
     
     #print(max(MAXITER.items(), key=operator.itemgetter(1))[1])
     for framenumber in range(1, max(MAXITER.items(), key=operator.itemgetter(1))[1]): # run through all gt files to find it at that framenumber. 
+
+        # if framenumber==357: 
+        #     break
         camslookedat =defaultdict(list) 
         reidcnts =defaultdict(int) 
         print("[INFO] framenumber: {}, MAXITER {}".format(framenumber, max(MAXITER.items(), key=operator.itemgetter(1))[1]))
         items = get_items_in_all_views(SECTORTYPE, framenumber)
-        #print(items)
+        print(items)
 
         for i in ids:
             print("[INFO] id: {}, STATES {}".format(i, STATES[i]))
@@ -77,16 +79,18 @@ for ids in tqdm(req): #* ids is a list
                         break
                     
             elif STATES[i]['cur'] =="TRK":
-                for item in items: 
-                    if item[2] == str(STATES[i]['camera']): 
-                        STATES[i]['cur']="TRK"
-                        print("Still at {}".format(item[2]))
-                        reidcnts[i] += get_number_of_obj_in_same_cam(items, item[2])#? return other vehicles seen at cam item[2]. 어짜피 cur cam 만 보기로 했으니 다른 cam은 reid하지 않아도 됨.
-                        # if STATES[i]['prev']=="TRK": #! 이거 여기 있을 이유가 없음. 어짜피 cur cam만 보기로 했으니.
-                        #     camslookedat[i]=[]  # empty it since its full of trash
-                        if item[2] not in camslookedat[i]:
-                            camslookedat[i].append(item[2])
-                        break
+                for item in items:                     
+                    if item[3] == i: #* id가 일치하는지
+                        if item[2] == str(STATES[i]['camera']): #* cam과 일치하는지.
+                            STATES[i]['cur']="TRK"
+                            STATES[i]['camera']=item[2]
+                            print("Still at {}".format(item[2]))
+                            reidcnts[i] += get_number_of_obj_in_same_cam(items, item[2])#? return other vehicles seen at cam item[2]. 어짜피 cur cam 만 보기로 했으니 다른 cam은 reid하지 않아도 됨.
+                            # if STATES[i]['prev']=="TRK": #! 이거 여기 있을 이유가 없음. 어짜피 cur cam만 보기로 했으니.
+                            #     camslookedat[i]=[]  # empty it since its full of trash
+                            if item[2] not in camslookedat[i]:
+                                camslookedat[i].append(item[2])
+                            break
                     else: # 없다면 TRS로 변경.
                         # if STATES[i]['camera'] not in camslookedat[i]: #! 이거 여기 있을 이유가 없음. 어짜피 cur cam만 보기로 했으니.
                         #     camslookedat[i].append(STATES[i]['camera'])
@@ -109,11 +113,11 @@ for ids in tqdm(req): #* ids is a list
                         reidcnts[i] += get_number_of_obj_in_same_cam(items, k)#* return other vehicles seen at cam item[2]. 어짜피 cur cam 만 보기로 했으니 다른 cam은 reid하지 않아도 됨.
                         if k not in camslookedat[i]: 
                             camslookedat[i].append(k)
-                        if compare_both(k, items)!=-1:
+                        if compare_both(i, k, items)!=-1:
                             STATES[i]['cur']="TRK"
                             STATES[i]['prev'] ="TRS"
-                            STATES[i]['camera']=compare_both(k, items)
-                            print("[INFO] Found at {}".format(compare_both(k, items)))
+                            STATES[i]['camera']=compare_both(i, k, items)
+                            print("[INFO] Found at {}".format(compare_both(i, k, items)))
                             #* clearing possible transitions
                             STATES[i]['possible_trans'] = {}
                             STATES[i]['pt_start'] = {}
@@ -133,10 +137,9 @@ for ids in tqdm(req): #* ids is a list
             elif STATES[i]['cur'] =="L":
                 for item in items:
                     reidcnts[i]+=1 # 어짜피 한 item이 해당 framenumber에 있는 하나의 vehicle을 의미함.
-                    if item[2] not in camslookedat: 
+                    if item[2] not in camslookedat[i]: 
                         camslookedat[i].append(item[2])
                     if item[3] == i: # 해당 하는 ID가 있는지 확인.
-                        print("Found at {}".format(item[2]))
                         STATES[i]['cur']="TRK"
                         STATES[i]['prev']="L"
                         STATES[i]['camera']=item[2]
@@ -145,17 +148,20 @@ for ids in tqdm(req): #* ids is a list
                 
         allreidcnts=0
         allcamslookedat = []
+        states_merged =[]
         for i in ids: #! this doesn't ensure duplicated camera views for mutli target tracking
             allreidcnts += reidcnts[i]
             allcamslookedat.append(camslookedat[i])
-        inputrow = {"scheme": "k-nei", "framenumber": framenumber, "ids": ids, "sector": SECTORTYPE, "initids": initids, 'STATES': STATES, "reidcnts": allreidcnts, "camslookedat": allcamslookedat }  
+            states_merged.append(STATES[i]['cur'])            
+        inputrow = {"scheme": "k-nei", "framenumber": framenumber, "ids": ids, "sector": SECTORTYPE, "initids": initids, 'cur_states': states_merged, "reidcnts": allreidcnts, "camslookedat": allcamslookedat }  
         print(inputrow)
-        # rtresdb.insert_one(inputrow)
+        rtresdb.insert_one(inputrow)
         #* pop it if its the end of id x's last seen time
         for k, v in MAXITER.items(): # make sure to pop id if it hits any of the maxiter values.
             if v == framenumber:
                 print("=============pop {}".format(k))
                 del STATES[k]
                 ids.remove(k)
-     
+    loopcnt+=1
+ 
     
