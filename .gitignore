@@ -159,3 +159,6 @@ fabric.properties
 *.h5
 *.joblib
 *.xlsx
+*.txt
+
+slack_noti.py
