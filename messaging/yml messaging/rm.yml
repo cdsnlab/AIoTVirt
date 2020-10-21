@@ -1,0 +1,27 @@
+---
+services: 
+  service_id: 1
+  service_name: remote_practice
+  controller: 
+    fogos_node: ctrl_1
+    executable: student_20200001.py
+    destination: robot
+    start_time: 10
+  robot:
+    fogos_node: robot
+    executable: robot.py
+    destination: ctrl_1
+    start_time: 10
+    sector: 1
+  camera:
+    fogos_node: cam1_
+    executable: streamer.py
+    destination: fogos_server
+    start_time: 10
+    replicas: 3
+    sector: 1
+  fogos_server:
+    fogos_node: fogos_server
+    executable: monitor.py
+    destination: None
+    start_time: 10
