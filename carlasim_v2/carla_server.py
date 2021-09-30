@@ -98,4 +98,53 @@ class SynchronousServer(object):
         camera_bp.set_attribute('sensor_tick', str(self.fixed_delta))
         return camera_bp
 
+    def make_dirs(self, data_dir_path):
+        self.data_dir_path = data_dir_path
+        if not os.path.exists(data_dir_path):
+            os.mkdir(data_dir_path)
+        
+        self.img_dir_path = os.path.join(data_dir_path, 'images')
+        if not os.path.exists(self.img_dir_path):
+            os.mkdir(self.img_dir_path)
+        
+        self.log_dir_path = os.path.join(data_dir_path, 'logs')
+        if not os.path.exists(self.log_dir_path):
+            os.mkdir(self.log_dir_path)
+
+        self.result_dir_path = os.path.join(data_dir_path, 'output_tracks')
+        if not os.path.exists(self.result_dir_path):
+            os.mkdir(self.result_dir_path)
+        
+
+    def connect_client(self, port):
+        self.port = port
+        
+        print('[INFO] Connecting to the client...')
+        self.client = carla.Client('localhost', port)
+        self.client.set_timeout(10.0)
+        self.client.load_world('Tracking_package')
+
+        self.world = self.client.get_world()
+        self._settings = self.world.get_settings()
+        settings = self._settings
+        settings.fixed_delta_seconds = self.fixed_delta
+        settings.synchronous_mode = True
+        settings.no_rendering = False
+        self.world.apply_settings(settings)
+        print('[INFO] Client Connection Established')
+
+    def setup_camera_feed(self, track_id):
+        print('[INFO] Setting up the camera feeds.')
+        def make_queue(register_event, cam_id):
+            q = queue.Queue()
+            register_event(q.put)
+            self._queues.append((cam_id, q))
+
+        make_queue(self.world.on_tick, 'system')
+        for (rgb_cam_id, rgb_cam), (semseg_cam_id, semseg_cam) in zip(self.rgb_camera_list, self.semseg_camera_list):
+            make_queue(rgb_cam.listen, rgb_cam_id)
+            make_queue(semseg_cam.listen, semseg_cam_id)
+            cam_num = int(rgb_cam_id.split('_')[1])
+        print('[INFO] Camera feeds all set.')
+
     
