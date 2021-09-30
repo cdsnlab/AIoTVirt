@@ -248,4 +248,155 @@ class SynchronousServer(object):
             log_file.write(self.track_id + '\n')
         log_file.close()
 
+    def game_loop(self, track_id, track):
+
+        print('[INFO] Start track simulation. ID: {}'.format(track_id))
+        
+        try:
+            for cam_id in range(self.cam_count):
+                self.tracks[cam_id] = OrderedDict()
+            self.tracks[-1] = []
+
+            if self.num_of_tracks_done == 0:
+                self.setup_camera_feed(track_id)
+
+            # Get the track id and create a folder to contain the output data
+            self.track_id = track_id
+            self.track_img_dir = os.path.join(self.img_dir_path, self.track_id)
+
+            if not os.path.exists(self.track_img_dir):
+                os.mkdir(self.track_img_dir)
+                print('[INFO] [{}] Track\'s image folder created.'.format(track_id))
+
+            self.track_done = False
+            all_walkers = []
+
+            #clock = pygame.time.Clock()
+
+            num_of_points_passed = -1
+            elapsed_frame = 0
+            should_stop = False
+            recorded_frame = 0
+            while True:
+                #clock.tick()
+                
+                self.frame = self.world.tick()
+                recorded_frame += 1
+
+                # During the first handful of frames, the feeds are not yet stablized, so we give them some time.
+                if recorded_frame > 14:
+                    # If there is currently no points passed, taht means we need to spawn the walker
+                    # The first point to pass will be the spawn point
+                    if num_of_points_passed == -1:
+                        # Designating the spawn point as the first point in the path
+                        spawn_point = carla.Transform()
+                        spawn_coor = track.pop(0)
+                        spawn_point.location = carla.Location(spawn_coor[0], spawn_coor[1], 1)
+
+
+                        # Getting the blueprint for the walker
+                        walker_blueprints = self.world.get_blueprint_library().filter("walker.pedestrian.*")
+                        walker_bp = random.choice(walker_blueprints)
+                        walker_bp_id = walker_bp.id
+    
+
+                        if walker_bp.has_attribute('is_invincible'):
+                            walker_bp.set_attribute('is_invincible', 'false')
+                        
+                        # Spawning the pedestrian model
+                        pedes_model = self.world.try_spawn_actor(walker_bp, spawn_point)
+
+                        self.frame = self.world.tick()
+
+                        failed = True
+                        if pedes_model:
+                            all_walkers.append(pedes_model)
+                            print('[INFO] [{}] Pedestrian Model Spawned at ({}, {}) - using blueprint {}'.format(track_id, spawn_coor[0], spawn_coor[1], walker_bp_id))
+                            failed = False
+                        else:
+                            print('[INFO] [{}] Failed to spawn the pedestrian model.'.format(track_id))
+
+                        if not failed:
+                            # Spawning the AI controller walker, which is invisible
+                            walker_controller_bp = self.world.get_blueprint_library().find('controller.ai.walker')
+                            ai_walker_model = self.world.try_spawn_actor(walker_controller_bp, carla.Transform(), pedes_model)
+
+                            # Adding the pedestrian and ai walker models to the list of all ids so they can be deleted easily later
+                            all_walkers.append(ai_walker_model)
+
+                            # Start the ai walker controller model
+                            ai_walker_model.start()
+                            self.pedestrians = self.world.get_actors().filter(walker_bp_id)
+                            walker_height = pedes_model.get_location().z
+
+                            num_of_points_passed += 1
+
+                            next_location = carla.Location(track[0][0], track[0][1], walker_height)
+                            ai_walker_model.go_to_location(next_location)
+                            ai_walker_model.set_max_speed(track[0][2])
+
+                            print('[INFO] [{}] Walking to {}'.format(track_id, next_location))
+                            num_of_points_passed += 1
+                    elif num_of_points_passed == 0:
+                        True
+                    else:
+                        elapsed_frame += 1
+                        #clock.tick()
+
+                        ai_walker_model.go_to_location(next_location)
+                        current_location = ai_walker_model.get_location()
+                        #print(current_location, current_location.distance(next_location))
+                        if elapsed_frame > 100:
+                            if len(track) > 1:
+                                track.pop(0)
+                                
+                                next_location = carla.Location(track[0][0], track[0][1], walker_height)
+                                ai_walker_model.go_to_location(next_location)
+                                ai_walker_model.set_max_speed(track[0][2])
+
+                                print("[INFO] [{}] Going to {}, {} remaining points - Current location {}".format(track_id, next_location, len(track), current_location))
+
+                                elapsed_frame = 0
+                            else: 
+                                print("[INFO] [{}] Reached the end of the path!".format(track_id))
+                                self.track_done = True
+                                should_stop = True
+                        if len(track) > 1:
+                            if current_location.distance(next_location) < 3:
+                                print("[INFO] [{}] Reached location {}".format(track_id, next_location))
+                                track.pop(0)
+
+                                next_location = carla.Location(track[0][0], track[0][1], walker_height)
+                                ai_walker_model.go_to_location(next_location)
+                                ai_walker_model.set_max_speed(track[0][2])
+
+                                print("[INFO] [{}] Going to {}, {} remaining points - Current location {}".format(track_id, next_location, len(track), current_location))
+                                elapsed_frame = 0
+                        else:
+                            if current_location.distance(next_location) < 3:
+                                print("[INFO] [{}] Reached the end of the path!".format(track_id))
+                                self.track_done = True
+                                should_stop = True
+                    if recorded_frame % 1 == 0:
+                        try:
+                            data_feeds = [(cam_id, self._retrieve_data(q)) for cam_id, q in self._queues]
+                            #print(data)
+                            assert all(x.frame == self.frame for _, x in data_feeds)
+                            self.process_data_feeds(data_feeds)
+                            self.tracks[-1].append(self.frame)
+                        except AttributeError:
+                            should_stop = True
+                if should_stop:
+                    break
+
+        finally:
+            ai_walker_model.stop()
+            for walker in all_walkers:
+                walker.destroy()
+            self.world.tick()
+            if self.track_done:
+                self.save_track()
+            self.num_of_tracks_done += 1
+            time.sleep(2.0)
+
     
