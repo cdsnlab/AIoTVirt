@@ -67,15 +67,6 @@ def argparser():
     args = argparser.parse_args()
     return args
 
-def read_last_saved(file_name):
-    try:
-        with open('data/run_logs/{}.txt'.format(file_name), 'r') as file:
-            for line in file:
-                pass
-            last_saved = line
-        return int(last_saved)
-    except:
-        return -1
 
 def load_tracks(dir_path, log_file, start, end):
     tracks = []
@@ -108,7 +99,7 @@ def main():
     server = SynchronousServer(args.data_dir, args.config_file, args.port, args.record_mode, args.script_name)
     
     try:
-        for index, (track_id, track) in enumerate(tracklets):
+        for track_id, track in tracklets:
 
             # track_id = 'dummy'
             # track_id = track_id + '_' + str(index)
