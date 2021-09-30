@@ -90,4 +90,12 @@ class SynchronousServer(object):
             self.semseg_camera_list.append(('SS_' + str(cam_id), camera_semseg))
             self.camera_ids.append(cam_id)
 
+    def get_camera_blueprint(self, fov, cam_type):
+        camera_bp = self.world.get_blueprint_library().find(cam_type)
+        camera_bp.set_attribute('image_size_x', str(self.view_width))
+        camera_bp.set_attribute('image_size_y', str(self.view_height))
+        camera_bp.set_attribute('fov', str(fov))
+        camera_bp.set_attribute('sensor_tick', str(self.fixed_delta))
+        return camera_bp
+
     
