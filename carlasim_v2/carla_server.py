@@ -147,4 +147,105 @@ class SynchronousServer(object):
             cam_num = int(rgb_cam_id.split('_')[1])
         print('[INFO] Camera feeds all set.')
 
+    def _retrieve_data(self, sensor_queue, timeout=2.0):
+        while True:
+            try:
+                data = sensor_queue.get(timeout=timeout)
+                if data.frame == self.frame:
+                    return data
+            except queue.Empty:
+                break
+
+    def process_data_feeds(self, data_feeds):
+        index = 1
+        while index < len(data_feeds):
+            rgb_cam_id, rgb_frame = data_feeds[index]
+            semseg_cam_id, semseg_frame = data_feeds[index + 1]
+            index += 2
+            
+            rgb_cam_type, rgb_cam_num = rgb_cam_id.split('_')
+            rgb_cam_num = int(rgb_cam_num)
+            semseg_cam_type, semseg_cam_num = semseg_cam_id.split('_')
+            semseg_cam_num = int(semseg_cam_num)
+            if (((rgb_cam_type == 'RGB') & (semseg_cam_type == 'SS')) & (rgb_cam_num == semseg_cam_num) & (rgb_frame.frame == semseg_frame.frame)):
+                bounding_boxes = ClientSideBoundingBoxes.get_bounding_boxes(self.pedestrians, self.rgb_camera_list[rgb_cam_num][1])
+
+                # if rgb_cam_num == 9:
+                #     rgb_image = ClientSideBoundingBoxes.process_img(rgb_frame, self.view_width, self.view_height)
+                #     cv2.imwrite(os.path.join(self.track_img_dir, 'frame_{}_cam_{}_rgb.jpg'.format(rgb_frame.frame, rgb_cam_num)), rgb_image)
+
+                #     semseg_frame.convert(carla.ColorConverter.CityScapesPalette)
+                #     semseg_image = ClientSideBoundingBoxes.process_img(semseg_frame, self.view_width, self.view_height)
+                #     cv2.imwrite(os.path.join(self.track_img_dir, 'frame_{}_cam_{}_semseg.jpg'.format(rgb_frame.frame, rgb_cam_num)), semseg_image)
+                #print(bounding_boxes)
+                if len(bounding_boxes) != 0:
+                    box = bounding_boxes[0]
+                    box = np.delete(box, 2, 1)
+                    arr_box = np.asarray(box)
+                    height = abs(arr_box[0][1] - arr_box[4][1])
+                    width = abs(arr_box[0][0] - arr_box[3][0])
+                    coords = [arr_box[3], arr_box[4]]
+                    point = box.mean(0).getA().astype(int)
+                    try:
+                        # * Out of the camera's fov
+                        if point[0][0] > self.view_width or point[0][1] > self.view_height or point[0][0] < 0 or point[0][1] < 0:
+                            self.tracks[rgb_cam_num][rgb_frame.frame] = (-1, -1)
+
+                        # inside the cam's fov
+                        else:
+                            # We first need to check if the semantic segmentation camera actually catches this walker
+                            semseg_image = ClientSideBoundingBoxes.process_img(semseg_frame, self.view_width, self.view_height)
+                            
+                            found = False
+                            color = semseg_image[point[0][1], point[0][0]]
+                            if color[2] == 4:
+                                found = True
+                            
+
+                            if found:
+                                self.tracks[rgb_cam_num][rgb_frame.frame] = (rgb_frame.frame, point[0][0], point[0][1], width, height, coords[0][0], coords[0][1], coords[1][0], coords[1][1])
+                                rgb_image = ClientSideBoundingBoxes.process_img(rgb_frame, self.view_width, self.view_height)
+                                if (self.record_mode == 1) | (self.record_mode == 3):
+                                    cv2.imwrite(os.path.join(self.track_img_dir, 'frame_{}_cam_{}_rgb.jpg'.format(rgb_frame.frame, rgb_cam_num)), rgb_image)
+
+                                if (self.record_mode == 2) | (self.record_mode == 3):
+                                    semseg_frame.convert(carla.ColorConverter.CityScapesPalette)
+                                    semseg_image = ClientSideBoundingBoxes.process_img(semseg_frame, self.view_width, self.view_height)
+                                    cv2.imwrite(os.path.join(self.track_img_dir, 'frame_{}_cam_{}_semseg.jpg'.format(rgb_frame.frame, rgb_cam_num)), semseg_image)
+                            else:
+                                self.tracks[rgb_cam_num][rgb_frame.frame] = (-1, -1)
+                    except IndexError:
+                        pass
+                else:
+                    self.tracks[rgb_cam_num][rgb_frame.frame] = (-1, -1)
+
+    def save_track(self):
+        # TODO Get folder/filename as argument
+        log_file_path = os.path.join(self.result_dir_path, self.track_id + '.csv')
+        with open(log_file_path, mode='w') as file:
+            writer = csv.writer(file, delimiter=',',
+                                quotechar='"', quoting=csv.QUOTE_MINIMAL)
+            hasTracks = True
+            active_cams = self.camera_ids
+            headers = ['Camera {}'.format(cam) for cam in active_cams]
+            writer.writerow(['#'] + headers)
+            # tracks = {cam: list(tr.values())
+            #             for cam, tr in self.tracks.items()}
+            for frame in self.tracks[-1]:
+                try:
+                    row = [self.tracks[cam][int(frame)] for cam in active_cams]
+                    writer.writerow([int(frame)] + row)
+                except KeyError:
+                    pass
+        
+                # try:
+                #     row = [tracks[cam][rowNumber]
+                #             for cam in range(self.cam_count)]
+                #     writer.writerow([rowNumber] + row)
+                # except IndexError:
+                #     pass
+        with open('data/run_logs/{}.txt'.format(self.scrip_name), 'a') as log_file:
+            log_file.write(self.track_id + '\n')
+        log_file.close()
+
     
