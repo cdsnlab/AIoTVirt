@@ -95,3 +95,55 @@ class ClientSideBoundingBoxes(object):
         bbox = np.transpose(np.dot(camera.calibration, cords_y_minus_z_x))
         camera_bbox = np.concatenate([bbox[:, 0] / bbox[:, 2], bbox[:, 1] / bbox[:, 2], bbox[:, 2]], axis=1)
         return camera_bbox
+
+    @staticmethod
+    def _create_bb_points(vehicle):
+      """
+      Returns 3D bounding box for a vehicle.
+      """
+
+      cords = np.zeros((8, 4))
+      extent = vehicle.bounding_box.extent
+      cords[0, :] = np.array([extent.x, extent.y, -extent.z, 1])
+      cords[1, :] = np.array([-extent.x, extent.y, -extent.z, 1])
+      cords[2, :] = np.array([-extent.x, -extent.y, -extent.z, 1])
+      cords[3, :] = np.array([extent.x, -extent.y, -extent.z, 1])
+      cords[4, :] = np.array([extent.x, extent.y, extent.z, 1])
+      cords[5, :] = np.array([-extent.x, extent.y, extent.z, 1])
+      cords[6, :] = np.array([-extent.x, -extent.y, extent.z, 1])
+      cords[7, :] = np.array([extent.x, -extent.y, extent.z, 1])
+      return cords
+
+    @staticmethod
+    def _vehicle_to_sensor(cords, vehicle, sensor):
+        """
+        Transforms coordinates of a vehicle bounding box to sensor.
+        """
+
+        world_cord = ClientSideBoundingBoxes._vehicle_to_world(cords, vehicle)
+        sensor_cord = ClientSideBoundingBoxes._world_to_sensor(world_cord, sensor)
+        return sensor_cord
+
+    @staticmethod
+    def _vehicle_to_world(cords, vehicle):
+        """
+        Transforms coordinates of a vehicle bounding box to world.
+        """
+
+        bb_transform = carla.Transform(vehicle.bounding_box.location)
+        bb_vehicle_matrix = ClientSideBoundingBoxes.get_matrix(bb_transform)
+        vehicle_world_matrix = ClientSideBoundingBoxes.get_matrix(vehicle.get_transform())
+        bb_world_matrix = np.dot(vehicle_world_matrix, bb_vehicle_matrix)
+        world_cords = np.dot(bb_world_matrix, np.transpose(cords))
+        return world_cords
+
+    @staticmethod
+    def _world_to_sensor(cords, sensor):
+        """
+        Transforms world coordinates to sensor.
+        """
+
+        sensor_world_matrix = ClientSideBoundingBoxes.get_matrix(sensor.get_transform())
+        world_sensor_matrix = np.linalg.inv(sensor_world_matrix)
+        sensor_cords = np.dot(world_sensor_matrix, cords)
+        return sensor_cords
