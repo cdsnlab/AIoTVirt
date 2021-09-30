@@ -34,7 +34,7 @@ class SynchronousServer(object):
         self.pedestrians = []
         self.camera_ids = []
         self.num_of_tracks_done = 0
-        self.record_mode = 0#record_mode
+        self.record_mode = record_mode
         self.scrip_name = script_name
 
         self.parse_cam_config(config_file_path)
@@ -133,7 +133,7 @@ class SynchronousServer(object):
         self.world.apply_settings(settings)
         print('[INFO] Client Connection Established')
 
-    def setup_camera_feed(self, track_id):
+    def setup_camera_feed(self):
         print('[INFO] Setting up the camera feeds.')
         def make_queue(register_event, cam_id):
             q = queue.Queue()
@@ -238,12 +238,6 @@ class SynchronousServer(object):
                 except KeyError:
                     pass
         
-                # try:
-                #     row = [tracks[cam][rowNumber]
-                #             for cam in range(self.cam_count)]
-                #     writer.writerow([rowNumber] + row)
-                # except IndexError:
-                #     pass
         with open('data/run_logs/{}.txt'.format(self.scrip_name), 'a') as log_file:
             log_file.write(self.track_id + '\n')
         log_file.close()
@@ -258,7 +252,7 @@ class SynchronousServer(object):
             self.tracks[-1] = []
 
             if self.num_of_tracks_done == 0:
-                self.setup_camera_feed(track_id)
+                self.setup_camera_feed()
 
             # Get the track id and create a folder to contain the output data
             self.track_id = track_id
