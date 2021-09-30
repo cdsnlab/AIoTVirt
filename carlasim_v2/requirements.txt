@@ -1,6 +1,0 @@
-#python3.6.9
-numpy==1.19.5
-opencv-python
-pandas==1.1.5
-pygame==2.0.1
-tqdm==4.62.2
