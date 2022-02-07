@@ -1,0 +1,9 @@
+{
+    "head_size": 512,
+    "num_heads": 3,
+    "ff_dim": 4,
+    "num_transformer_blocks": 4,
+    "mlp_units": 128,
+    "mlp_dropout": 0,
+    "dropout": 0
+}

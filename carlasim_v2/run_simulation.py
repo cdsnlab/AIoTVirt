@@ -28,7 +28,7 @@ def argparser():
     )
     argparser.add_argument(
         '--tracks_dir',
-        default = '/home/tung/carla/map_coor',
+        default = 'carla_coor',
         help = 'Path to the folder that holds the trajectory files'
     )
     argparser.add_argument(
@@ -37,20 +37,23 @@ def argparser():
         help = 'Path to the folder that contains simulation data'
     )
     argparser.add_argument(
-        '-s', '--start',
+        '--num_walkers',
+        default = 50,
         type = int,
-        default = 1,
-        help = 'The number of the FIRST track that this instance is supposed to handle.'
+        help = 'The maximum num of pedestrians in the simulation at any moment.'
     )
     argparser.add_argument(
-        '-r', '--end',
-        type = int,
-        help = 'The number of the LAST track that this instance is supposed to handle.'
+        '--start',
+        type = int
+    )
+    argparser.add_argument(
+        '--end',
+        type = int
     )
     argparser.add_argument(
         '-o', '--record_mode',
         type = int,
-        default = 0,
+        default = 1,
         help = 'This decides whether we need the images. (0) nothing, (1) only rbg images, (2) only semseg images, (3) both rgb and semseg images.'
     )
     argparser.add_argument(
@@ -67,47 +70,75 @@ def argparser():
     args = argparser.parse_args()
     return args
 
+def read_last_saved(file_name):
+    try:
+        with open('data/run_logs/{}.txt'.format(file_name), 'r') as file:
+            for line in file:
+                pass
+            last_saved = line
+        return int(last_saved)
+    except:
+        return -1
 
-def load_tracks(dir_path, log_file, start, end):
+def load_tracks(dir_path, log_file, start = 2, end = 61):
     tracks = []
     check = {}
     try:
         with open('data/run_logs/{}.txt'.format(log_file), 'r') as file:
             for line in file:
                 check[line.split('\n')[0]] = 1
+            file.close()
     except:
         pass
+    max_id1 = -1
+    max_id2 = -1
     for file in os.listdir(os.path.join(dir_path)):
-        try:
-            if check[file.split('.')[0]] == 1:
-                pass
-        except:
-            track_num = file.split('.')[0].split('_')[0]
-            if (int(track_num) >= start) & (int(track_num) <= end):
-                track_df = pd.read_csv(os.path.join(dir_path, file), engine = 'python')
-                track = track_df.values.tolist()
-                tracks.append((file.split('.')[0], track))
-            
-    tracks.sort(key = lambda x:int(x[0].split('_')[0]))
+        if '_' not in file:
+            continue
+        id1 = int(file.split('_')[0])
+        id2 = int(file.split('_')[1].split('.')[0])
+        if id1 > max_id1:
+            max_id1 = id1
+        if id2 > max_id2:
+            max_id2 = id2
+
+    
+    for j in range(start, end + 1):
+        count = 0
+        for i in range(0, max_id1 + 1):
+                file_name = '{}_{}.csv'.format(i, j)
+                file_path = os.path.join(dir_path, file_name)
+                track_id = file_name.split('.')[0]
+
+                try:
+                    if check[track_id] == 1:
+                        pass
+                except:
+                    try:
+                        track_df = pd.read_csv(file_path, engine = 'python')
+                        track = track_df.values.tolist()
+                        tracks.append((track_id, track))
+                        count += 1
+                    except:
+                        pass
+    
     return tracks
 
 def main():
     args = argparser()
     tracklets = load_tracks(args.tracks_dir, args.script_name, args.start, args.end)
-    #pygame.init()
-
     server = SynchronousServer(args.data_dir, args.config_file, args.port, args.record_mode, args.script_name)
     
     try:
-        for track_id, track in tracklets:
+        # for index, (track_id, track) in enumerate(tracklets):
 
-            # track_id = 'dummy'
-            # track_id = track_id + '_' + str(index)
-            # track = [(-68.2, -3.1, 1), (-63, -3.6, 1)]#[(-73.5, 61.8, 1), (-73.5, 75.8, 1), (-73.5, 85.8, 1)]#[(-68.2, -3.1, 1), (-51.2, -3.6, 1)]#[(-90.3,61.5, 1), (-87.6, 41.1, 1), (-90.3, 27.2, 1)]
-            # server.game_loop(track_id, track)
-            # break
-            server.game_loop(track_id, track)
-            
+        #     # track_id = 'dummy'
+        #     # track_id = track_id + '_' + str(index)
+        #     # track = [(-68.2, -3.1, 1), (-63, -3.6, 1)]#[(-73.5, 61.8, 1), (-73.5, 75.8, 1), (-73.5, 85.8, 1)]#[(-68.2, -3.1, 1), (-51.2, -3.6, 1)]#[(-90.3,61.5, 1), (-87.6, 41.1, 1), (-90.3, 27.2, 1)]
+        #     # server.game_loop(track_id, track)
+        #     # break
+        #     server.game_loop(track_id, track)
+        server.game_loop(tracklets, CONCURRENT_TRACKS = args.num_walkers)
 
     
     finally:

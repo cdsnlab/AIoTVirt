@@ -1,0 +1,15 @@
+{
+    "data_dir_path": "/home/tung/carlasim/data_archived/extracted_tracks_300_30_bb_15_60",
+    "transition_period": 300,
+    "out_of_view_accept_period": 30,
+    "bb_threshold": true,
+    "bb_threshold_x": 15,
+    "bb_threshold_y": 60,
+    "width": 2560,
+    "height": 1440,
+    "num_cams": 18,
+    "nextcam_model": "resnet",
+    "transtime_model": "resnet",
+    "sampling_method": "last",
+    "GPU_num": 1
+}
