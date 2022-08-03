@@ -62,7 +62,8 @@ if __name__ == '__main__':
     parser.add_argument('-a', '--alpha', action = int, default = 0.1, help = 'forgetting hyperparameter. (bigger then faster) (0.1-0.3)')
     parser.add_argument('-t', '--temp', action = int, default = 2, help = 'distillation temperature')
     parser.add_argument('-d', '--dataset', action = int, default = 'cifar10', help = 'name of dataset')
-    parser.add_argument('-b', '--budget', action = int, default = 1200, help = 'time budget (minute)')
+    parser.add_argument('-b', '--profile_budget', action = int, default = 20, help = 'time budget for profiling (minute)')
+    parser.add_argument('-r', '--retrain_budget', action = int, default = 20, help = 'time budget for retraining (minute)')
     args, _ = parser.parse_known_args()
     
     config = edict()
@@ -70,7 +71,8 @@ if __name__ == '__main__':
     config.alpha = args.alpha
     config.temperature = args.temp
     config.dataset = args.dataset
-    config.budget = args.budget*60
+    config.profile_budget = args.profile_budget*60
+    config.retrain_budget = args.retrain_budget*60
     config.device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
     print(toRed('\tConfig: {}'.format(config.config)))
@@ -123,7 +125,7 @@ if __name__ == '__main__':
     # for diagram
     total_history = []
     
-    allocated_time = config.budget / totallayer[config.network]
+    allocated_time = config.profile_budget / totallayer[config.network]
     for dataloader in dataloaders:
         num_new_class = 1
         retrain_results = dict()
@@ -133,7 +135,7 @@ if __name__ == '__main__':
             The number of epochs to be used in profiling phase at the split point is calculated.
             And measure the accuracy based on split point and calculated epochs.
             '''
-            time_train_one_step = trainer.measure_time_train_one_step(dataloader=dataloader, epoch=1, num_new_class=0)
+            time_train_one_step = trainer.get_time_train_one_step(split_point=split_point)
             time_train_one_epoch = math.ceil(len(dataloader.dataset)/dataloader.batchsize)*time_train_one_step
             number_of_profile_epoch = int(allocated_time / time_train_one_epoch)
             trainer.set_network(split_point=split_point)
@@ -149,8 +151,15 @@ if __name__ == '__main__':
         best_split_point = sorted_retrain_results.keys()[0]
         trainer.set_network(split_point=best_split_point)
         
+        '''
+        Similarly with profiling phase, the number of retraining epoch is decided 
+        based on retrain budget which is defined by user.
+        '''
         # IL the model
-        trainer.incremental_learning(dataloader=dataloader, epoch=100000, num_new_class=num_new_class)
+        time_train_one_step = trainer.get_time_train_one_step(split_point=best_split_point)
+        time_train_one_epoch = math.ceil(len(dataloader.dataset)/dataloader.batchsize)*time_train_one_step
+        number_of_retrain_epoch = int(config.retrain_budget / time_train_one_epoch)
+        trainer.incremental_learning(dataloader=dataloader, epoch=number_of_retrain_epoch, num_new_class=num_new_class)
         # test the model
         best_split_test_acc = trainer.test()
 

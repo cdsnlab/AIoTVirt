@@ -179,8 +179,7 @@ class Trainer():
             self.old_head_model, self.old_tail_model = copy.deepcopy(self.head_model), copy.deepcopy(self.tail_model)
             self.old_head_model.eval()
             self.old_tail_model.eval()
-                
-                
+        
         # add new class
         self.tail_model = self.tail_model.to('cpu')
         # Old number of input/output channel of the last FC layer in old model
