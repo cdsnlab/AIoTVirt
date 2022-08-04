@@ -113,7 +113,7 @@ class LIGETIPretrainCIFAR10(object):
             an image of the dataset in un-preprocessed format, shaped
             (32, 32, 3) and its class and the class's name
         """
-        print(self.pretrain_data[idx][0].shape)
+        # print(self.pretrain_data[idx][0].shape)
         return self.pretrain_data[idx]
 
 

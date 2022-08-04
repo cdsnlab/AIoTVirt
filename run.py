@@ -10,8 +10,6 @@ import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
 import torch.backends.cudnn as cudnn
-import scipy.io as scio
-from scipy.io import loadmat
 import torchvision
 import os
 import argparse
@@ -22,10 +20,6 @@ import random
 
 import matplotlib.pyplot as plt
 import pdb
-import transforms
-from dataset import CUB_200_2011_Train, CUB_200_2011_Test
-import torchvision.transforms as tfs
-import torchvision.datasets as datasets
 from LwF_trainer import Trainer
 
 '''
