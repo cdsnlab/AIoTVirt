@@ -84,11 +84,12 @@ class PretrainDataset(Dataset):
         self.target_transform = target_transform
 
     def __len__(self):
-        return len(self.pretrain_dataset)
+        return len(self.pretrain_dataset.pretrain_data)
 
     def __getitem__(self, index):
         img, img_class, img_class_name = self.pretrain_dataset(index)
         if self.transform is not None:
+            # print(img.shape)
             img = self.transform(img)
         if self.target_transform is not None:
             img_class = self.target_transform(img_class)

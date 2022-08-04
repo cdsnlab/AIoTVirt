@@ -55,8 +55,9 @@ The Knowledge Distillation(KD) method is used in Lwf, so the old model(teacher m
 class Trainer():
     def __init__(self, config):
         self.config = config
-        model, _, _, _, _ = model_spec(self.config.network, False)
-
+        model, _, _, _, _ = model_spec(self.config.network, self.config.dataset)
+        model.load_state_dict(torch.load('./ckpt/pretrain/' + self.config.network + '_' + self.config.dataset + '.pt'))
+        
         # self.model = copy.deepcopy(model)
         self.device = self.config.device
         self.model = model.to(self.device)
@@ -94,10 +95,7 @@ class Trainer():
             for batch_idx, data in enumerate(dataloader):
                 t = time()
                 images, targets = data
-                if self.config.network == 'alexnet' or self.config.network == 'googlenet':
-                    intermediate_tensor = head_model.forward(torch.nn.functional.interpolate(images.to(self.device), size=(64, 64)))
-                else:
-                    intermediate_tensor = head_model.forward(images.to(self.device))
+                intermediate_tensor = head_model.forward(images.to(self.device))
                 self.network_latency[split_point] = sys.getsizeof(intermediate_tensor)
                 outputs = tail_model.forward(intermediate_tensor)
                 self.inference_latency[split_point] = time()-t
@@ -210,14 +208,8 @@ class Trainer():
             correct_one_epoch, total_one_epoch = 0, 0
             for batch_idx, data in enumerate(dataloader):
                 images, targets = data
-                if self.config.network == 'alexnet' or self.config.network == 'googlenet':
-                    outputs = self.forward(
-                        torch.nn.functional.interpolate(images.to(self.device), size=(64, 64)), is_train=True)
-                    soft_target = self.old_forward(
-                        torch.nn.functional.interpolate(images.to(self.device), size=(64, 64)), is_train=True)
-                else:
-                    outputs = self.forward(images.to(self.device))
-                    soft_target = self.old_forward(images.to(self.device))
+                outputs = self.forward(images.to(self.device))
+                soft_target = self.old_forward(images.to(self.device))
 
                 loss1 = self.loss_function(outputs, targets)
                 outputs_S = F.softmax(outputs[:,:out_features]/self.T,dim=1)
@@ -258,10 +250,7 @@ class Trainer():
                 
         for batch_idx, data in enumerate(dataloader):
             images, targets = data
-            if self.config.network == 'alexnet' or self.config.network == 'googlenet':
-                outputs = self.forward(torch.nn.functional.interpolate(images.to(self.device), size=(64, 64)))
-            else:
-                outputs = self.forward(images.to(self.device))
+            outputs = self.forward(images.to(self.device))
     
             _, predicted = torch.max(outputs, 1)
             correct += (predicted == targets.to(self.device)).sum().item()
@@ -369,6 +358,3 @@ class Trainer():
                 x = pre_fc(x, Trainer.config.network)
                 x = self.fc(x)
             return x
-        
-    
-    
