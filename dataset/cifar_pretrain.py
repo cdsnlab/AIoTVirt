@@ -66,6 +66,8 @@ class LIGETIPretrainCIFAR10(object):
         random.seed(choosing_class_seed)
         classes_chosen_for_pretrain = random.sample(
             range(self.total_num_classes), num_classes_for_pretrain)
+        classes_chosen_for_pretrain = sorted(classes_chosen_for_pretrain)
+        print(classes_chosen_for_pretrain)
 
         data = {}
         for class_data_file_name in os.listdir(data_dir_path):
@@ -87,15 +89,17 @@ class LIGETIPretrainCIFAR10(object):
             for clas in range(num_classes_for_num_imgs):
                 chosen_class = classes_chosen_for_pretrain[chosen_idx]
                 chosen_data = data[chosen_class][:num_chosen_imgs]
-                chosen_data = [(x, chosen_class) for x in chosen_data]
+                chosen_data = [
+                    (x, chosen_idx, chosen_class) for x in chosen_data
+                ]
                 self.pretrain_data.extend(chosen_data)
                 chosen_idx += 1
         del chosen_data
         del class_data
         del data
 
-    def getitem(self, idx):
-        """getitem Get an item from the training data list given its
+    def __call__(self, idx):
+        """__call__ Get an item from the training data list given its
         index. This function should be called inside the __getitem__
         function provided for torch Dataset.
 
@@ -105,11 +109,10 @@ class LIGETIPretrainCIFAR10(object):
             index of the item
         Returns
         -------
-        (np.darray, int)
+        (np.darray, int, str)
             an image of the dataset in un-preprocessed format, shaped
-            (3, 32, 32) and its class.
+            (3, 32, 32) and its class and the class's name
         """
-        print(self.pretrain_data[idx])
         return self.pretrain_data[idx]
 
 
