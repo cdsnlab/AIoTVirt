@@ -120,12 +120,11 @@ class LIGETIPretrainImageNet100(object):
         -------
         (np.darray, int, str)
             an image of the dataset in un-preprocessed format, shaped
-            (3, height, width), its class and the class's name
+            (height, width, 3), its class and the class's name
         """
         path, chosen_idx, chosen_class = self.pretrain_data[idx]
         img = Image.open(path)
-        img = np.transpose(np.array(img), (2, 0, 1))
-        return img, chosen_idx, chosen_class
+        return (img, chosen_idx, chosen_class)
 
 
 if __name__ == '__main__':
