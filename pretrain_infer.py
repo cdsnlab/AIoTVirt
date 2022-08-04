@@ -12,6 +12,8 @@ import torch.optim as optim
 import torchvision
 import torchvision.transforms as transforms
 
+from LwF_trainer import xavier_normal_init
+
 '''
 Pretrain below 4 models for 100 epochs at each model.
 And Each model is trained with below 3 datasets.
@@ -61,6 +63,7 @@ cifar10_train_dataset = PretrainDataset(
         test_data_shuffle_seed=222,
         transform = train_transforms
     )
+
 cifar10_test_dataset = PretrainDataset(
         dataset_name='cifar10',
         data_dir_path='/data/cifar10',
@@ -174,17 +177,18 @@ test_dataloaders.append(imagenet100_test_dataloader)
 
 '''
 Pretraining start.
-In each dataset and model setting, the models are trained for 100 epochs.
+In each dataset and model setting, the models are trained for 200 epochs.
 And save them in './ckpt/pretrain' directory.
 '''
-for i in range(len(train_dataloaders)):
-    print(toRed(datasets[i]))
-    train_dataloader = train_dataloaders[i]
-    test_dataloader = test_dataloaders[i]
+for num_dataloader in range(len(train_dataloaders)):
+    print(toRed(datasets[num_dataloader]))
+    train_dataloader = train_dataloaders[num_dataloader]
+    test_dataloader = test_dataloaders[num_dataloader]
     
     for name in models:
         print(toGreen(name))
-        model, _, _, _, input_transform = model_spec(name, datasets[i])
+        model, _, _, _, input_transform = model_spec(name, datasets[num_dataloader])
+        xavier_normal_init(model)
         model.cuda(0)
         loss_fn = nn.CrossEntropyLoss()
         optimizer = optim.Adam(model.parameters(),lr=0.001)
@@ -193,7 +197,7 @@ for i in range(len(train_dataloaders)):
         before_eval_acc = 0.
 
         # epoch
-        while epoch < 100:
+        while epoch < 200:
             epoch += 1
             total_right = 0
             total = 0
@@ -213,7 +217,6 @@ for i in range(len(train_dataloaders)):
                 optimizer.step()
                 
                 predicted = outputs.data.max(1)[1]
-                # print(predicted)
                 total += labels.size(0)
                 total_right += (predicted == labels.data).float().sum()
             
@@ -221,29 +224,45 @@ for i in range(len(train_dataloaders)):
             if epoch % 10 == 0:
                 print("Model: {}, Training accuracy for epoch {} : {}".format(name, str(epoch), train_acc))
             
+            num_label = 0
+            if num_dataloader==0:
+                num_label = 4
+            elif num_dataloader==1:
+                num_label = 40
+            else:
+                num_label = 40
+
+            label_right = [0 for i in range(num_label)]
+            label_total = [0 for i in range(num_label)]
             total_right = 0
             total = 0
             model.eval()
             with torch.no_grad():
-                for data in test_dataloader:
-                    images, labels, _ = data
+                for images, labels, _ in test_dataloader:
                     images, labels = Variable(images.float()).cuda(0),Variable(labels).cuda(0)
-                    
-                    images = F.interpolate(images,[224,224])
                     
                     outputs = model(images)
                 
                     _, predicted = torch.max(outputs.data,1)
                     total += labels.size(0)
                     total_right += (predicted == labels.data).float().sum()
+                    # for i in range(len(labels.data)):
+                    #     label = labels[i]
+                    #     label_total[label.item()] += 1
+                    #     label_right[label.item()] += (predicted[i] == label).float().sum().item()
+                    # label_right[labels.data] += (predicted == labels.data).float().sum()
             
             eval_acc = 100 * total_right / total
             if epoch % 10 == 0:
-                print("Test accuracy after retrain: {}".format(eval_acc))
+                print("Model: {}, Test accuracy for epoch {}: {}".format(name, str(epoch), eval_acc))
+                # for i in range(num_label):
+                #     print(toGreen('class {}: ').format(i), end='')
+                #     print('{}/{}={}'.format(label_right[i], label_total[i], 100*label_right[i]/label_total[i]), end='\t')
+                # print()
             
-            # if before_eval_acc > eval_acc and train_acc - 10 < eval_acc:
-            #     torch.save(model.state_dict(), directory + name + '.pt')
-            #     break
-            # before_eval_acc = total_right/total
+        #     if before_eval_acc > eval_acc:
+        #         torch.save(model.state_dict(), directory + name + '.pt')
+        #         break
+        #     before_eval_acc = total_right/total
 
-        torch.save(model.state_dict(), directory + name + '_' + datasets[i] + '.pt')
+        torch.save(model.state_dict(), directory + name + '_' + datasets[num_dataloader] + '.pt')
