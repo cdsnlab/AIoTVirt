@@ -4,6 +4,7 @@ Author: Tung Nguyen (tungnt@kaist.ac.kr)
 
 import os
 import sys
+from PIL import Image
 
 from torch.utils.data import Dataset
 
@@ -14,6 +15,7 @@ try:
     from cifar_pretrain import LIGETIPretrainCIFAR10,\
         LIGETIPretrainCIFAR100
     from imagenet_pretrain import LIGETIPretrainImageNet100
+    from retrain_dataset_preparer import RetrainingDatasetPreparer
 except ModuleNotFoundError as e:
     raise e
 
@@ -96,17 +98,109 @@ class PretrainDataset(Dataset):
         return img, img_class, img_class_name
 
 
+class RetrainDataset(Dataset):
+    def __init__(
+        self,
+        task_num: int,
+        dataset_name: str,
+        data_dir_path: str,
+        num_total_classes: int,
+        num_pretrain_classes: int,
+        num_test_images_each_class: int,
+        num_total_images_each_task: int,
+        task_specifications: list,
+        choosing_class_seed: int = 2022,
+        retrain_data_shuffle_seed: int = 2,
+        pretrain_test_data_shuffle_seed: int = 222,
+        transforms=None,
+        target_transforms=None,
+    ):
+        super(RetrainDataset, self).__init__()
+        self.task_retrain_data = RetrainingDatasetPreparer(
+            dataset_name=dataset_name,
+            data_dir_path=data_dir_path,
+            num_total_classes=num_total_classes,
+            num_pretrain_classes=num_pretrain_classes,
+            num_test_images_each_class=num_test_images_each_class,
+            num_total_images_each_task=num_total_images_each_task,
+            task_specifications=task_specifications,
+            choosing_class_seed=choosing_class_seed,
+            retrain_data_shuffle_seed=retrain_data_shuffle_seed,
+            pretrain_test_data_shuffle_seed=pretrain_test_data_shuffle_seed
+        ).all_task_retrain_data[task_num]
+
+        self.transforms = transforms
+        self.target_transforms = target_transforms
+    
+    def __len__(self):
+        return len(self.task_retrain_data)
+
+    def __getitem__(self, index):
+        img, class_idx, class_name = self.task_retrain_data[index]
+        if type(img) is str:
+            img = Image.load(img)
+        if self.transforms is not None:
+            img = self.transforms(img)
+        if self.target_transforms is not None:
+            class_idx = self.target_transforms(class_idx)
+        return (img, class_idx, class_name)
+
+
 if __name__ == '__main__':
-    pretrain_dataset = PretrainDataset(
-        dataset_name='cifar100',
-        data_dir_path='/data/cifar100',
-        num_classes_for_pretrain=40,
-        num_imgs_from_chosen_classes=[
-            (100, 10), (250, 20), (500, 10)
-        ],
-        train=True,
-        choosing_class_seed=2022,
-        train_data_shuffle_seed=223,
-        test_data_shuffle_seed=222
+    dataset = 'cifar10'
+    dataset = RetrainDataset(
+        task_num=3,
+        dataset_name=dataset,
+        data_dir_path='/data/{}/test'.format(dataset),
+        num_total_classes=10,
+        num_pretrain_classes=4,
+        num_test_images_each_class=50,
+        num_total_images_each_task=1000,
+        task_specifications=[
+            (2, 0, 605),
+            (0, 6, 570),
+            (2, 0, 576),
+            (0, 8, 504),
+            (2, 0, 604),
+            (0, 10, 304)
+        ]
     )
-    print(pretrain_dataset[1000])
+    print(len(dataset))
+    print(dataset[999])
+    # pretrain_dataset = PretrainDataset(
+    #     dataset_name='cifar100',
+    #     data_dir_path='/data/cifar100',
+    #     num_classes_for_pretrain=40,
+    #     num_imgs_from_chosen_classes=[
+    #         (100, 10), (250, 20), (500, 10)
+    #     ],
+    #     train=True,
+    #     choosing_class_seed=2022,
+    #     train_data_shuffle_seed=223,
+    #     test_data_shuffle_seed=222
+    # )
+    # cifar10_train_dataset = PretrainDataset(
+    #     dataset_name='cifar10',
+    #     data_dir_path='/data/cifar10',
+    #     num_classes_for_pretrain=4,
+    #     num_imgs_from_chosen_classes=[
+    #         (500, 1), (1000, 1), (1500, 1), (2000, 1)
+    #     ],
+    #     train=True,
+    #     choosing_class_seed=2022,
+    #     train_data_shuffle_seed=223,
+    #     test_data_shuffle_seed=222,
+    # )
+    # imagenet100_train_dataset = PretrainDataset(
+    #     dataset_name='imagenet100',
+    #     data_dir_path='/data/imagenet100',
+    #     num_classes_for_pretrain=40,
+    #     num_imgs_from_chosen_classes=[
+    #         (100, 10), (250, 20), (500, 10)
+    #     ],
+    #     train=True,
+    #     choosing_class_seed=2022,
+    #     train_data_shuffle_seed=223,
+    #     test_data_shuffle_seed=222,
+    # )
+    # print(pretrain_dataset[1000])
