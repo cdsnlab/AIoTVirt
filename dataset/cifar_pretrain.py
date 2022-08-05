@@ -67,7 +67,6 @@ class LIGETIPretrainCIFAR10(object):
         classes_chosen_for_pretrain = random.sample(
             range(self.total_num_classes), num_classes_for_pretrain)
         classes_chosen_for_pretrain = sorted(classes_chosen_for_pretrain)
-        print(classes_chosen_for_pretrain)
 
         data = {}
         for class_data_file_name in os.listdir(data_dir_path):
@@ -113,7 +112,6 @@ class LIGETIPretrainCIFAR10(object):
             an image of the dataset in un-preprocessed format, shaped
             (32, 32, 3) and its class and the class's name
         """
-        print(self.pretrain_data[idx][0].shape)
         return self.pretrain_data[idx]
 
 
@@ -161,7 +159,7 @@ if __name__ == '__main__':
     # )
     tracemalloc.start()
     temp = LIGETIPretrainCIFAR100(
-        data_dir_path='/data/cifar100',
+        data_dir_path='/data/cifar10',
         num_classes_for_pretrain=40,
         num_imgs_from_chosen_classes=[
             (20, 40)
