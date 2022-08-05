@@ -3,6 +3,7 @@ from load_partial_model import model_spec
 from dataloader import PretrainDataset
 from torch.autograd import Variable
 from utils import toGreen, toRed
+from torch.utils.tensorboard import SummaryWriter
 
 import numpy as np
 import torch
@@ -23,11 +24,13 @@ directory = './ckpt/pretrain/'
 models = ['resnet18', 'googlenet', 'mobilenetv2', 'efficientnet_b0']
 
 datasets = ['cifar10', 'cifar100', 'imagenet100']
+
 train_dataloaders = []
 test_dataloaders = []
 
 train_transforms = transforms.Compose([
         # transforms.ToCVImage(),
+        # transforms.Resize((64,64)),
         transforms.ToTensor(),
         # transforms.RandomResizedCrop(5),
         transforms.RandomHorizontalFlip(),
@@ -192,6 +195,7 @@ for num_dataloader in range(len(train_dataloaders)):
         model.cuda(0)
         loss_fn = nn.CrossEntropyLoss()
         optimizer = optim.Adam(model.parameters(),lr=0.001)
+        writer = SummaryWriter('logs/pretrain/' + datasets[num_dataloader] + '/' + name + '/')
 
         epoch = 0
         before_eval_acc = 0.
@@ -219,8 +223,10 @@ for num_dataloader in range(len(train_dataloaders)):
                 predicted = outputs.data.max(1)[1]
                 total += labels.size(0)
                 total_right += (predicted == labels.data).float().sum()
+
             
             train_acc = 100 * total_right / total
+            writer.add_scalar('acc/train', train_acc, epoch)
             if epoch % 10 == 0:
                 print("Model: {}, Training accuracy for epoch {} : {}".format(name, str(epoch), train_acc))
             
@@ -253,6 +259,7 @@ for num_dataloader in range(len(train_dataloaders)):
                     # label_right[labels.data] += (predicted == labels.data).float().sum()
             
             eval_acc = 100 * total_right / total
+            writer.add_scalar('acc/test', eval_acc, epoch)
             if epoch % 10 == 0:
                 print("Model: {}, Test accuracy for epoch {}: {}".format(name, str(epoch), eval_acc))
                 # for i in range(num_label):
@@ -265,4 +272,5 @@ for num_dataloader in range(len(train_dataloaders)):
         #         break
         #     before_eval_acc = total_right/total
 
+        writer.close()
         torch.save(model.state_dict(), directory + name + '_' + datasets[num_dataloader] + '.pt')
