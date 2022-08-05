@@ -6,8 +6,9 @@ import numpy as np
 import copy
 import collections
 import sys
-from time import time
 
+from time import time
+from torch.utils.tensorboard import SummaryWriter
 from utils import toGreen, toRed, progress_bar
 from load_partial_model import model_spec
 
@@ -47,6 +48,97 @@ def xavier_normal_init(m):
     elif isinstance(m, nn.Linear):
         nn.init.xavier_normal_(m.weight, nonlinearity='sigmoid')
 
+      
+'''
+The HeadModel is front partial model in Trainer. -> (input): data, (output): intermediate tensor.
+It can be decided via the layernum when make instance of HeadModel.
+'''
+class HeadModel(nn.Module):
+    def __init__(self, name, layernum, original_model):
+        super().__init__()
+        # self.name = name
+        # model, fc ,fclayer, totallayer, input_transform = model_spec(name, alternative)
+        
+        self.model = None
+        self.layernum = layernum
+        self.fclayer = fclayer[name]
+        self.totallayer = totallayer[name]
+        self.defactolayer = self.totallayer - self.fclayer + 1
+        self.modulelist = []
+        
+        ct = 0
+        for child in original_model.children():
+            if isinstance(child, torch.nn.Sequential):
+                for sub_child in range(len(child)):
+                    ct += 1
+                    if ct <= self.layernum:
+                        self.modulelist.append(child[sub_child])
+            else:
+                ct += 1
+                if ct <= self.layernum:
+                    self.modulelist.append(child)
+        if self.layernum == self.defactolayer:
+            self.model = original_model
+        else:
+            self.model = torch.nn.Sequential(*self.modulelist)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        if self.layernum == 0:
+            return x
+
+        x = self.model(x)
+        return x
+    
+    
+'''
+The TailModel is front partial model in Trainer. -> (input): intermediate tensor, (output): logit value.
+It can be decided via the layernum when make instance of TailModel.
+Retraining is only conducted in TailModel.
+'''
+class TailModel(nn.Module):
+    def __init__(self, name, layernum, original_model):
+        super(TailModel, self).__init__()
+        # model, fc ,fclayer, totallayer, _ = model_spec(name, False)
+
+        self.model = None
+        self.layernum = layernum
+        self.fclayer = fclayer[name]
+        self.totallayer = totallayer[name]
+        self.defactolayer = self.totallayer - self.fclayer + 1
+        self.modulelist = []
+
+        ct = 0
+        for child in original_model.children():
+            child = copy.deepcopy(child)
+            if isinstance(child, torch.nn.Sequential):
+                for sub_child in range(len(child)):
+                    ct += 1
+                    if ct + self.layernum > self.defactolayer:
+                        self.modulelist.append(copy.deepcopy(child[sub_child]))
+            else:
+                ct += 1
+                if ct + self.layernum > self.defactolayer:
+                    self.modulelist.append(child)
+        self.fc = copy.deepcopy(original_model.fc)
+        if self.layernum == 1:
+            self.model = self.fc
+        else:
+            self.modulelist = self.modulelist[:-self.fclayer]
+            self.model = torch.nn.Sequential(*self.modulelist)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        if self.layernum == 0:
+            return x
+        if self.layernum == 1:
+            x = pre_fc(x, name)
+            x = self.model(x)
+        else:
+            x = self.model(x)
+            x = pre_fc(x, name)
+            x = self.fc(x)
+        return x
+
+
 '''
 The Trainer consists of Head model and Tail model.
 This can excute the forward propagation of each model, and makes them learn incrementally.
@@ -55,8 +147,10 @@ The Knowledge Distillation(KD) method is used in Lwf, so the old model(teacher m
 class Trainer():
     def __init__(self, config):
         self.config = config
-        model, _, _, _, _ = model_spec(self.config.network, self.config.dataset)
-        model.load_state_dict(torch.load('./ckpt/pretrain/' + self.config.network + '_' + self.config.dataset + '.pt'))
+        self.name = self.config.network
+        self.dataset = self.config.dataset
+        model, _, _, _, _ = model_spec(self.name, self.dataset)
+        model.load_state_dict(torch.load('./ckpt/pretrain/' + self.name + '_' + self.dataset + '.pt', map_location = 'cpu'))
         
         # self.model = copy.deepcopy(model)
         self.device = self.config.device
@@ -77,10 +171,12 @@ class Trainer():
         self.inference_latency = dict()
         self.retrain_time = dict()
         self.network_latency = dict()
+        self.writer - SummaryWriter('logs/IL/')
         
-        if self.config.network == 'googlenet':
+        if self.name == 'googlenet':
             self.input_transform = self.model._transform_input
-            
+
+         
     '''
     Measure the whold latencies on all split point settings.
     1. forward propagation time
@@ -88,9 +184,9 @@ class Trainer():
     3. network latency
     '''
     def measure_latency(self, dataloader):
-        for split_point in range(totallayer[self.config.network]):
-            head_model = HeadModel(split_point).to(self.device)
-            tail_model = TailModel(totallayer[self.config.network] - fclayer[self.config.network] + 1 - split_point).to(self.device)
+        for split_point in range(totallayer[self.name]):
+            head_model = HeadModel(self.name, split_point, self.model).to(self.device)
+            tail_model = TailModel(self.name, totallayer[self.name] - fclayer[self.name] + 1 - split_point, self.model).to(self.device)
             tail_optimizer = torch.optim.SGD(tail_model.parameters(), lr=0.001, momentum=0.9)
             for batch_idx, data in enumerate(dataloader):
                 t = time()
@@ -112,8 +208,8 @@ class Trainer():
     '''
     def set_network(self, split_point):
         self.split_point = split_point
-        self.head_model = HeadModel(split_point).to(self.device)
-        self.tail_model = TailModel(totallayer[self.config.network] - fclayer[self.config.network] + 1 - split_point).to(self.device)
+        self.head_model = HeadModel(self.name, split_point, self.model).to(self.device)
+        self.tail_model = TailModel(self.name, totallayer[self.name] - fclayer[self.name] + 1 - split_point, self.model).to(self.device)
         self.tail_optimizer = torch.optim.SGD(self.tail_model.parameters(), lr=0.001, momentum=0.9)
         
     '''
@@ -171,7 +267,7 @@ class Trainer():
     And then retrain the tail model in IL manner.
     You can use this function when measuring retrain one epoch time by setting the epoch param to 1.
     '''
-    def incremental_learning(self, dataloader, epoch, num_new_class, is_profile=False):
+    def incremental_learning(self, dataloader, epoch, num_new_class, num_task, is_profile=False):
         # migrate the head_model and tail model
         if not is_profile:
             self.old_head_model, self.old_tail_model = copy.deepcopy(self.head_model), copy.deepcopy(self.tail_model)
@@ -201,14 +297,17 @@ class Trainer():
         # train
         self.head_model.eval()
         self.tail_model.train()
+
+        # log
+        if not is_profile:
+            writer = SummaryWriter('logs/IL/' + self.dataset + '/' + name + '/' + str(num_task) + '/')
                 
         t = time()
-        correct, total = 0, 0
         for e in range(epoch):
-            correct_one_epoch, total_one_epoch = 0, 0
+            correct, total = 0, 0
             for batch_idx, data in enumerate(dataloader):
                 images, targets = data
-                outputs = self.forward(images.to(self.device))
+                outputs = self.forward(images.to(self.device), is_train=True)
                 soft_target = self.old_forward(images.to(self.device))
 
                 loss1 = self.loss_function(outputs, targets)
@@ -226,17 +325,19 @@ class Trainer():
                 _, predicted = torch.max(outputs, 1)
                 correct += (predicted == targets.to(self.device)).sum().item()
                 total += targets.size(0)
-                correct_one_epoch += (predicted == targets.to(self.device)).sum().item()
-                total_one_epoch += targets.size(0)
+                retrain_acc = 100.*correct_one_epoch/total_one_epoch
                 
                 progress_bar(batch_idx, len(dataloader), 'Loss: %.3f | Acc: %.3f%% (%d/%d)'
-                    % (loss.item()/(batch_idx+1), 100.*correct_one_epoch/total_one_epoch, correct_one_epoch, total_one_epoch))
-            print(toGreen('Model: {} Split Point: {} Retrain Accuracy: {}'.format(self.config.network, self.split_point, correct/total)))
+                    % (loss.item()/(batch_idx+1), retrain_acc, correct_one_epoch, total_one_epoch))
+            print(toGreen('Model: {} Split Point: {} Retrain Accuracy: {}'.format(self.name, self.split_point, retrain_acc)))
+
+            writer.add_scalar('acc/train', retrain_acc, epoch)
         
+        writer.close()
         IL_time = time() - t
         self.head_model.eval()    
         self.tail_model.eval()
-        return correct/total, IL_time
+        return retrain_acc, IL_time
     
     '''
     test the model.
@@ -247,7 +348,10 @@ class Trainer():
         # eval mode
         self.head_model.eval()
         self.tail_model.eval()
-                
+
+        if not is_profile:
+            writer = SummaryWriter('logs/IL/' + self.dataset + '/' + name + '/' + str(num_task) + '/')
+          
         for batch_idx, data in enumerate(dataloader):
             images, targets = data
             outputs = self.forward(images.to(self.device))
@@ -255,106 +359,12 @@ class Trainer():
             _, predicted = torch.max(outputs, 1)
             correct += (predicted == targets.to(self.device)).sum().item()
             total += targets.size(0)
-            correct_one_epoch += (predicted == targets.to(self.device)).sum().item()
-            total_one_epoch += targets.size(0)
+            eval_acc = 100.*correct/total
             
-        print(toGreen('Model: {} Split Point: {} Retrain Accuracy: {}'.
-                        format(self.config.network, self.split_point, correct/total)))
-            
-        return correct/total
-                
-                
-    '''
-    HeadModel class is defined in Trainer class to access the variables in Trainer conveniently.
-    The HeadModel is front partial model in Trainer. -> (input): data, (output): intermediate tensor.
-    It can be decided via the layernum when make instance of HeadModel.
-    '''
-    class HeadModel(nn.Module):
-        def __init__(self, layernum):
-            super(HeadModel, self).__init__()
-            # self.name = name
-            # model, fc ,fclayer, totallayer, input_transform = model_spec(name, alternative)
-            
-            self.model = None
-            self.layernum = layernum
-            self.fclayer = fclayer[Trainer.config.network]
-            self.totallayer = totallayer[Trainer.config.network]
-            self.defactolayer = self.totallayer - self.fclayer + 1
-            self.modulelist = []
-            self.input_transform = Trainer.input_transform
-            
-            ct = 0
-            for child in Trainer.model.children():
-                if isinstance(child, torch.nn.Sequential):
-                    for sub_child in range(len(child)):
-                        ct += 1
-                        if ct <= self.layernum:
-                            self.modulelist.append(child[sub_child])
-                else:
-                    ct += 1
-                    if ct <= self.layernum:
-                        self.modulelist.append(child)
-            if self.layernum == self.defactolayer:
-                self.model = Trainer.model
-            else:
-                self.model = torch.nn.Sequential(*self.modulelist)
-
-        def forward(self, x: torch.Tensor) -> torch.Tensor:
-            if self.input_transform is not None and self.layernum < self.defactolayer:
-                x = self.input_transform(x)
-
-            if self.layernum == 0:
-                return x
-
-            x = self.model(x)
-            return x
+        print(toGreen('Model: {} Split Point: {} Test Accuracy: {}'.
+                        format(self.name, self.split_point, eval_acc)))
         
-        
-    '''
-    TailModel class is defined in Trainer class to access the variables in Trainer conveniently.
-    The TailModel is front partial model in Trainer. -> (input): intermediate tensor, (output): logit value.
-    It can be decided via the layernum when make instance of TailModel.
-    Retraining is only conducted in TailModel.
-    '''
-    class TailModel(nn.Module):
-        def __init__(self, layernum):
-            super(TailModel, self).__init__()
-            # model, fc ,fclayer, totallayer, _ = model_spec(name, False)
+        writer.add_scalar('acc/test', eval_acc, 0)
+        writer.close()
 
-            self.model = None
-            self.layernum = layernum
-            self.fclayer = fclayer[Trainer.config.network]
-            self.totallayer = totallayer[Trainer.config.network]
-            self.defactolayer = self.totallayer - self.fclayer + 1
-            self.modulelist = []
-
-            ct = 0
-            for child in Trainer.model.children():
-                child = copy.deepcopy(child)
-                if isinstance(child, torch.nn.Sequential):
-                    for sub_child in range(len(child)):
-                        ct += 1
-                        if ct + self.layernum > self.defactolayer:
-                            self.modulelist.append(copy.deepcopy(child[sub_child]))
-                else:
-                    ct += 1
-                    if ct + self.layernum > self.defactolayer:
-                        self.modulelist.append(child)
-            self.fc = copy.deepcopy(Trainer.model.fc)
-            if self.layernum == 1:
-                self.model = self.fc
-            else:
-                self.modulelist = self.modulelist[:-self.fclayer]
-                self.model = torch.nn.Sequential(*self.modulelist)
-
-        def forward(self, x: torch.Tensor) -> torch.Tensor:
-            if self.layernum == 0:
-                return x
-            if self.layernum == 1:
-                x = pre_fc(x, Trainer.config.network)
-                x = self.model(x)
-            else:
-                x = self.model(x)
-                x = pre_fc(x, Trainer.config.network)
-                x = self.fc(x)
-            return x
+        return eval_acc
