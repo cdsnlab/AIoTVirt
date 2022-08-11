@@ -1,6 +1,5 @@
-from dataset import dataloader
 from load_partial_model import model_spec
-from dataloader import PretrainDataset
+from dataset.dataloader import PretrainDataset
 from torch.autograd import Variable
 from utils import toGreen, toRed
 from torch.utils.tensorboard import SummaryWriter
@@ -21,9 +20,11 @@ And Each model is trained with below 3 datasets.
 Several augmentation methods are used in training phase.
 '''
 directory = './ckpt/pretrain/'
-models = ['resnet18', 'googlenet', 'mobilenetv2', 'efficientnet_b0']
+# models = ['resnet18', 'googlenet', 'mobilenetv2', 'efficientnet_b0']
+models = ['resnet18', 'mobilenetv2', 'efficientnet_b0']
 
-datasets = ['cifar10', 'cifar100', 'imagenet100']
+# datasets = ['cifar10', 'cifar100', 'imagenet100']
+datasets = ['cifar100']
 
 train_dataloaders = []
 test_dataloaders = []

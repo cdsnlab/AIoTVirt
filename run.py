@@ -10,11 +10,13 @@ import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
 import torch.backends.cudnn as cudnn
+import torchvision.transforms as transforms
 import torchvision
 import os
 import argparse
 from utils import *
 from easydict import EasyDict as edict
+from dataset.dataloader import PretrainDataset, RetrainDataset
 import numpy as np
 import random
 
@@ -56,7 +58,9 @@ if __name__ == '__main__':
     parser.add_argument('-a', '--alpha', type = float, default = 0.1, help = 'forgetting hyperparameter. (bigger then faster) (0.1-0.3)')
     parser.add_argument('-t', '--temp', type = int, default = 2, help = 'distillation temperature')
     parser.add_argument('-d', '--dataset', type = str, default = 'cifar10', help = 'name of dataset')
-    parser.add_argument('-b', '--profile_budget', type = int, default = 20, help = 'time budget for profiling (minute)')
+    parser.add_argument('-c', '--new_class', type = str, default = '2,0,2,0,2,0', help = 'number of new classes for each task')
+    parser.add_argument('-f', '--finetune_epoch', type = int, default = 200, help = 'the number of finetuning before IL')
+    parser.add_argument('-b', '--profile_budget', type = int, default = 3, help = 'time budget for profiling (minute)')
     parser.add_argument('-r', '--retrain_budget', type = int, default = 20, help = 'time budget for retraining (minute)')
     args, _ = parser.parse_known_args()
     
@@ -65,6 +69,8 @@ if __name__ == '__main__':
     config.alpha = args.alpha
     config.temperature = args.temp
     config.dataset = args.dataset
+    config.new_class = list(map(int, args.new_class.split(',')))
+    config.finetune_epoch = args.finetune_epoch
     config.profile_budget = args.profile_budget*60
     config.retrain_budget = args.retrain_budget*60
     config.device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -87,17 +93,111 @@ if __name__ == '__main__':
     And calculate the retrain times in every split points.
     '''
     ######################################## dataset load ########################################
-    dataloaders = []
-    for i in range(4):
-        dataloader = None
-        dataloaders.append(dataloader)
     
+    train_transforms = transforms.Compose([
+            # transforms.ToCVImage(),
+            # transforms.Resize((64,64)),
+            transforms.ToTensor(),
+            # transforms.RandomResizedCrop(5),
+            transforms.RandomHorizontalFlip(),
+            transforms.ColorJitter(brightness=0.4, saturation=0.4, hue=0.4),
+            transforms.Normalize(
+                [0.48560741861744905, 0.49941626449353244, 0.43237713785804116],
+                [0.2321024260764962, 0.22770540015765814, 0.2665100547329813])
+        ])
+
+    test_transforms = transforms.Compose([
+            # transforms.ToCVImage(),
+            transforms.ToTensor(),
+            # transforms.CenterCrop(5),
+            transforms.Normalize(
+                [0.4862169586881995, 0.4998156522834164, 0.4311430419332438],
+                [0.23264268069040475, 0.22781080253662814, 0.26667253517177186])
+        ])
+
+    train_dataloaders = []
+    test_dataloaders = []
+    if config.dataset == 'cifar10':
+        task_num = 6
+        classes = 4
+        for i in range(task_num):
+            cifar10_train_dataset = RetrainDataset(
+                task_num=i,
+                dataset_name = config.dataset,
+                data_dir_path='/data/{}/test'.format(config.dataset),
+                num_total_classes=10,
+                num_pretrain_classes=4,
+                num_test_images_each_class=50,
+                num_total_images_each_task=1000,
+                task_specifications=[
+                    (2, 0, 605),
+                    (0, 6, 570),
+                    (2, 0, 576),
+                    (0, 8, 504),
+                    (2, 0, 604),
+                    (0, 10, 304)
+                ],
+                transforms = train_transforms
+            )
+            cifar10_train_dataloader = torch.utils.data.DataLoader(
+                cifar10_train_dataset,
+                64,
+                num_workers = 4,
+                shuffle=True
+            )
+            train_dataloaders.append(cifar10_train_dataloader)
+            
+            classes += config.new_class[i]
+            cifar10_test_dataset = PretrainDataset(
+                    dataset_name='cifar10',
+                    data_dir_path='/data/cifar10',
+                    num_classes_for_pretrain=classes,
+                    num_imgs_from_chosen_classes=[
+                        (50, classes)
+                    ],
+                    train=False,
+                    choosing_class_seed=2022,
+                    train_data_shuffle_seed=223,
+                    test_data_shuffle_seed=222,
+                    transform = test_transforms
+            )
+            cifar10_test_dataloader = torch.utils.data.DataLoader(
+                cifar10_test_dataset,
+                64,
+                num_workers = 4,
+                shuffle=True
+            )
+            test_dataloaders.append(cifar10_test_dataloader)
+
     '''
     Calculate the retrain times in every split points.
     The batch size of each dataloaders has to be same.
     The computation time and network time can be differenct if batch size is changed.
+    To insult equal number of lables, use the pretrain dataset.
     '''
-    trainer.measure_latency(dataloader=dataloaders[0])
+
+    cifar10_train_dataset = PretrainDataset(
+        dataset_name='cifar10',
+        data_dir_path='/data/cifar10',
+        num_classes_for_pretrain=1,
+        num_imgs_from_chosen_classes=[
+            (128, 1)
+        ],
+        train=True,
+        choosing_class_seed=2022,
+        train_data_shuffle_seed=223,
+        test_data_shuffle_seed=222,
+        transform = train_transforms
+    )
+
+    cifar10_train_dataloader = torch.utils.data.DataLoader(
+        cifar10_train_dataset,
+        64,
+        num_workers = 4,
+        shuffle=True
+    )
+
+    trainer.measure_latency(dataloader=cifar10_train_dataloader)
     ######################################## dataset load ########################################
     
     
@@ -106,6 +206,54 @@ if __name__ == '__main__':
     ######################################## golden model ########################################
     
     
+    trainer.set_network(split_point=8)
+    
+
+    cifar10_test_dataset = PretrainDataset(
+            dataset_name='cifar10',
+            data_dir_path='/data/cifar10',
+            num_classes_for_pretrain=4,
+            num_imgs_from_chosen_classes=[
+                (50, 4)
+            ],
+            train=False,
+            choosing_class_seed=2022,
+            train_data_shuffle_seed=223,
+            test_data_shuffle_seed=222,
+            transform = test_transforms
+        )
+    cifar10_test_dataloader = torch.utils.data.DataLoader(
+        cifar10_test_dataset,
+        64,
+        num_workers = 4,
+        shuffle=True
+    )
+    trainer.test(dataloader = cifar10_test_dataloader, num_task = 0, epoch = 0)
+    trainer.test(dataloader = cifar10_test_dataloader, num_task = 0, epoch = 1)
+
+
+    # print(trainer.tail_model.model)
+
+
+    for dataloader_idx in range(len(train_dataloaders)):
+        dataloader = train_dataloaders[dataloader_idx]
+        test_dataloader = test_dataloaders[dataloader_idx]
+        num_new_class = config.new_class[dataloader_idx]
+        print(toYellow('######### Retrain Start Task {} #########'.format(dataloader_idx)))
+        trainer.incremental_learning(dataloader=dataloader, test_dataloader=test_dataloader, epoch=500,
+                                    num_new_class=num_new_class, num_task=dataloader_idx)
+        trainer.save_network(dataset = config.dataset, num_task = dataloader_idx)
+
+
+
+
+
+
+
+
+
+
+
     '''
     The dataloaders are used seuentially.
     In each dataloader, the optimal split point is profiled.
@@ -119,11 +267,13 @@ if __name__ == '__main__':
     # for diagram
     total_history = []
     
-    allocated_time = config.profile_budget / totallayer[config.network]
-    for dataloader_idx in range(len(dataloaders)):
-        dataloader = dataloaders[dataloader_idx]
-        num_new_class = 1
+    allocated_profile_time = config.profile_budget / totallayer[config.network]
+    for dataloader_idx in range(len(train_dataloaders)):
+        dataloader = train_dataloaders[dataloader_idx]
+        test_dataloader = test_dataloaders[dataloader_idx]
+        num_new_class = config.new_class[dataloader_idx]
         retrain_results = dict()
+        print(toYellow('######### Profile Start Task {} #########'.format(dataloader_idx)))
         for split_point in range(totallayer[config.network]):
             '''
             Profiling phase start.
@@ -131,13 +281,17 @@ if __name__ == '__main__':
             And measure the accuracy based on split point and calculated epochs.
             '''
             time_train_one_step = trainer.get_time_train_one_step(split_point=split_point)
-            time_train_one_epoch = math.ceil(len(dataloader.dataset)/dataloader.batchsize)*time_train_one_step
-            number_of_profile_epoch = int(allocated_time / time_train_one_epoch)
+            time_train_one_epoch = math.ceil(len(dataloader.dataset)/64)*time_train_one_step
+            number_of_profile_epoch = int(allocated_profile_time / time_train_one_epoch)
+            print(toBlue('task num : {},\t'.format(dataloader_idx)) + toCyan('split point : {},\t'.format(split_point))
+             + toGreen('train one epoch time : {},\t'.format(time_train_one_epoch))
+             + toMagenta('allocated time : {},\t'.format(allocated_profile_time))
+             + toRed('allocated epoch : {},\t'.format(number_of_profile_epoch)))
             trainer.set_network(split_point=split_point)
-            retrain_results[split_point], _ = trainer.incremental_learning(dataloader=dataloader, 
-                                            epoch=number_of_profile_epoch, num_new_class=num_new_class,
+            retrain_results[split_point], _ = trainer.incremental_learning(dataloader=dataloader, test_dataloader=test_dataloader,
+                                            epoch=number_of_profile_epoch, num_new_class=num_new_class if split_point == 0 else 0,
                                             num_task=dataloader_idx, is_profile=True)
-        
+
         '''
         After profiling phase finish, then split the model and execute IL until accuracy converges.
         And collect the datas for diagram.
@@ -155,8 +309,13 @@ if __name__ == '__main__':
         time_train_one_step = trainer.get_time_train_one_step(split_point=best_split_point)
         time_train_one_epoch = math.ceil(len(dataloader.dataset)/dataloader.batchsize)*time_train_one_step
         number_of_retrain_epoch = int(config.retrain_budget / time_train_one_epoch)
-        trainer.incremental_learning(dataloader=dataloader, epoch=number_of_retrain_epoch, 
-                                    num_new_class=num_new_class, num_task=dataloader_idx)
+        print(toYellow('######### Retrain Start Task {} #########'.format(dataloader_idx)))
+        print(toBlue('task num : {},\t'.format(dataloader_idx)) + toCyan('split point : {},\t'.format(best_split_point))
+            + toGreen('train one epoch time : {},\t'.format(time_train_one_epoch))
+            + toMagenta('allocated time : {},\t'.format(config.retrain_budget))
+            + toRed('allocated epoch : {},\t'.format(number_of_retrain_epoch)))
+        trainer.incremental_learning(dataloader=dataloader, test_dataloader = test_dataloader, 
+                                    epoch=number_of_retrain_epoch, num_new_class=num_new_class, num_task=dataloader_idx)
         # test the model
         best_split_test_acc = trainer.test()
 

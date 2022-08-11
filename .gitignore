@@ -5,3 +5,4 @@ __pycache__/
 dataset/__pycache__/
 logs/
 requirements.yaml
+/test_pretrain.py

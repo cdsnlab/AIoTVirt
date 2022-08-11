@@ -9,8 +9,10 @@ import sys
 
 from time import time
 from torch.utils.tensorboard import SummaryWriter
-from utils import toGreen, toRed, progress_bar
+from utils import toGreen, toRed, toYellow, toBlue, toCyan, progress_bar
 from load_partial_model import model_spec
+from torch.autograd import Variable
+from torchsummary import summary
 
 
 '''
@@ -48,7 +50,18 @@ def xavier_normal_init(m):
     elif isinstance(m, nn.Linear):
         nn.init.xavier_normal_(m.weight, nonlinearity='sigmoid')
 
-      
+def step_lr(epoch, base_lr, lr_decay_every, lr_decay_factor, optimizer):
+    """Handles step decay of learning rate."""
+    factor = np.power(lr_decay_factor, np.floor((epoch - 1) / lr_decay_every))
+    if base_lr > 1e-4:
+        new_lr = base_lr * factor
+        # print('Set lr to ', new_lr)
+    else:
+        new_lr = base_lr
+    for param_group in optimizer.param_groups:
+        param_group['lr'] = new_lr
+    return optimizer
+
 '''
 The HeadModel is front partial model in Trainer. -> (input): data, (output): intermediate tensor.
 It can be decided via the layernum when make instance of HeadModel.
@@ -59,7 +72,9 @@ class HeadModel(nn.Module):
         # self.name = name
         # model, fc ,fclayer, totallayer, input_transform = model_spec(name, alternative)
         
+        self.original_model = copy.deepcopy(original_model)
         self.model = None
+        self.name = name
         self.layernum = layernum
         self.fclayer = fclayer[name]
         self.totallayer = totallayer[name]
@@ -67,7 +82,7 @@ class HeadModel(nn.Module):
         self.modulelist = []
         
         ct = 0
-        for child in original_model.children():
+        for child in self.original_model.children():
             if isinstance(child, torch.nn.Sequential):
                 for sub_child in range(len(child)):
                     ct += 1
@@ -78,9 +93,12 @@ class HeadModel(nn.Module):
                 if ct <= self.layernum:
                     self.modulelist.append(child)
         if self.layernum == self.defactolayer:
-            self.model = original_model
+            self.model = self.original_model
         else:
             self.model = torch.nn.Sequential(*self.modulelist)
+        
+        del self.original_model
+        
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         if self.layernum == 0:
@@ -100,7 +118,9 @@ class TailModel(nn.Module):
         super(TailModel, self).__init__()
         # model, fc ,fclayer, totallayer, _ = model_spec(name, False)
 
+        self.original_model = copy.deepcopy(original_model)
         self.model = None
+        self.name = name
         self.layernum = layernum
         self.fclayer = fclayer[name]
         self.totallayer = totallayer[name]
@@ -108,7 +128,7 @@ class TailModel(nn.Module):
         self.modulelist = []
 
         ct = 0
-        for child in original_model.children():
+        for child in self.original_model.children():
             child = copy.deepcopy(child)
             if isinstance(child, torch.nn.Sequential):
                 for sub_child in range(len(child)):
@@ -119,22 +139,24 @@ class TailModel(nn.Module):
                 ct += 1
                 if ct + self.layernum > self.defactolayer:
                     self.modulelist.append(child)
-        self.fc = copy.deepcopy(original_model.fc)
+        self.fc = copy.deepcopy(self.original_model.fc)
         if self.layernum == 1:
             self.model = self.fc
         else:
             self.modulelist = self.modulelist[:-self.fclayer]
             self.model = torch.nn.Sequential(*self.modulelist)
+        del self.original_model
+        
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         if self.layernum == 0:
             return x
         if self.layernum == 1:
-            x = pre_fc(x, name)
+            x = pre_fc(x, self.name)
             x = self.model(x)
         else:
             x = self.model(x)
-            x = pre_fc(x, name)
+            x = pre_fc(x, self.name)
             x = self.fc(x)
         return x
 
@@ -149,7 +171,7 @@ class Trainer():
         self.config = config
         self.name = self.config.network
         self.dataset = self.config.dataset
-        model, _, _, _, _ = model_spec(self.name, self.dataset)
+        model, fc, _, _, _ = model_spec(self.name, self.dataset)
         model.load_state_dict(torch.load('./ckpt/pretrain/' + self.name + '_' + self.dataset + '.pt', map_location = 'cpu'))
         
         # self.model = copy.deepcopy(model)
@@ -167,11 +189,14 @@ class Trainer():
         self.input_transform = None
         self.tail_optimizer = None
         self.split_point = None
+        self.output_num = fc.out_features
         self.loss_function = nn.CrossEntropyLoss()
+        # self.kd_loss_function = nn.KLDivLoss()
+        self.finetune_epoch = self.config.finetune_epoch
         self.inference_latency = dict()
         self.retrain_time = dict()
         self.network_latency = dict()
-        self.writer - SummaryWriter('logs/IL/')
+        self.writer = SummaryWriter('logs/IL/')
         
         if self.name == 'googlenet':
             self.input_transform = self.model._transform_input
@@ -182,6 +207,7 @@ class Trainer():
     1. forward propagation time
     2. retrain time
     3. network latency
+    4. reset networks
     '''
     def measure_latency(self, dataloader):
         for split_point in range(totallayer[self.name]):
@@ -190,17 +216,27 @@ class Trainer():
             tail_optimizer = torch.optim.SGD(tail_model.parameters(), lr=0.001, momentum=0.9)
             for batch_idx, data in enumerate(dataloader):
                 t = time()
-                images, targets = data
+                images, targets, _ = data
+                images, targets = Variable(images.float()).to(self.device), Variable(targets).to(self.device)
                 intermediate_tensor = head_model.forward(images.to(self.device))
-                self.network_latency[split_point] = sys.getsizeof(intermediate_tensor)
+                intermediate_tensor_size = 1
+                for s in intermediate_tensor.size():
+                    intermediate_tensor_size *= s
+                self.network_latency[split_point] = intermediate_tensor_size
                 outputs = tail_model.forward(intermediate_tensor)
-                self.inference_latency[split_point] = time()-t
+                if self.name == 'googlenet':
+                    outputs = outputs[0]
+                self.inference_latency[split_point] = time() - t
                 loss = self.loss_function(outputs, targets)
                 loss.backward()
                 tail_optimizer.zero_grad()
                 tail_optimizer.step()
                 self.retrain_time[split_point] = time() - t
                 break
+        self.model.load_state_dict(torch.load('./ckpt/pretrain/' + self.name + '_' + self.dataset + '.pt', map_location = 'cuda'))
+        print(toRed('Network Latency Profiling for each split point : ') + toGreen(self.network_latency))
+        print(toRed('Inference Latency Profiling for each split point : ') + toGreen(self.inference_latency))
+        print(toRed('Retrain Time Profiling for each split point : ') + toGreen(self.retrain_time))
                 
         
     '''
@@ -210,8 +246,21 @@ class Trainer():
         self.split_point = split_point
         self.head_model = HeadModel(self.name, split_point, self.model).to(self.device)
         self.tail_model = TailModel(self.name, totallayer[self.name] - fclayer[self.name] + 1 - split_point, self.model).to(self.device)
-        self.tail_optimizer = torch.optim.SGD(self.tail_model.parameters(), lr=0.001, momentum=0.9)
+        # self.head_model = torch.nn.Sequential(*self.head_model.model)
+        # self.tail_model = torch.nn.Sequential(*self.tail_model.model)
+        self.tail_optimizer = torch.optim.SGD(self.tail_model.parameters(), lr=0.0001, momentum=0.9, weight_decay=5e-4)
+        print(toBlue('{}\n{}').format(self.head_model, self.tail_model))
+
+    '''
+    Save the model.
+    '''
+    def save_network(self, dataset, num_task):
+        directory = './ckpt/IL/'
+        torch.save(self.head_model.state_dict(), directory + self.name + '_head_' + dataset + '_' + str(num_task) + '.pt')
+        torch.save(self.tail_model.state_dict(), directory + self.name + '_tail_' + dataset + '_' + str(num_task) + '.pt')       
         
+
+
     '''
     First of all, head model outputs the intermediate tensor, 
     and the tail model receives that and make output.
@@ -260,6 +309,90 @@ class Trainer():
     '''
     def get_time_all_forward_prop(self):
         return self.inference_latency
+
+
+    '''Computes the distillation loss (cross-entropy).
+       xentropy(y, t) = kl_div(y, t) + entropy(t)
+       entropy(t) does not contribute to gradient wrt y, so we skip that.
+       Thus, loss value is slightly different, but gradients are correct.
+       \delta_y{xentropy(y, t)} = \delta_y{kl_div(y, t)}.
+    '''
+    def distillation_loss(self, y, teacher_scores, T):
+        return F.kl_div(F.log_softmax(y / T), F.softmax(teacher_scores / T))
+
+
+    '''
+    Add new class to self.tail_model.
+    '''
+    def add_new_class(self, num_new_class):
+        if self.name == 'mobilenetv2':
+            # add new class
+            self.tail_model = self.tail_model.to('cpu')
+            # Old number of input/output channel of the last FC layer in old model
+            in_features = self.tail_model.classifier[-1].in_features
+            out_features = self.tail_model.classifier[-1].out_features
+            # Old weight/bias of the last FC layer
+            weight = self.tail_model.classifier[-1].weight.data
+            bias = self.tail_model.classifier[-1].bias.data
+            # New number of output channel of the last FC layer in new model
+            new_out_features = num_new_class+out_features
+            # Creat a new FC layer and initial it's weight/bias
+            new_fc = nn.Linear(in_features, new_out_features)
+            xavier_normal_init(new_fc.weight)
+            new_fc.weight.data[:out_features] = weight
+            new_fc.bias.data[:out_features] = bias
+            # Replace the old FC layer
+            self.tail_model.classifier[-1] = new_fc
+            self.model.classifier[-1] = new_fc
+        elif self.name == 'efficientnet_b0':
+            # add new class
+            self.tail_model = self.tail_model.to('cpu')
+            # Old number of input/output channel of the last FC layer in old model
+            in_features = self.tail_model._fc.in_features
+            out_features = self.tail_model._fc.out_features
+            # Old weight/bias of the last FC layer
+            weight = self.tail_model._fc.weight.data
+            bias = self.tail_model._fc.bias.data
+            # New number of output channel of the last FC layer in new model
+            new_out_features = num_new_class+out_features
+            # Creat a new FC layer and initial it's weight/bias
+            new_fc = nn.Linear(in_features, new_out_features)
+            xavier_normal_init(new_fc.weight)
+            new_fc.weight.data[:out_features] = weight
+            new_fc.bias.data[:out_features] = bias
+            # Replace the old FC layer
+            self.tail_model._fc = new_fc
+            self.model._fc = new_fc
+        else:
+            # add new class
+            self.tail_model = self.tail_model.to('cpu')
+            # Old number of input/output channel of the last FC layer in old model
+            in_features = self.tail_model.fc.in_features
+            out_features = self.tail_model.fc.out_features
+            # Old weight/bias of the last FC layer
+            weight = self.tail_model.fc.weight.data
+            bias = self.tail_model.fc.bias.data
+            # New number of output channel of the last FC layer in new model
+            new_out_features = num_new_class+out_features
+            # Creat a new FC layer and initial it's weight/bias
+            new_fc = nn.Linear(in_features, new_out_features)
+            # print(new_fc.weight)
+            print(new_fc.weight.data)
+            print(new_fc.weight.data.size())
+            print(weight)
+            print(weight.size())
+            xavier_normal_init(new_fc.weight)
+            # nn.init.zeros_(new_fc.weight)
+            new_fc.weight.data[:out_features,:] = weight[:,:]
+            new_fc.bias.data[:out_features] = bias
+            # Replace the old FC layer
+            self.tail_model.fc = new_fc
+            self.model.fc = new_fc
+            print(self.model.fc.weight)
+        # CUDA
+        self.tail_model = self.tail_model.to(self.device)
+        self.output_num += num_new_class
+        
         
     '''
     Migrate the weight and bias in original fc layer to new fc layer.
@@ -267,73 +400,132 @@ class Trainer():
     And then retrain the tail model in IL manner.
     You can use this function when measuring retrain one epoch time by setting the epoch param to 1.
     '''
-    def incremental_learning(self, dataloader, epoch, num_new_class, num_task, is_profile=False):
+    def incremental_learning(self, dataloader, test_dataloader, epoch, num_new_class, num_task, is_profile=False):
+        # summary(self.tail_model, (64,3,32,32))
+        
+
+        # if is_profile:
+        self.old_head_model, self.old_tail_model = copy.deepcopy(self.head_model), copy.deepcopy(self.tail_model)
+        self.old_head_model.eval()
+        self.old_tail_model.eval()
+
+
+        
+
+
+        outputs_old = []
+        for batch_idx, data in enumerate(dataloader):
+            with torch.no_grad():
+                images, targets, _ = data
+                targets = Variable(targets).cuda(0)
+                outputs = self.old_forward(images.to(self.device))
+                outputs_old.append(outputs)
+
+                    # _, predicted = torch.max(outputs, 1)
+                    # correct += (predicted == targets.to(self.device)).sum().item()
+                    # total += targets.size(0)
+        # print(output_old[0])
+        # print(output_old[0].size())
+
         # migrate the head_model and tail model
-        if not is_profile:
-            self.old_head_model, self.old_tail_model = copy.deepcopy(self.head_model), copy.deepcopy(self.tail_model)
-            self.old_head_model.eval()
-            self.old_tail_model.eval()
         
         # add new class
-        self.tail_model = self.tail_model.to('cpu')
-        # Old number of input/output channel of the last FC layer in old model
-        in_features = self.tail_model.classifier[6].in_features
-        out_features = self.tail_model.classifier[6].out_features
-        # Old weight/bias of the last FC layer
-        weight = self.tail_model.classifier[6].weight.data
-        bias = self.tail_model.classifier[6].bias.data
-        # New number of output channel of the last FC layer in new model
-        new_out_features = num_new_class+out_features
-        # Creat a new FC layer and initial it's weight/bias
-        new_fc = nn.Linear(in_features, new_out_features)
-        xavier_normal_init(new_fc.weight)
-        new_fc.weight.data[:out_features] = weight
-        new_fc.bias.data[:out_features] = bias
-        # Replace the old FC layer
-        self.tail_model.classifier[6] = new_fc
-        # CUDA
-        self.tail_model = self.tail_model.to(self.device)
-        
-        # train
-        self.head_model.eval()
-        self.tail_model.train()
+        self.add_new_class(num_new_class = num_new_class)
+        old_output_num = self.output_num - num_new_class
+
 
         # log
         if not is_profile:
-            writer = SummaryWriter('logs/IL/' + self.dataset + '/' + name + '/' + str(num_task) + '/')
-                
+            writer = SummaryWriter('logs/IL/' + self.dataset + '/' + self.name + '/task' + str(num_task) + '/')
+      
+        
+        retrain_acc = 0
         t = time()
         for e in range(epoch):
+            # if e > 0 :
             correct, total = 0, 0
+            correct_label = [0 for i in range(self.output_num)]
+            total_label = [0 for i in range(self.output_num)]
+
+            # train
+            self.head_model.eval()
+            self.tail_model.train()
+            # self.tail_optimizer = step_lr(e, 0.001, 50, 0.1, self.tail_optimizer)
+            
             for batch_idx, data in enumerate(dataloader):
-                images, targets = data
-                outputs = self.forward(images.to(self.device), is_train=True)
-                soft_target = self.old_forward(images.to(self.device))
-
-                loss1 = self.loss_function(outputs, targets)
-                outputs_S = F.softmax(outputs[:,:out_features]/self.T,dim=1)
-                outputs_T = F.softmax(soft_target[:,:out_features]/self.T,dim=1)
-
-                loss2 = outputs_T.mul(-1*torch.log(outputs_S))
-                loss2 = loss2.sum(1)
-                loss2 = loss2.mean()*self.T*self.T
-                loss = loss1*self.alpha+loss2*(1-self.alpha)
-                loss.backward(retain_graph=True)
                 self.tail_optimizer.zero_grad()
+
+                images, targets, _ = data
+                targets = Variable(targets).cuda(0)
+                outputs = self.forward(images.to(self.device), is_train=True)
+                # print(outputs)
+                # soft_target = self.old_forward(images.to(self.device))
+
+                KD_loss = F.kl_div(F.log_softmax(outputs[:,:old_output_num] / self.T), F.softmax(outputs_old[batch_idx] / self.T), reduction = 'batchmean')
+                CE_loss = self.loss_function(outputs, targets)
+                # print(toBlue('KD loss:{}\tCE loss:{}'.format(KD_loss, CE_loss)))
+
+                # loss1 = self.loss_function(outputs, targets)
+                # outputs_S = F.softmax(outputs[:,:old_out_features]/self.T,dim=1)
+                # outputs_T = F.softmax(soft_target[:,:old_out_features]/self.T,dim=1)
+
+                # loss2 = outputs_T.mul(-1*torch.log(outputs_S))
+                # loss2 = loss2.sum(1)
+                # loss2 = loss2.mean()*self.T*self.T
+
+                # KD_loss = self.kd_loss_function(F.log_softmax(outputs/self.T, dim=1),
+                #             F.softmax(soft_target/self.T, dim=1)) * (self.alpha * self.T * self.T) + \
+                #             F.cross_entropy(outputs, targets) * (1. - self.alpha)
+                
+                # loss = KD_loss*self.alpha + CE_loss*(1-self.alpha)
+                # loss = KD_loss
+
+                if e <= self.finetune_epoch:
+                    loss = CE_loss    
+                    loss.backward(retain_graph=True)
+                    for module in self.tail_model.modules():
+                        if isinstance(module, nn.Conv2d):
+                            module.weight.grad.data.fill_(0)
+                else:
+                    loss = 2.5*KD_loss + CE_loss
+                    loss.backward(retain_graph=True)
+
                 self.tail_optimizer.step()
         
                 _, predicted = torch.max(outputs, 1)
+                # print(predicted, targets)
                 correct += (predicted == targets.to(self.device)).sum().item()
                 total += targets.size(0)
-                retrain_acc = 100.*correct_one_epoch/total_one_epoch
-                
-                progress_bar(batch_idx, len(dataloader), 'Loss: %.3f | Acc: %.3f%% (%d/%d)'
-                    % (loss.item()/(batch_idx+1), retrain_acc, correct_one_epoch, total_one_epoch))
-            print(toGreen('Model: {} Split Point: {} Retrain Accuracy: {}'.format(self.name, self.split_point, retrain_acc)))
+                for i in range(len(targets)):
+                    total_label[targets[i]] += 1
+                    if predicted[i] == targets[i]:
+                        correct_label[targets[i]] += 1
+            
+            
 
-            writer.add_scalar('acc/train', retrain_acc, epoch)
-        
-        writer.close()
+
+
+            retrain_acc = 100.*correct/total
+                # progress_bar(batch_idx, len(dataloader), 'Loss: %.3f | Acc: %.3f%% (%d/%d)'
+                #     % (loss.item()/(batch_idx+1), retrain_acc, correct_one_epoch, total_one_epoch))
+            if e % 10 == 0:
+                if is_profile:
+                    print(toGreen('(Profile) Model: {}\tSplit Point: {}\tRetrain Accuracy: {}'.format(self.name, self.split_point, retrain_acc)))
+                else:
+                    # if e > 0:
+                    print(toGreen('(IL) Epoch: {}\tModel: {}\tSplit Point: {}\tRetrain Accuracy: {}'.format(e, self.name, self.split_point, retrain_acc)))
+                    print(toYellow('######### Test Start Task {}\tEpoch {} #########'.format(num_task, e)))
+                    self.test(dataloader=test_dataloader, num_task=num_task, epoch = e)
+
+            if not is_profile:
+                writer.add_scalar('acc/train', retrain_acc, e)
+                if e == epoch -1 and num_new_class == 0:
+                    for i in range(self.output_num):
+                        print(toGreen('label: {}\taccuracy: {}'.format(i, 100.*correct_label[i]/total_label[i])))
+
+        if not is_profile:
+            writer.close()
+
         IL_time = time() - t
         self.head_model.eval()    
         self.tail_model.eval()
@@ -342,29 +534,39 @@ class Trainer():
     '''
     test the model.
     '''
-    def test(self, dataloader):
+    def test(self, dataloader, num_task, epoch):
+        writer = SummaryWriter('logs/IL/' + self.dataset + '/' + self.name + '/task' + str(num_task) + '/')
         correct, total = 0, 0
+        correct_label = [0 for i in range(self.output_num)]
+        total_label = [0 for i in range(self.output_num)]
         
         # eval mode
         self.head_model.eval()
         self.tail_model.eval()
-
-        if not is_profile:
-            writer = SummaryWriter('logs/IL/' + self.dataset + '/' + name + '/' + str(num_task) + '/')
-          
+       
         for batch_idx, data in enumerate(dataloader):
-            images, targets = data
-            outputs = self.forward(images.to(self.device))
-    
-            _, predicted = torch.max(outputs, 1)
-            correct += (predicted == targets.to(self.device)).sum().item()
-            total += targets.size(0)
-            eval_acc = 100.*correct/total
-            
+            with torch.no_grad():
+                images, targets, _ = data
+                outputs = self.forward(images.to(self.device))
+        
+                _, predicted = torch.max(outputs, 1)
+                correct += (predicted == targets.to(self.device)).sum().item()
+                total += targets.size(0)
+                        
+            for i in range(len(targets)):
+                total_label[targets[i]] += 1
+                if predicted[i] == targets[i]:
+                    correct_label[targets[i]] += 1
+
+        eval_acc = 100.*correct/total
         print(toGreen('Model: {} Split Point: {} Test Accuracy: {}'.
                         format(self.name, self.split_point, eval_acc)))
         
-        writer.add_scalar('acc/test', eval_acc, 0)
+        for i in range(self.output_num):
+            writer.add_scalar('acc/test/task{}/label{}'.format(num_task, i), 100.*correct_label[i]/total_label[i], epoch)
+            print(toGreen('label: {}\taccuracy: {}/{} = {}'.format(i, correct_label[i], total_label[i], 100.*correct_label[i]/total_label[i])))
+
+        writer.add_scalar('acc/test/task{}'.format(num_task), 100.*correct/total, epoch)
         writer.close()
 
         return eval_acc
