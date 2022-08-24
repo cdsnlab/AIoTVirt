@@ -3,3 +3,5 @@
 .bash_history
 .vscode-server
 .gitconfig
+.ssh
+.gnupg
