@@ -1,1 +1,12 @@
 /LwF.py
+.local
+.bash_history
+.vscode-server
+.gitconfig
+.ssh
+.gnupg
+*.pkl
+*.tar.gz
+data_batch*
+batches*
+__pycache__
