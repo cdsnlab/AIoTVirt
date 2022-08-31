@@ -100,7 +100,7 @@ class LIGETIPretrainImageNet100(object):
                 num_imgs_from_chosen_classes:
             for clas in range(num_classes_for_num_imgs):
                 chosen_class = classes_chosen_for_pretrain[chosen_idx]
-                chosen_data = data[chosen_class][:num_chosen_imgs]
+                chosen_data = data[chosen_class][-num_chosen_imgs:]
                 chosen_data = [
                     (x, chosen_idx, chosen_class) for x in chosen_data
                 ]
@@ -139,4 +139,4 @@ if __name__ == '__main__':
         train_data_shuffle_seed=223,
         test_data_shuffle_seed=222
     )
-    print(temp.getitem(10)[0])
+    print(temp(10))

@@ -67,7 +67,6 @@ class LIGETIPretrainCIFAR10(object):
         classes_chosen_for_pretrain = random.sample(
             range(self.total_num_classes), num_classes_for_pretrain)
         classes_chosen_for_pretrain = sorted(classes_chosen_for_pretrain)
-
         data = {}
         for class_data_file_name in os.listdir(data_dir_path):
             class_idx = int(class_data_file_name.split('.')[0])
@@ -87,7 +86,7 @@ class LIGETIPretrainCIFAR10(object):
                 num_imgs_from_chosen_classes:
             for clas in range(num_classes_for_num_imgs):
                 chosen_class = classes_chosen_for_pretrain[chosen_idx]
-                chosen_data = data[chosen_class][:num_chosen_imgs]
+                chosen_data = data[chosen_class][-num_chosen_imgs:]
                 chosen_data = [
                     (x, chosen_idx, chosen_class) for x in chosen_data
                 ]
@@ -157,19 +156,14 @@ if __name__ == '__main__':
     #     train=True,
     #     seeds=(222, 2022)
     # )
-    tracemalloc.start()
-    temp = LIGETIPretrainCIFAR100(
+    temp = LIGETIPretrainCIFAR10(
         data_dir_path='/data/cifar10',
-        num_classes_for_pretrain=40,
+        num_classes_for_pretrain=10,
         num_imgs_from_chosen_classes=[
-            (20, 40)
-            #(50, 10), (150, 20), (200, 10)
+            (50, 10),
         ],
-        train=True,
+        train=False,
         choosing_class_seed=2022,
         train_data_shuffle_seed=223,
         test_data_shuffle_seed=222
     )
-    temp(10)
-    print(tracemalloc.get_traced_memory())
-    tracemalloc.stop()
