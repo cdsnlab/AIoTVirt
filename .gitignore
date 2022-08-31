@@ -16,3 +16,4 @@ dataloader
 .keras
 .bashrc
 .config
+.cache
