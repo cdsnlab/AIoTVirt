@@ -8,6 +8,8 @@ from pickle import load
 import random
 import tracemalloc
 
+from matplotlib.pyplot import cla
+
 BASE_DIR = os.path.dirname(__file__)
 sys.path.append(BASE_DIR)
 
@@ -55,46 +57,71 @@ class LIGETIPretrainCIFAR10(object):
         test_data_shuffle_seed: int = 223
     ) -> None:
 
-        if train:
-            dset = 'train'
-            data_seed = train_data_shuffle_seed
-        else:
-            dset = 'test'
-            data_seed = test_data_shuffle_seed
-        data_dir_path = os.path.join(data_dir_path, dset)
-
         random.seed(choosing_class_seed)
         classes_chosen_for_pretrain = random.sample(
             range(self.total_num_classes), num_classes_for_pretrain)
-        classes_chosen_for_pretrain = sorted(classes_chosen_for_pretrain)
-        data = {}
-        for class_data_file_name in os.listdir(data_dir_path):
-            class_idx = int(class_data_file_name.split('.')[0])
-            class_data_file_path = os.path.join(
-                data_dir_path,
-                class_data_file_name
-            )
-            with open(class_data_file_path, 'rb') as f:
-                class_data = load(f)
-                f.close()
-                random.seed(data_seed)
-                random.shuffle(class_data)
-                data[class_idx] = class_data
+        data = self.read_data(
+            data_dir_path=data_dir_path,
+            train_data_shuffle_seed=train_data_shuffle_seed,
+            test_data_shuffle_seed=test_data_shuffle_seed
+        )
+
         chosen_idx = 0
-        self.pretrain_data = []
+        self.chosen_data = []
         for num_chosen_imgs, num_classes_for_num_imgs in\
                 num_imgs_from_chosen_classes:
             for clas in range(num_classes_for_num_imgs):
                 chosen_class = classes_chosen_for_pretrain[chosen_idx]
-                chosen_data = data[chosen_class][-num_chosen_imgs:]
-                chosen_data = [
-                    (x, chosen_idx, chosen_class) for x in chosen_data
+                if not train:
+                    chosen_class_data = data[chosen_class][-num_chosen_imgs:]
+                else:
+                    chosen_class_data = data[chosen_class][:num_chosen_imgs]
+                chosen_class_data = [
+                    (x, chosen_class) for x in chosen_class_data
                 ]
-                self.pretrain_data.extend(chosen_data)
+                self.chosen_data.extend(chosen_class_data)
                 chosen_idx += 1
-        del chosen_data
-        del class_data
+
+        del chosen_class_data
         del data
+
+    def read_data(
+        self,
+        data_dir_path: str,
+        train_data_shuffle_seed: int,
+        test_data_shuffle_seed: int
+    ):
+        """read_data _summary_
+        """
+
+        self.name2index_list = {i: i for i in range(self.total_num_classes)}
+
+        data = {}
+        for dset in ['train', 'test']:
+            dset_dir_path = os.path.join(data_dir_path, dset)
+
+            if dset == 'train':
+                data_seed = train_data_shuffle_seed
+            elif dset == 'test':
+                data_seed = test_data_shuffle_seed
+
+            for class_data_file_name in os.listdir(dset_dir_path):
+                class_idx = int(class_data_file_name.split('.')[0])
+                class_data_file_path = os.path.join(
+                    dset_dir_path,
+                    class_data_file_name
+                )
+                with open(class_data_file_path, 'rb') as f:
+                    class_data = load(f)
+                    f.close()
+                    random.seed(data_seed)
+                    random.shuffle(class_data)
+                    try:
+                        data[class_idx].extend(class_data)
+                    except KeyError:
+                        data[class_idx] = class_data
+        del class_data
+        return data
 
     def __call__(self, idx):
         """__call__ Get an item from the training data list given its
@@ -111,7 +138,7 @@ class LIGETIPretrainCIFAR10(object):
             an image of the dataset in un-preprocessed format, shaped
             (32, 32, 3) and its class and the class's name
         """
-        return self.pretrain_data[idx]
+        return self.chosen_data[idx]
 
 
 class LIGETIPretrainCIFAR100(LIGETIPretrainCIFAR10):
@@ -147,15 +174,21 @@ class LIGETIPretrainCIFAR100(LIGETIPretrainCIFAR10):
 
 
 if __name__ == '__main__':
-    # LIGETIPretrainCIFAR10(
-    #     data_dir_path='/home/hihi/LIGETI/dataloader/cifar10/train',
-    #     num_classes_for_pretrain=4,
-    #     num_imgs_from_chosen_classes=[
-    #         (500, 1), (1000, 1), (1500, 1), (2000, 1)
-    #     ],
-    #     train=True,
-    #     seeds=(222, 2022)
-    # )
+    temp = LIGETIPretrainCIFAR10(
+        data_dir_path='/data/cifar10',
+        num_classes_for_pretrain=10,
+        num_imgs_from_chosen_classes=[
+            (500, 3), (1000, 3), (1500, 2), (2000, 2)
+        ],
+        train=True,
+        choosing_class_seed=2022,
+        train_data_shuffle_seed=223,
+        test_data_shuffle_seed=222
+    )
+    print(temp(499))
+    print(temp(500))
+    print(temp(1999))
+    print(temp(2500))
     temp = LIGETIPretrainCIFAR10(
         data_dir_path='/data/cifar10',
         num_classes_for_pretrain=10,
