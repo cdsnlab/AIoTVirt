@@ -10,3 +10,9 @@
 data_batch*
 batches*
 __pycache__
+dataloader
+.conda
+.keras
+.bashrc
+.config
+.cache
