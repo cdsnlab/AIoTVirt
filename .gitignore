@@ -5,3 +5,8 @@
 .gitconfig
 .ssh
 .gnupg
+.cache
+.conda
+.bashrc
+.keras
+.config
