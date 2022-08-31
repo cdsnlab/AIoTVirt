@@ -14,12 +14,8 @@ BASE_DIR = os.path.dirname(__file__)
 sys.path.append(BASE_DIR)
 
 
-class LIGETIPretrainCIFAR10(object):
-    """LIGETIPretrainCIFAR10 Prepare pretraining data for LIGETI. The data is
-    taken from the CIFAR10 dataset.
-
-    For pretraining only about 40% of classes are used. And from each class,
-    Only a small proportion of data (10-40%) will be used for pretraining.
+class LIGETIPretrainDataset(object):
+    """LIGETIPretrainDataset Prepare pretraining data for LIGETI.
 
     Parameters
     ----------
@@ -42,9 +38,7 @@ class LIGETIPretrainCIFAR10(object):
     test_data_shuffle_seed : int, optional
         The seed to choose random data in each class for pretrianing's
         testing
-    """
-
-    total_num_classes = 10
+    """    
 
     def __init__(
         self,
@@ -60,7 +54,7 @@ class LIGETIPretrainCIFAR10(object):
         random.seed(choosing_class_seed)
         classes_chosen_for_pretrain = random.sample(
             range(self.total_num_classes), num_classes_for_pretrain)
-        data = self.read_data(
+        full_data = self.read_data(
             data_dir_path=data_dir_path,
             train_data_shuffle_seed=train_data_shuffle_seed,
             test_data_shuffle_seed=test_data_shuffle_seed
@@ -68,14 +62,19 @@ class LIGETIPretrainCIFAR10(object):
 
         chosen_idx = 0
         self.chosen_data = []
+        self.remaining_data = \
+            {clas: full_data[clas] for clas in classes_chosen_for_pretrain}
+
         for num_chosen_imgs, num_classes_for_num_imgs in\
                 num_imgs_from_chosen_classes:
             for clas in range(num_classes_for_num_imgs):
                 chosen_class = classes_chosen_for_pretrain[chosen_idx]
                 if not train:
-                    chosen_class_data = data[chosen_class][-num_chosen_imgs:]
+                    chosen_class_data = \
+                        full_data[chosen_class][-num_chosen_imgs:]
                 else:
-                    chosen_class_data = data[chosen_class][:num_chosen_imgs]
+                    chosen_class_data = \
+                        full_data[chosen_class][:num_chosen_imgs]
                 chosen_class_data = [
                     (x, chosen_class) for x in chosen_class_data
                 ]
@@ -83,7 +82,7 @@ class LIGETIPretrainCIFAR10(object):
                 chosen_idx += 1
 
         del chosen_class_data
-        del data
+        del full_data
 
     def read_data(
         self,
@@ -141,7 +140,36 @@ class LIGETIPretrainCIFAR10(object):
         return self.chosen_data[idx]
 
 
-class LIGETIPretrainCIFAR100(LIGETIPretrainCIFAR10):
+class LIGETIPretrainCIFAR10(LIGETIPretrainDataset):
+    total_num_classes = 10
+    """LIGETIPretrainCIFAR10 Prepare pretraining data for LIGETI. The data is
+    taken from the CIFAR10 dataset.
+
+    Parameters
+    ----------
+    data_dir_path : str
+        The path to the dataset directory. The data should be organized
+        into two sub-dirs `train` and `test`, each of which is then
+        organized into sub-dirs of classes.
+    num_classes_for_pretrain : int
+        number of classes that will be used for pretraining
+    num_of_imgs_from_chosen_classes : list of tuple
+        number of images from each chosen class. Each tuple contains
+        (number of imgs, number of classes from each of which this many
+        images would be taken)
+    train : bool
+        Are we training or testing?
+    choosing_class_seed : int, optional
+        The seed to choose random classes for pretraining
+    train_data_shuffle_seed : int, optional
+        The seed to choose random data in each class for pretrianing
+    test_data_shuffle_seed : int, optional
+        The seed to choose random data in each class for pretrianing's
+        testing
+    """
+
+
+class LIGETIPretrainCIFAR100(LIGETIPretrainDataset):
     """LIGETIPretrainCIFAR10 Prepare pretraining data for LIGETI. The data is
     taken from the CIFAR10 dataset.
 
@@ -185,10 +213,10 @@ if __name__ == '__main__':
         train_data_shuffle_seed=223,
         test_data_shuffle_seed=222
     )
-    print(temp(499))
-    print(temp(500))
-    print(temp(1999))
-    print(temp(2500))
+    # print(temp(499))
+    # print(temp(500))
+    # print(temp(1999))
+    # print(temp(2500))
     temp = LIGETIPretrainCIFAR10(
         data_dir_path='/data/cifar10',
         num_classes_for_pretrain=10,
