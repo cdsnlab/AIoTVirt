@@ -16,3 +16,9 @@ dataloader
 .bashrc
 .config
 .cache
+/datadrift.py
+ckpt/
+__pycache__/
+dataset/__pycache__/
+logs/
+requirements.yaml
