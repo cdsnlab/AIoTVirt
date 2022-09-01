@@ -36,6 +36,7 @@ totallayer = {'resnet18': 14, 'resnet34': 22, 'resnet50': 22, 'resnet101': 39,
                 'vgg11': 29, 'vgg13': 33, 'vgg16': 39, 'vgg19': 45,
                 'mobilenetv2': 21, 'shufflenetv2': 24, 'alexnet': 21, 'googlenet': 18, 'efficientnet_b0': 8}
 num_lastlayer = {'cifar10': 4, 'cifar100': 40, 'imagenet100': 40}
+# num_lastlayer = {'cifar10': 10, 'cifar100': 100, 'imagenet100': 100}
 
 def model_spec(model_name, dataset_name):
     input_transform = None

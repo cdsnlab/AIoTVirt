@@ -1,4 +1,6 @@
 
+from posixpath import split
+from termios import CEOL
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -7,13 +9,16 @@ import copy
 import collections
 import sys
 
-from time import time
+# from time import time
+import time
 from torch.utils.tensorboard import SummaryWriter
 from utils import toGreen, toRed, toYellow, toBlue, toCyan, progress_bar
 from load_partial_model import model_spec
 from torch.autograd import Variable
 from torchsummary import summary
 
+INIT_LR = 1e-6
+print('initial lr {}'.format(INIT_LR))
 
 '''
 The information of layer in each model is listed in dictionary.
@@ -190,6 +195,7 @@ class Trainer():
         self.tail_optimizer = None
         self.split_point = None
         self.output_num = fc.out_features
+        print('check output_num : {}'.format(self.output_num))
         self.loss_function = nn.CrossEntropyLoss()
         # self.kd_loss_function = nn.KLDivLoss()
         self.finetune_epoch = self.config.finetune_epoch
@@ -210,30 +216,81 @@ class Trainer():
     4. reset networks
     '''
     def measure_latency(self, dataloader):
+        # tt = 0.
+        flag = False
         for split_point in range(totallayer[self.name]):
             head_model = HeadModel(self.name, split_point, self.model).to(self.device)
             tail_model = TailModel(self.name, totallayer[self.name] - fclayer[self.name] + 1 - split_point, self.model).to(self.device)
-            tail_optimizer = torch.optim.SGD(tail_model.parameters(), lr=0.001, momentum=0.9)
-            for batch_idx, data in enumerate(dataloader):
-                t = time()
-                images, targets, _ = data
-                images, targets = Variable(images.float()).to(self.device), Variable(targets).to(self.device)
-                intermediate_tensor = head_model.forward(images.to(self.device))
-                intermediate_tensor_size = 1
-                for s in intermediate_tensor.size():
-                    intermediate_tensor_size *= s
-                self.network_latency[split_point] = intermediate_tensor_size
-                outputs = tail_model.forward(intermediate_tensor)
-                if self.name == 'googlenet':
-                    outputs = outputs[0]
-                self.inference_latency[split_point] = time() - t
-                loss = self.loss_function(outputs, targets)
-                loss.backward()
-                tail_optimizer.zero_grad()
-                tail_optimizer.step()
-                self.retrain_time[split_point] = time() - t
-                break
-        self.model.load_state_dict(torch.load('./ckpt/pretrain/' + self.name + '_' + self.dataset + '.pt', map_location = 'cuda'))
+            print(toBlue(head_model, tail_model))
+            tail_optimizer = torch.optim.SGD(tail_model.parameters(), lr=INIT_LR, momentum=0.9)
+            # tmp_time = time.perf_counter()
+            intermediate_tensors = []
+            intermediate_tensor_size = 1
+            with torch.no_grad():
+                for batch_idx, data in enumerate(dataloader):
+                    images, _, _ = data
+                    images = Variable(images.float()).to(self.device)
+                    intermediate_tensor = head_model.forward(images.to(self.device))
+                    intermediate_tensors.append(intermediate_tensor)
+                    for s in intermediate_tensor.size():
+                            intermediate_tensor_size *= s
+            for e in range(1):
+                e_time = time.perf_counter()
+                for batch_idx, data in enumerate(dataloader):
+                    t = time.perf_counter()
+                    _, targets, _ = data
+                    targets = Variable(targets).to(self.device)
+
+                    # intermediate_tensor = head_model.forward(images.to(self.device))
+                    # intermediate_tensor_size = 1
+                    # for s in intermediate_tensor.size():
+                    #     intermediate_tensor_size *= s
+                    outputs = tail_model.forward(intermediate_tensors[batch_idx])
+                    if self.name == 'googlenet':
+                        outputs = outputs[0]
+                    inference_latency = time.perf_counter() - t
+                    loss = self.loss_function(outputs, targets)
+
+                    loss.backward(retain_graph = True)
+                    tail_optimizer.zero_grad()
+                    tail_optimizer.step()
+                    # retrain_time = time.perf_counter() - t
+
+
+                    if batch_idx == 0 and e == 0:
+                        print('start measure split point {}'.format(split_point))
+                        self.network_latency[split_point] = intermediate_tensor_size
+                        self.inference_latency[split_point] = time.perf_counter() - t
+                        # self.retrain_time[split_point] = time.perf_counter() - t
+                    # elif batch_idx == 10:
+                    #     self.network_latency[split_point] /= 10.
+                    #     self.inference_latency[split_point] /= 10.
+                    #     self.retrain_time[split_point] /= 10.
+                    #     break
+                    else:
+                        self.network_latency[split_point] = intermediate_tensor_size
+                        self.inference_latency[split_point] += inference_latency
+                        # self.retrain_time[split_point] = self.retrain_time[split_point] + retrain_time
+                        # tt+=retrain_time
+                        # print(retrain_time, self.retrain_time[split_point], tt)
+                        # print(type(t), type(time.perf_counter_ns()))
+                
+                if not flag and e==0:
+                    e=0
+                    flag = True
+
+                if e==0:
+                    self.retrain_time[split_point] = time.perf_counter() - e_time
+                else:
+                    self.retrain_time[split_point] += time.perf_counter() - e_time
+                # print(self.retrain_time)
+                # print('###### {}'.format(time.perf_counter() - tmp_time))
+                # print(time()-e_time, self.retrain_time)
+            # self.inference_latency[split_point] /= float(e)
+            # self.retrain_time[split_point] /= float(e)
+            
+
+        # self.model.load_state_dict(torch.load('./ckpt/pretrain/' + self.name + '_' + self.dataset + '.pt', map_location = 'cuda'))
         print(toRed('Network Latency Profiling for each split point : ') + toGreen(self.network_latency))
         print(toRed('Inference Latency Profiling for each split point : ') + toGreen(self.inference_latency))
         print(toRed('Retrain Time Profiling for each split point : ') + toGreen(self.retrain_time))
@@ -248,7 +305,7 @@ class Trainer():
         self.tail_model = TailModel(self.name, totallayer[self.name] - fclayer[self.name] + 1 - split_point, self.model).to(self.device)
         # self.head_model = torch.nn.Sequential(*self.head_model.model)
         # self.tail_model = torch.nn.Sequential(*self.tail_model.model)
-        self.tail_optimizer = torch.optim.SGD(self.tail_model.parameters(), lr=0.0001, momentum=0.9, weight_decay=5e-4)
+        self.tail_optimizer = torch.optim.SGD(self.tail_model.parameters(), lr=INIT_LR, momentum=0.9, weight_decay=5e-4)
         print(toBlue('{}\n{}').format(self.head_model, self.tail_model))
 
     '''
@@ -320,6 +377,11 @@ class Trainer():
     def distillation_loss(self, y, teacher_scores, T):
         return F.kl_div(F.log_softmax(y / T), F.softmax(teacher_scores / T))
 
+    def concat_models(self):
+        torch.save(self.head_model.state_dict(), './head_model.pt')
+        torch.save(self.tail_model.state_dict(), './tail_model.pt')
+        self.model.load_state_dict(torch.load('./head_model.pt', map_location=self.device), strict=False)
+        self.model.load_state_dict(torch.load('./tail_model.pt', map_location=self.device), strict=False)
 
     '''
     Add new class to self.tail_model.
@@ -377,20 +439,33 @@ class Trainer():
             # Creat a new FC layer and initial it's weight/bias
             new_fc = nn.Linear(in_features, new_out_features)
             # print(new_fc.weight)
-            print(new_fc.weight.data)
-            print(new_fc.weight.data.size())
-            print(weight)
-            print(weight.size())
-            xavier_normal_init(new_fc.weight)
+            # print(new_fc.weight.data)
+            # print(new_fc.weight.data.size())
+            # print(weight)
+            # print(weight.size())
+            # xavier_normal_init(new_fc.weight)
             # nn.init.zeros_(new_fc.weight)
             new_fc.weight.data[:out_features,:] = weight[:,:]
-            new_fc.bias.data[:out_features] = bias
+            # new_fc.bias.data[:out_features] = bias
+
+            with torch.no_grad():
+                old_weights = torch.cat([w for w in self.tail_model.fc.weight])
+
+                old_norm = torch.mean(old_weights.norm())
+                new_norm = torch.mean(new_fc.weight.norm())
+
+                new_fc.weight = nn.Parameter((old_norm / new_norm) * new_fc.weight)
+
+
+
+
             # Replace the old FC layer
             self.tail_model.fc = new_fc
             self.model.fc = new_fc
-            print(self.model.fc.weight)
+            # print(self.model.fc.weight)
         # CUDA
         self.tail_model = self.tail_model.to(self.device)
+        self.tail_optimizer = torch.optim.SGD(self.tail_model.parameters(), lr=INIT_LR, momentum=0.9, weight_decay=5e-4)
         self.output_num += num_new_class
         
         
@@ -401,6 +476,7 @@ class Trainer():
     You can use this function when measuring retrain one epoch time by setting the epoch param to 1.
     '''
     def incremental_learning(self, dataloader, test_dataloader, epoch, num_new_class, num_task, is_profile=False):
+        # torch.autograd.set_detect_anomaly(True)
         # summary(self.tail_model, (64,3,32,32))
         
 
@@ -412,13 +488,14 @@ class Trainer():
 
         
 
-
         outputs_old = []
+
         for batch_idx, data in enumerate(dataloader):
             with torch.no_grad():
                 images, targets, _ = data
                 targets = Variable(targets).cuda(0)
                 outputs = self.old_forward(images.to(self.device))
+                # print(outputs.size())
                 outputs_old.append(outputs)
 
                     # _, predicted = torch.max(outputs, 1)
@@ -440,9 +517,10 @@ class Trainer():
       
         
         retrain_acc = 0
-        t = time()
+        # t = time()
         for e in range(epoch):
             # if e > 0 :
+
             correct, total = 0, 0
             correct_label = [0 for i in range(self.output_num)]
             total_label = [0 for i in range(self.output_num)]
@@ -453,16 +531,77 @@ class Trainer():
             # self.tail_optimizer = step_lr(e, 0.001, 50, 0.1, self.tail_optimizer)
             
             for batch_idx, data in enumerate(dataloader):
+                # if batch_idx == 5:
+                #     input()
                 self.tail_optimizer.zero_grad()
+
+
+                # with torch.no_grad():
+                #     images, targets, _ = data
+                #     targets = Variable(targets).cuda(0)
+                #     outputs = self.old_forward(images.to(self.device))
+                #     # print(outputs.size())
+                #     outputs_old.append(outputs)
+
+
 
                 images, targets, _ = data
                 targets = Variable(targets).cuda(0)
-                outputs = self.forward(images.to(self.device), is_train=True)
+                one_hot_targets = F.one_hot(targets, num_classes=self.output_num).float()
+                # print(one_hot_targets)
+                # outputs = self.forward(images.to(self.device), is_train=True)
+                outputs = self.tail_model(images.to(self.device))
+                # print('############################################################')
+                # print(images)
+                # print(outputs)
+
                 # print(outputs)
                 # soft_target = self.old_forward(images.to(self.device))
+                # import pdb; pdb.set_trace()
+                # proba = torch.nan_to_num(F.softmax(outputs, dim=1))
+                # old_proba = torch.nan_to_num(F.softmax(outputs_old[batch_idx], dim=1))
+                proba = F.softmax(outputs, dim=1)
+                old_proba = F.softmax(outputs_old[batch_idx], dim=1)
+                # print(proba)
+                # print(old_proba)
 
-                KD_loss = F.kl_div(F.log_softmax(outputs[:,:old_output_num] / self.T), F.softmax(outputs_old[batch_idx] / self.T), reduction = 'batchmean')
-                CE_loss = self.loss_function(outputs, targets)
+                # print(old_proba.size())
+
+                # print(batch_idx, proba[..., -num_new_class:].size(), one_hot_targets[..., -num_new_class].size())
+                
+                CE_loss = F.binary_cross_entropy(proba[..., -num_new_class:], one_hot_targets[..., -num_new_class:])
+                # print(proba[..., -num_new_class:].size())
+                # CE_loss = self.loss_function(outputs[..., -old_output_num:], targets)
+
+                modified_proba = torch.pow(proba[..., :-num_new_class], 2)
+                modified_old_proba = torch.pow(old_proba, 2)
+                
+
+                # print(modified_proba)
+                # print(modified_old_proba)
+                
+                # print(modified_proba.size())
+                # print(len(modified_proba.sum(-1)))
+                # print(modified_old_proba.size())
+
+                modified_proba = modified_proba / modified_proba.sum(-1).view(len(modified_proba.sum(-1)), 1)
+                # modified_proba = torch.nan_to_num(modified_proba)
+                modified_old_proba = modified_old_proba / modified_old_proba.sum(-1).view(len(modified_old_proba.sum(-1)), 1)
+                # modified_old_proba = torch.nan_to_num(modified_old_proba)
+
+                # print(modified_proba)
+                # print(modified_old_proba)
+                # print(modified_proba)
+
+                KD_loss = 5. * F.binary_cross_entropy_with_logits(modified_proba, modified_old_proba)
+                # print()
+
+                # print(CE_loss, KD_loss)
+
+                # if num_task > 0:
+                # print(outputs.size())
+                # partial_output = outputs[..., :old_output_num]
+                # KD_loss = F.kl_div(F.log_softmax(partial_output / self.T), F.softmax(outputs_old[batch_idx] / self.T), reduction = 'batchmean')
                 # print(toBlue('KD loss:{}\tCE loss:{}'.format(KD_loss, CE_loss)))
 
                 # loss1 = self.loss_function(outputs, targets)
@@ -480,15 +619,23 @@ class Trainer():
                 # loss = KD_loss*self.alpha + CE_loss*(1-self.alpha)
                 # loss = KD_loss
 
-                if e <= self.finetune_epoch:
-                    loss = CE_loss    
-                    loss.backward(retain_graph=True)
-                    for module in self.tail_model.modules():
-                        if isinstance(module, nn.Conv2d):
-                            module.weight.grad.data.fill_(0)
-                else:
-                    loss = 2.5*KD_loss + CE_loss
-                    loss.backward(retain_graph=True)
+                # if e <= self.finetune_epoch:
+                #     loss = CE_loss    
+                #     loss.backward(retain_graph=True)
+                #     for module in self.tail_model.modules():
+                #         if isinstance(module, nn.Conv2d):
+                #             module.weight.grad.data.fill_(0)
+                # else:
+                # if num_task > 0:
+                loss = 2.5*KD_loss + CE_loss
+                # print(loss)
+                # else:
+                # loss = KD_loss + CE_loss
+                # loss = KD_loss
+
+                # loss.backward(retain_graph=True)
+                # print(loss)
+                loss.backward()
 
                 self.tail_optimizer.step()
         
@@ -508,7 +655,20 @@ class Trainer():
             retrain_acc = 100.*correct/total
                 # progress_bar(batch_idx, len(dataloader), 'Loss: %.3f | Acc: %.3f%% (%d/%d)'
                 #     % (loss.item()/(batch_idx+1), retrain_acc, correct_one_epoch, total_one_epoch))
-            if e % 10 == 0:
+            if e % 2 == 0:
+                with torch.no_grad():
+                    in_features = self.tail_model.fc.in_features
+                    out_features = self.tail_model.fc.out_features
+                    new_fc = nn.Linear(in_features, out_features).to(self.device)
+                    new_fc.weight[:out_features,:] = self.tail_model.fc.weight[:,:]
+                    old_weights = torch.cat([w for w in self.tail_model.fc.weight])
+
+                    old_norm = torch.mean(old_weights.norm())
+                    new_norm = torch.mean(new_fc.weight.norm())
+
+                    new_fc.weight = nn.Parameter((old_norm / new_norm) * new_fc.weight)
+                    self.tail_model.fc = new_fc
+                print(CE_loss, KD_loss)
                 if is_profile:
                     print(toGreen('(Profile) Model: {}\tSplit Point: {}\tRetrain Accuracy: {}'.format(self.name, self.split_point, retrain_acc)))
                 else:
@@ -526,10 +686,11 @@ class Trainer():
         if not is_profile:
             writer.close()
 
-        IL_time = time() - t
+        # IL_time = time() - t
         self.head_model.eval()    
         self.tail_model.eval()
-        return retrain_acc, IL_time
+        self.concat_models()
+        return retrain_acc#, IL_time
     
     '''
     test the model.
@@ -539,7 +700,8 @@ class Trainer():
         correct, total = 0, 0
         correct_label = [0 for i in range(self.output_num)]
         total_label = [0 for i in range(self.output_num)]
-        
+        print(self.output_num)
+
         # eval mode
         self.head_model.eval()
         self.tail_model.eval()

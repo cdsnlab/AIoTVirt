@@ -21,10 +21,11 @@ Several augmentation methods are used in training phase.
 '''
 directory = './ckpt/pretrain/'
 # models = ['resnet18', 'googlenet', 'mobilenetv2', 'efficientnet_b0']
-models = ['resnet18', 'mobilenetv2', 'efficientnet_b0']
+# models = ['resnet18', 'mobilenetv2', 'efficientnet_b0']
+models = ['resnet18']
 
 # datasets = ['cifar10', 'cifar100', 'imagenet100']
-datasets = ['cifar100']
+datasets = ['cifar10']
 
 train_dataloaders = []
 test_dataloaders = []
@@ -59,7 +60,7 @@ cifar10_train_dataset = PretrainDataset(
         data_dir_path='/data/cifar10',
         num_classes_for_pretrain=4,
         num_imgs_from_chosen_classes=[
-            (500, 1), (1000, 1), (1500, 1), (2000, 1)
+            (5000, 1), (5000, 1), (5000, 1), (5000, 1)
         ],
         train=True,
         choosing_class_seed=2022,
@@ -96,87 +97,87 @@ cifar10_test_dataloader = torch.utils.data.DataLoader(
 train_dataloaders.append(cifar10_train_dataloader)
 test_dataloaders.append(cifar10_test_dataloader)
 
-cifar100_train_dataset = PretrainDataset(
-        dataset_name='cifar100',
-        data_dir_path='/data/cifar100',
-        num_classes_for_pretrain=40,
-        num_imgs_from_chosen_classes=[
-            (50, 10), (150, 20), (200, 10)
-        ],
-        train=True,
-        choosing_class_seed=2022,
-        train_data_shuffle_seed=223,
-        test_data_shuffle_seed=222,
-        transform = train_transforms
-    )
-cifar100_test_dataset = PretrainDataset(
-        dataset_name='cifar100',
-        data_dir_path='/data/cifar100',
-        num_classes_for_pretrain=40,
-        num_imgs_from_chosen_classes=[
-            (50, 40)
-        ],
-        train=False,
-        choosing_class_seed=2022,
-        train_data_shuffle_seed=223,
-        test_data_shuffle_seed=222,
-        transform = test_transforms
-    )
-cifar100_train_dataloader = torch.utils.data.DataLoader(
-    cifar100_train_dataset,
-    64,
-    num_workers = 4,
-    shuffle=True
-)
-cifar100_test_dataloader = torch.utils.data.DataLoader(
-    cifar100_test_dataset,
-    64,
-    num_workers = 4,
-    shuffle=True
-)
-train_dataloaders.append(cifar100_train_dataloader)
-test_dataloaders.append(cifar100_test_dataloader)
+# cifar100_train_dataset = PretrainDataset(
+#         dataset_name='cifar100',
+#         data_dir_path='/data/cifar100',
+#         num_classes_for_pretrain=40,
+#         num_imgs_from_chosen_classes=[
+#             (50, 10), (150, 20), (200, 10)
+#         ],
+#         train=True,
+#         choosing_class_seed=2022,
+#         train_data_shuffle_seed=223,
+#         test_data_shuffle_seed=222,
+#         transform = train_transforms
+#     )
+# cifar100_test_dataset = PretrainDataset(
+#         dataset_name='cifar100',
+#         data_dir_path='/data/cifar100',
+#         num_classes_for_pretrain=40,
+#         num_imgs_from_chosen_classes=[
+#             (50, 40)
+#         ],
+#         train=False,
+#         choosing_class_seed=2022,
+#         train_data_shuffle_seed=223,
+#         test_data_shuffle_seed=222,
+#         transform = test_transforms
+#     )
+# cifar100_train_dataloader = torch.utils.data.DataLoader(
+#     cifar100_train_dataset,
+#     64,
+#     num_workers = 4,
+#     shuffle=True
+# )
+# cifar100_test_dataloader = torch.utils.data.DataLoader(
+#     cifar100_test_dataset,
+#     64,
+#     num_workers = 4,
+#     shuffle=True
+# )
+# train_dataloaders.append(cifar100_train_dataloader)
+# test_dataloaders.append(cifar100_test_dataloader)
 
-imagenet100_train_dataset = PretrainDataset(
-        dataset_name='imagenet100',
-        data_dir_path='/data/imagenet100',
-        num_classes_for_pretrain=40,
-        num_imgs_from_chosen_classes=[
-            (100, 10), (250, 20), (500, 10)
-        ],
-        train=True,
-        choosing_class_seed=2022,
-        train_data_shuffle_seed=223,
-        test_data_shuffle_seed=222,
-        transform = train_transforms
-    )
-imagenet100_test_dataset = PretrainDataset(
-        dataset_name='imagenet100',
-        data_dir_path='/data/imagenet100',
-        num_classes_for_pretrain=40,
-        num_imgs_from_chosen_classes=[
-            (50, 40)
-        ],
-        train=False,
-        choosing_class_seed=2022,
-        train_data_shuffle_seed=223,
-        test_data_shuffle_seed=222,
-        transform = test_transforms
-    )
-imagenet100_train_dataloader = torch.utils.data.DataLoader(
-    imagenet100_train_dataset,
-    64,
-    num_workers = 4,
-    shuffle=True
-)
-imagenet100_test_dataloader = torch.utils.data.DataLoader(
-    imagenet100_test_dataset,
-    64,
-    num_workers = 4,
-    shuffle=True
-)
-train_dataloaders.append(imagenet100_train_dataloader)
-test_dataloaders.append(imagenet100_test_dataloader)
+# imagenet100_train_dataset = PretrainDataset(
+#         dataset_name='imagenet100',
+#         data_dir_path='/data/imagenet100',
+#         num_classes_for_pretrain=40,
+#         num_imgs_from_chosen_classes=[
+#             (100, 10), (250, 20), (500, 10)
+#         ],
+#         train=True,
+#         choosing_class_seed=2022,
+#         train_data_shuffle_seed=223,
+#         test_data_shuffle_seed=222,
+#         transform = train_transforms
+#     )
+# imagenet100_test_dataset = PretrainDataset(
+#         dataset_name='imagenet100',
+#         data_dir_path='/data/imagenet100',
+#         num_classes_for_pretrain=40,
+#         num_imgs_from_chosen_classes=[
+#             (50, 40)
+#         ],
+#         train=False,
+#         choosing_class_seed=2022,
+#         train_data_shuffle_seed=223,
+#         test_data_shuffle_seed=222,
+#         transform = test_transforms
+#     )
+# imagenet100_train_dataloader = torch.utils.data.DataLoader(
+#     imagenet100_train_dataset,
+#     64,
+#     num_workers = 4,
+#     shuffle=True
+# )
+# imagenet100_test_dataloader = torch.utils.data.DataLoader(
+#     imagenet100_test_dataset,
+#     64,
+#     num_workers = 4,
+#     shuffle=True
+# )
+# train_dataloaders.append(imagenet100_train_dataloader)
+# test_dataloaders.append(imagenet100_test_dataloader)
 
 
 '''
@@ -195,14 +196,14 @@ for num_dataloader in range(len(train_dataloaders)):
         xavier_normal_init(model)
         model.cuda(0)
         loss_fn = nn.CrossEntropyLoss()
-        optimizer = optim.Adam(model.parameters(),lr=0.001)
+        optimizer = optim.Adam(model.parameters(),lr=0.0001)
         writer = SummaryWriter('logs/pretrain/' + datasets[num_dataloader] + '/' + name + '/')
 
         epoch = 0
         before_eval_acc = 0.
 
         # epoch
-        while epoch < 200:
+        while epoch < 10:
             epoch += 1
             total_right = 0
             total = 0
@@ -263,6 +264,7 @@ for num_dataloader in range(len(train_dataloaders)):
             writer.add_scalar('acc/test', eval_acc, epoch)
             if epoch % 10 == 0:
                 print("Model: {}, Test accuracy for epoch {}: {}".format(name, str(epoch), eval_acc))
+                torch.save(model.state_dict(), directory + name + '_' + datasets[num_dataloader] + '.pt')
                 # for i in range(num_label):
                 #     print(toGreen('class {}: ').format(i), end='')
                 #     print('{}/{}={}'.format(label_right[i], label_total[i], 100*label_right[i]/label_total[i]), end='\t')
@@ -274,4 +276,3 @@ for num_dataloader in range(len(train_dataloaders)):
         #     before_eval_acc = total_right/total
 
         writer.close()
-        torch.save(model.state_dict(), directory + name + '_' + datasets[num_dataloader] + '.pt')
