@@ -59,6 +59,7 @@ class LIGETIPretrainDataset(object):
             train_data_shuffle_seed=train_data_shuffle_seed,
             test_data_shuffle_seed=test_data_shuffle_seed
         )
+        self.chosen_classes = classes_chosen_for_pretrain
 
         chosen_idx = 0
         self.chosen_data = []
@@ -72,9 +73,13 @@ class LIGETIPretrainDataset(object):
                 if not train:
                     chosen_class_data = \
                         full_data[chosen_class][-num_chosen_imgs:]
+                    self.remaining_data[chosen_class] = \
+                        self.remaining_data[chosen_class][:-num_chosen_imgs]
                 else:
                     chosen_class_data = \
                         full_data[chosen_class][:num_chosen_imgs]
+                    self.remaining_data[chosen_class] = \
+                        self.remaining_data[chosen_class][num_chosen_imgs:]
                 chosen_class_data = [
                     (x, chosen_class) for x in chosen_class_data
                 ]
