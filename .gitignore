@@ -5,3 +5,18 @@
 .gitconfig
 .ssh
 .gnupg
+.cache
+.viminfo
+.python_history
+__pycache__
+.keras
+.nv
+
+# model files
+*.trt
+*.onnx
+
+# test code
+test_*.py
+test*.py
+test-*.py
