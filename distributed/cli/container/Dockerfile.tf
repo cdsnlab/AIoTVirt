@@ -1,4 +1,4 @@
-FROM nvcr.io/nvidia/l4t-pytorch:r32.4.4-pth1.6-py3
+FROM nvcr.io/nvidia/l4t-tensorflow:r32.4.4-tf2.3-py3
 
 ENV TZ=Asia/Seoul
 RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
