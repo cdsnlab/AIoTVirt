@@ -7,7 +7,7 @@ import sys
 import random
 from pickle import load
 from typing import Tuple
-from torch.utils.data import Dataset
+from torch.utils.data import Dataset, DataLoader
 from memory_profiler import profile
 from PIL import Image
 
@@ -263,6 +263,13 @@ if __name__ == '__main__':
         ],
         retrain_data_shuffle_seed=2,
     )
+    dataloader = DataLoader(
+        temp,
+        batch_size=32,
+        shuffle=True
+    )
+    for sample in dataloader:
+        print(sample)
 
     # dataset = 'imagenet100'
     # temp = RetrainingDatasetPreparer(
