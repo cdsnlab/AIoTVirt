@@ -1,4 +1,10 @@
 /LwF.py
+/datadrift.py
+ckpt/
+__pycache__/
+dataset/__pycache__/
+logs/
+requirements.yaml
 
 # folder
 .local
@@ -32,4 +38,8 @@ test-*.py
 *.pkl
 *.tar.gz
 data_batch*
+<<<<<<< HEAD
 batches*
+=======
+batches*
+>>>>>>> prepare-pretrain-data
