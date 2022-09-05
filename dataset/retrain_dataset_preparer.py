@@ -93,6 +93,8 @@ class RetrainingDatasetPreparer(Dataset):
         task_num: int = 0,
         task_specifications: list = None,
         retrain_data_shuffle_seed: int = 2,
+        transforms = None,
+        target_transforms = None
     ):
         self.dataset_name = dataset_name
         self.data_dir_path = data_dir_path
@@ -106,6 +108,8 @@ class RetrainingDatasetPreparer(Dataset):
             pretrain_train_data_shuffle_seed
         self.pretrain_test_data_shuffle_seed = pretrain_test_data_shuffle_seed
         self.retrain_data_shuffle_seed = retrain_data_shuffle_seed
+        self.transforms = transforms
+        self.target_transforms = transforms
 
         self.get_remaining_avail_data_for_retrain()
 
@@ -235,9 +239,13 @@ class RetrainingDatasetPreparer(Dataset):
         if self.dataset_name == 'imagenet100':
             path, chosen_class = self.task_retrain_data[idx]
             img = Image.open(path)
-            return (img, chosen_class)
         elif 'cifar' in self.dataset_name:
-            return self.task_retrain_data[idx]
+            img, chosen_class = self.task_retrain_data[idx]
+        if self.transforms is not None:
+            img = self.transforms(img)
+        if self.target_transforms is not None:
+            chosen_class = self.target_transforms(chosen_class)
+        return img, chosen_class
 
     def __len__(self):
         return len(self.task_retrain_data)
