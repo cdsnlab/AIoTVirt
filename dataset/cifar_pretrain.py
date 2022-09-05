@@ -66,6 +66,7 @@ class LIGETIPretrainCIFAR10(object):
         random.seed(choosing_class_seed)
         classes_chosen_for_pretrain = random.sample(
             range(self.total_num_classes), num_classes_for_pretrain)
+        classes_chosen_for_pretrain = sorted(classes_chosen_for_pretrain)
 
         data = {}
         for class_data_file_name in os.listdir(data_dir_path):
@@ -87,15 +88,17 @@ class LIGETIPretrainCIFAR10(object):
             for clas in range(num_classes_for_num_imgs):
                 chosen_class = classes_chosen_for_pretrain[chosen_idx]
                 chosen_data = data[chosen_class][:num_chosen_imgs]
-                chosen_data = [(x, chosen_class) for x in chosen_data]
+                chosen_data = [
+                    (x, chosen_idx, chosen_class) for x in chosen_data
+                ]
                 self.pretrain_data.extend(chosen_data)
                 chosen_idx += 1
         del chosen_data
         del class_data
         del data
 
-    def getitem(self, idx):
-        """getitem Get an item from the training data list given its
+    def __call__(self, idx):
+        """__call__ Get an item from the training data list given its
         index. This function should be called inside the __getitem__
         function provided for torch Dataset.
 
@@ -105,11 +108,10 @@ class LIGETIPretrainCIFAR10(object):
             index of the item
         Returns
         -------
-        (np.darray, int)
+        (np.darray, int, str)
             an image of the dataset in un-preprocessed format, shaped
-            (3, 32, 32) and its class.
+            (32, 32, 3) and its class and the class's name
         """
-        print(self.pretrain_data[idx])
         return self.pretrain_data[idx]
 
 
@@ -142,7 +144,6 @@ class LIGETIPretrainCIFAR100(LIGETIPretrainCIFAR10):
             The seed to choose random data in each class for pretrianing's
             testing
     """
-
     total_num_classes = 100
 
 
@@ -158,7 +159,7 @@ if __name__ == '__main__':
     # )
     tracemalloc.start()
     temp = LIGETIPretrainCIFAR100(
-        data_dir_path='/data/cifar100',
+        data_dir_path='/data/cifar10',
         num_classes_for_pretrain=40,
         num_imgs_from_chosen_classes=[
             (20, 40)
@@ -169,6 +170,6 @@ if __name__ == '__main__':
         train_data_shuffle_seed=223,
         test_data_shuffle_seed=222
     )
-    temp.getitem(10)
+    temp(10)
     print(tracemalloc.get_traced_memory())
     tracemalloc.stop()

@@ -92,6 +92,7 @@ class LIGETIPretrainImageNet100(object):
         classes_chosen_for_pretrain = random.sample(
             class_list, num_classes_for_pretrain
         )
+        classes_chosen_for_pretrain = sorted(classes_chosen_for_pretrain)
 
         chosen_idx = 0
         self.pretrain_data = []
@@ -100,12 +101,14 @@ class LIGETIPretrainImageNet100(object):
             for clas in range(num_classes_for_num_imgs):
                 chosen_class = classes_chosen_for_pretrain[chosen_idx]
                 chosen_data = data[chosen_class][:num_chosen_imgs]
-                chosen_data = [(x, chosen_class) for x in chosen_data]
+                chosen_data = [
+                    (x, chosen_idx, chosen_class) for x in chosen_data
+                ]
                 self.pretrain_data.extend(chosen_data)
                 chosen_idx += 1
 
-    def getitem(self, idx):
-        """getitem Get an item from the training data list given its
+    def __call__(self, idx):
+        """__call__ Get an item from the training data list given its
         index. This function should be called inside the __getitem__
         function provided for torch Dataset.
 
@@ -115,14 +118,13 @@ class LIGETIPretrainImageNet100(object):
             index of the item
         Returns
         -------
-        (np.darray, int)
+        (np.darray, int, str)
             an image of the dataset in un-preprocessed format, shaped
-            (3, height, width) and its class.
+            (height, width, 3), its class and the class's name
         """
-        path, clas = self.pretrain_data[idx]
+        path, chosen_idx, chosen_class = self.pretrain_data[idx]
         img = Image.open(path)
-        img = np.transpose(np.array(img), (2, 0, 1))
-        return img, clas
+        return (img, chosen_idx, chosen_class)
 
 
 if __name__ == '__main__':

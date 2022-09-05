@@ -81,7 +81,7 @@ class CIFAR10(object):
             key=lambda x: x[0]
         )]
         for i in range(num_imgs):
-            self.data[i] = self.data[i].reshape(3, 32, 32)
+            self.data[i] = self.data[i].reshape(32, 32, 3)
             
         self.new_data = {}
         num_each_class_imgs = num_imgs // num_classes
@@ -89,7 +89,7 @@ class CIFAR10(object):
             self.new_data[c] = self.data[
                 c*num_each_class_imgs: (c+1)*num_each_class_imgs
             ]
-            with open('./dataloader/cifar{}/{}/{}.pkl'.format(
+            with open('/data/cifar{}/{}/{}.pkl'.format(
                 num_classes,
                 dset,
                 c
@@ -164,5 +164,20 @@ if __name__ == '__main__':
     dataset = CIFAR100(
         root='./dataloader/',
         train=True,
+        download=True
+    )
+    dataset = CIFAR100(
+        root='./dataloader/',
+        train=False,
+        download=True
+    )
+    dataset = CIFAR10(
+        root='./dataloader/',
+        train=True,
+        download=True
+    )
+    dataset = CIFAR10(
+        root='./dataloader/',
+        train=False,
         download=True
     )
