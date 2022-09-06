@@ -1,5 +1,4 @@
 /LwF.py
-
 /datadrift.py
 ckpt/
 __pycache__/
@@ -15,6 +14,7 @@ requirements.yaml
 .gitconfig
 .ssh
 .gnupg
+.cache
 .viminfo
 .python_history
 __pycache__
