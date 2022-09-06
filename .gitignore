@@ -1,28 +1,5 @@
 /LwF.py
-.local
-<<<<<<< HEAD
-.cache
-=======
->>>>>>> prepare-pretrain-data
-.bash_history
-.vscode-server
-.gitconfig
-.ssh
-.gnupg
-*.pkl
-*.tar.gz
-data_batch*
-batches*
-__pycache__
-dataloader
-.conda
-.keras
-.bashrc
-.config
-<<<<<<< HEAD
-.cache
-=======
-.cache
+
 /datadrift.py
 ckpt/
 __pycache__/
@@ -38,7 +15,6 @@ requirements.yaml
 .gitconfig
 .ssh
 .gnupg
-.cache
 .viminfo
 .python_history
 __pycache__
@@ -63,4 +39,3 @@ test-*.py
 *.tar.gz
 data_batch*
 batches*
->>>>>>> prepare-pretrain-data
