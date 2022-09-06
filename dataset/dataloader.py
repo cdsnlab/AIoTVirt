@@ -6,7 +6,7 @@ import os
 import sys
 from PIL import Image
 
-from torch.utils.data import Dataset
+from torch.utils.data import Dataset, DataLoader
 
 BASE_DIR = os.path.dirname(__file__)
 sys.path.append(BASE_DIR)
@@ -86,16 +86,16 @@ class PretrainDataset(Dataset):
         self.target_transform = target_transform
 
     def __len__(self):
-        return len(self.pretrain_dataset.pretrain_data)
+        return len(self.pretrain_dataset.chosen_data)
 
     def __getitem__(self, index):
-        img, img_class, img_class_name = self.pretrain_dataset(index)
+        img, img_class = self.pretrain_dataset(index)
         if self.transform is not None:
             # print(img.shape)
             img = self.transform(img)
         if self.target_transform is not None:
             img_class = self.target_transform(img_class)
-        return img, img_class, img_class_name
+        return img, img_class
 
 
 class RetrainDataset(Dataset):
@@ -143,30 +143,30 @@ class RetrainDataset(Dataset):
             img = self.transforms(img)
         if self.target_transforms is not None:
             class_idx = self.target_transforms(class_idx)
-        return (img, class_idx, class_name)
+        return (img, class_name)
 
 
 if __name__ == '__main__':
     dataset = 'cifar10'
-    dataset = RetrainDataset(
-        task_num=3,
-        dataset_name=dataset,
-        data_dir_path='/data/{}/test'.format(dataset),
-        num_total_classes=10,
-        num_pretrain_classes=4,
-        num_test_images_each_class=50,
-        num_total_images_each_task=1000,
-        task_specifications=[
-            (2, 0, 605),
-            (0, 6, 570),
-            (2, 0, 576),
-            (0, 8, 504),
-            (2, 0, 604),
-            (0, 10, 304)
-        ]
-    )
-    print(len(dataset))
-    print(dataset[999])
+    # dataset = RetrainDataset(
+    #     task_num=3,
+    #     dataset_name=dataset,
+    #     data_dir_path='/data/{}/test'.format(dataset),
+    #     num_total_classes=10,
+    #     num_pretrain_classes=4,
+    #     num_test_images_each_class=50,
+    #     num_total_images_each_task=1000,
+    #     task_specifications=[
+    #         (2, 0, 605),
+    #         (0, 6, 570),
+    #         (2, 0, 576),
+    #         (0, 8, 504),
+    #         (2, 0, 604),
+    #         (0, 10, 304)
+    #     ]
+    # )
+    # print(len(dataset))
+    # print(dataset[999])
     # pretrain_dataset = PretrainDataset(
     #     dataset_name='cifar100',
     #     data_dir_path='/data/cifar100',
@@ -179,18 +179,25 @@ if __name__ == '__main__':
     #     train_data_shuffle_seed=223,
     #     test_data_shuffle_seed=222
     # )
-    # cifar10_train_dataset = PretrainDataset(
-    #     dataset_name='cifar10',
-    #     data_dir_path='/data/cifar10',
-    #     num_classes_for_pretrain=4,
-    #     num_imgs_from_chosen_classes=[
-    #         (500, 1), (1000, 1), (1500, 1), (2000, 1)
-    #     ],
-    #     train=True,
-    #     choosing_class_seed=2022,
-    #     train_data_shuffle_seed=223,
-    #     test_data_shuffle_seed=222,
-    # )
+    cifar10_train_dataset = PretrainDataset(
+        dataset_name='cifar10',
+        data_dir_path='/data/cifar10',
+        num_classes_for_pretrain=4,
+        num_imgs_from_chosen_classes=[
+            (500, 1), (1000, 1), (1500, 1), (2000, 1)
+        ],
+        train=True,
+        choosing_class_seed=2022,
+        train_data_shuffle_seed=223,
+        test_data_shuffle_seed=222,
+    )
+    cifar10_train_dataloader = DataLoader(
+        cifar10_train_dataset,
+        batch_size=32,
+        shuffle=True
+    )
+    for sample in cifar10_train_dataloader:
+        print(sample)
     # imagenet100_train_dataset = PretrainDataset(
     #     dataset_name='imagenet100',
     #     data_dir_path='/data/imagenet100',
