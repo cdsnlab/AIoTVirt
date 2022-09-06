@@ -10,8 +10,6 @@ import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
 import torch.backends.cudnn as cudnn
-import scipy.io as scio
-from scipy.io import loadmat
 import torchvision
 import os
 import argparse
@@ -22,10 +20,6 @@ import random
 
 import matplotlib.pyplot as plt
 import pdb
-import transforms
-from dataset import CUB_200_2011_Train, CUB_200_2011_Test
-import torchvision.transforms as tfs
-import torchvision.datasets as datasets
 from LwF_trainer import Trainer
 
 '''
@@ -58,12 +52,12 @@ if __name__ == '__main__':
     '''
     import argparse
     parser = argparse.ArgumentParser()
-    parser.add_argument('-n', '--name', action = str, default = 'resnet18', help = 'name of network')
-    parser.add_argument('-a', '--alpha', action = int, default = 0.1, help = 'forgetting hyperparameter. (bigger then faster) (0.1-0.3)')
-    parser.add_argument('-t', '--temp', action = int, default = 2, help = 'distillation temperature')
-    parser.add_argument('-d', '--dataset', action = int, default = 'cifar10', help = 'name of dataset')
-    parser.add_argument('-b', '--profile_budget', action = int, default = 20, help = 'time budget for profiling (minute)')
-    parser.add_argument('-r', '--retrain_budget', action = int, default = 20, help = 'time budget for retraining (minute)')
+    parser.add_argument('-n', '--name', type = str, default = 'resnet18', help = 'name of network')
+    parser.add_argument('-a', '--alpha', type = float, default = 0.1, help = 'forgetting hyperparameter. (bigger then faster) (0.1-0.3)')
+    parser.add_argument('-t', '--temp', type = int, default = 2, help = 'distillation temperature')
+    parser.add_argument('-d', '--dataset', type = str, default = 'cifar10', help = 'name of dataset')
+    parser.add_argument('-b', '--profile_budget', type = int, default = 20, help = 'time budget for profiling (minute)')
+    parser.add_argument('-r', '--retrain_budget', type = int, default = 20, help = 'time budget for retraining (minute)')
     args, _ = parser.parse_known_args()
     
     config = edict()
@@ -75,9 +69,9 @@ if __name__ == '__main__':
     config.retrain_budget = args.retrain_budget*60
     config.device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
-    print(toRed('\tConfig: {}'.format(config.config)))
+    print(toRed('\tConfig: {}'.format(config)))
     print(toRed('\tNetwork: {}'.format(config.network)))
-    print(toRed('\tDataset : {}'.format(config.data)))
+    print(toRed('\tDataset : {}'.format(config.dataset)))
 
     '''
     Define the Trainer that consists of head model and tail model.
@@ -126,7 +120,8 @@ if __name__ == '__main__':
     total_history = []
     
     allocated_time = config.profile_budget / totallayer[config.network]
-    for dataloader in dataloaders:
+    for dataloader_idx in range(len(dataloaders)):
+        dataloader = dataloaders[dataloader_idx]
         num_new_class = 1
         retrain_results = dict()
         for split_point in range(totallayer[config.network]):
@@ -140,7 +135,8 @@ if __name__ == '__main__':
             number_of_profile_epoch = int(allocated_time / time_train_one_epoch)
             trainer.set_network(split_point=split_point)
             retrain_results[split_point], _ = trainer.incremental_learning(dataloader=dataloader, 
-                                                                        epoch=number_of_profile_epoch, num_new_class=num_new_class, is_profile=True)
+                                            epoch=number_of_profile_epoch, num_new_class=num_new_class,
+                                            num_task=dataloader_idx, is_profile=True)
         
         '''
         After profiling phase finish, then split the model and execute IL until accuracy converges.
@@ -159,7 +155,8 @@ if __name__ == '__main__':
         time_train_one_step = trainer.get_time_train_one_step(split_point=best_split_point)
         time_train_one_epoch = math.ceil(len(dataloader.dataset)/dataloader.batchsize)*time_train_one_step
         number_of_retrain_epoch = int(config.retrain_budget / time_train_one_epoch)
-        trainer.incremental_learning(dataloader=dataloader, epoch=number_of_retrain_epoch, num_new_class=num_new_class)
+        trainer.incremental_learning(dataloader=dataloader, epoch=number_of_retrain_epoch, 
+                                    num_new_class=num_new_class, num_task=dataloader_idx)
         # test the model
         best_split_test_acc = trainer.test()
 

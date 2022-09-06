@@ -1,6 +1,9 @@
 /LwF.py
 .local
+<<<<<<< HEAD
 .cache
+=======
+>>>>>>> prepare-pretrain-data
 .bash_history
 .vscode-server
 .gitconfig
@@ -16,4 +19,48 @@ dataloader
 .keras
 .bashrc
 .config
+<<<<<<< HEAD
 .cache
+=======
+.cache
+/datadrift.py
+ckpt/
+__pycache__/
+dataset/__pycache__/
+logs/
+requirements.yaml
+
+# folder
+.local
+.cache
+.bash_history
+.vscode-server
+.gitconfig
+.ssh
+.gnupg
+.cache
+.viminfo
+.python_history
+__pycache__
+.keras
+.nv
+.bashrc
+.config
+.conda
+dataloader
+
+# model files
+*.trt
+*.onnx
+
+# test code
+test_*.py
+test*.py
+test-*.py
+
+# misc
+*.pkl
+*.tar.gz
+data_batch*
+batches*
+>>>>>>> prepare-pretrain-data

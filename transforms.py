@@ -197,7 +197,7 @@ class ColorJitter:
         b_factor = random.uniform(*self.brightness)
         s_factor = random.uniform(*self.saturation)
         c_factor = random.uniform(*self.contrast)
-
+        print(img.shape)
         img = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
         img = img.astype('float32')
 
@@ -273,6 +273,7 @@ class Normalize:
 
         mean = torch.tensor(self.mean, dtype=torch.float32)
         std = torch.tensor(self.std, dtype=torch.float32)
+        img = cv2.cvtColor(img, cv2.COLOR_HSV2BGR)
         img.sub_(mean[:, None, None]).div_(std[:, None, None])
 
         return img

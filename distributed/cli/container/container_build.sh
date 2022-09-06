@@ -23,13 +23,23 @@ fi
 if [[ "$RUN" -eq 1 ]]
 then
     docker run -t -d \
-    --runtime nvidia \
     --gpus all \
-    -u $HOST_UID:$HOST_GID \
-    -v /home/$HOST_NAME/LIGETI:/home/$USER_NAME \
-    -e HOME=/home/$USER_NAME/distributed/cli \
+    -u $HOST_UID \
+    -v /home/$HOST_NAME:/home/$USER_NAME \
+    -e HOME=/home/$USER_NAME/LIGETI/distributed/cli \
     -p 5000-5050:5000-5050 \
     $CONTAINER_NAME
+elif [["$RUN" -eq 2 ]]
+then 
+    docker run -it --rm \
+    --runtime nvidia \
+    --gpus all \
+    -u $HOST_UID \
+    -v /home/$HOST_NAME:/home/$USER_NAME \
+    -e HOME=/home/$USER_NAME/LIGETI/distributed/cli \
+    -p 5000-5050:5000-5050 \
+    $CONTAINER_NAME \
+    /bin/bash
 fi
 
 # WORKDIR_ON_HOST=/home/$HOST_NAME/FedUSL/client/$HOST_NAME
