@@ -7,201 +7,183 @@ import sys
 import random
 from pickle import load
 from typing import Tuple
-from torch.utils.data import Dataset
+from torch.utils.data import Dataset, DataLoader
+from memory_profiler import profile
+from PIL import Image
 
 BASE_DIR = os.path.dirname(
     os.path.dirname(__file__)
 )
-sys.path.append(BASE_DIR)    
+sys.path.append(BASE_DIR)
+try:
+    from dataset.cifar_pretrain import LIGETIPretrainCIFAR10, \
+        LIGETIPretrainCIFAR100
+    from dataset.imagenet_pretrain import LIGETIPretrainImageNet100
+except ModuleNotFoundError:
+    raise
 
 
-class RetrainingDatasetPreparer(object):
-    """RetrainingDatasetPreparer Split a dataset into several subsets for
-    retraining, each of which is corresponding to a retraining task.
+class RetrainingDatasetPreparer(Dataset):
+    """RetrainingDatasetPreparer Prepares the retrain dataset given
+    the full dataset and the specifications that have been used for
+    pretraining.
+
+    The full dataset is organized as a dictionary of list, which allows
+    access to each individual class. Data of each class is a list in the
+    following format.
+
+    |           |                                                  |      |
+       pretrain                      retrain                         test
 
     Parameters
     ----------
     dataset_name : str
-        The name of the dataset. For example, cifar10, imagenet, cifar100,
-        flower102...
+        Name of the dataset
     data_dir_path : str
-        Path to the dataset
-    num_total_classes : int
-        Number of total classes within the dataset
-    num_test_images_each_class : int
-        Number of images used as test images for from each of the classes
-        in the dataset.
-    num_total_images_each_task : int
-        Number of images used for each retraining task.
-    task_specifications : list
-        A list of specifications for retraining. Each element from the list
-        specifies a training task. An element is a tuple containing a few
-        important variables. (1) The number of new classes for class
-        incremental learning. (2) The number of the old classes that need to
-        be retrained. (3) The seed to randomly determine the number of images
-        in each class.
+        The path to the dataset folder
+    num_classes_for_pretrain : int
+        Number of classes that have been used for pretraining
+    num_imgs_from_chosen_pretrain_classes : list
+        The specifications used to construct the pretraining dataset
+        E.g., (500, 3), (1000, 3), (1500, 2), (2000, 2)
+        This produces 3 classes each with 500 images, 3 classes each with 1000
+        images, and so on.
+    num_imgs_from_chosen_test_classes : list
+        The specifications used to construct the test dataset
+        E.g., (50, 10)
     choosing_class_seed : int, optional
-        This determines the classes that will be used for retrianing. Must be
-        identical to the one we used for pretraining.
-        by default 2022
-    retrain_data_shuffle_seed : int, optional
-        Data from each retraining task will be shuffled using this seed
-        by default 2
+        Seed to randomly pick the classes during pretraining, by default 2022
+    pretrain_train_data_shuffle_seed : int, optional
+        Seed to randomly shuffle the data during pretraining_, by default 222
     pretrain_test_data_shuffle_seed : int, optional
-        Data to be used as test data throughout the training will be determined
-        by this seed, by default 222
+        Seed to randomly shuffle the test data, by default 223
+    task_num : int, optional
+        The retraining task number, by default 0
+    task_specifications : list, optional
+        Specifications to construct each task's retraining data
+        E.g., task_specifications=[
+            (10, 100000, 810)
+        ].
+        Here, we have 1 task that has a total of 100000 images from 10 classes.
+        A seed of 810 will be used to decide the specific number of images in
+        each class.
+    retrain_data_shuffle_seed : int, optional
+        Seed to shuffle the retraining dataset, by default 2
     """
+    pretrain_data_preparer_dict = {
+        'cifar10': LIGETIPretrainCIFAR10,
+        'cifar100': LIGETIPretrainCIFAR100,
+        'imagenet100': LIGETIPretrainImageNet100
+    }
+
     def __init__(
         self,
         dataset_name: str,
         data_dir_path: str,
-        num_total_classes: int,
-        num_pretrain_classes: int,
-        num_test_images_each_class: int,
-        num_total_images_each_task: int,
-        task_specifications: list,
+        # The next few parameters are used to construct the pretrain dataset
+        # So we can get the remaining data for retraining.
+        num_classes_for_pretrain: int,
+        num_imgs_from_chosen_pretrain_classes: list,
+        num_imgs_from_chosen_test_classes: list,
         choosing_class_seed: int = 2022,
+        pretrain_train_data_shuffle_seed: int = 222,
+        pretrain_test_data_shuffle_seed: int = 223,
+        # The remaining parameters are used to construct the retraining
+        # datasets each of which corresponds to a retraining task
+        task_num: int = 0,
+        task_specifications: list = None,
         retrain_data_shuffle_seed: int = 2,
-        pretrain_test_data_shuffle_seed: int = 222
+        transforms = None,
+        target_transforms = None
     ):
+        self.dataset_name = dataset_name
         self.data_dir_path = data_dir_path
-        self.num_total_classes = num_total_classes
-        self.retrain_data_shuffle_seed = retrain_data_shuffle_seed
+        self.num_classes_for_pretrain = num_classes_for_pretrain
+        self.num_imgs_from_chosen_pretrain_classes = \
+            num_imgs_from_chosen_pretrain_classes
+        self.num_imgs_from_chosen_test_classes = \
+            num_imgs_from_chosen_test_classes
+        self.choosing_class_seed = choosing_class_seed
+        self.pretrain_train_data_shuffle_seed = \
+            pretrain_train_data_shuffle_seed
         self.pretrain_test_data_shuffle_seed = pretrain_test_data_shuffle_seed
-        self.num_total_images_each_task = num_total_images_each_task
-        self.num_test_images_each_class = num_test_images_each_class
+        self.retrain_data_shuffle_seed = retrain_data_shuffle_seed
+        self.transforms = transforms
+        self.target_transforms = transforms
 
-        # Because of the data format each dataset will require a bit different
-        # function to load them into a nice and tight list.
-        if 'cifar' in dataset_name:
-            self.total_retrain_data, self.class_list = self.cifar_reader()
+        self.get_remaining_avail_data_for_retrain()
 
-            # Determine that classes that have been used for PREtraining
-            # Once a again, go back and check if the choosing_class_seed here is
-            # identical to the one used for pretraining.
-            # If they dont match, we have trouble.
-            random.seed(choosing_class_seed)
-            pretrain_classes = sorted(
-                random.sample(
-                    sorted(self.class_list), num_pretrain_classes
-                )
+        specs = task_specifications[task_num]
+        num_classes, total_num_images, seed = specs
+        num_images_per_classes = \
+            self.match_class_data_to_total_data(
+                num_classes,
+                total_num_images,
+                seed
             )
-        elif 'imagenet' in dataset_name:
-            self.total_retrain_data, self.class_list = self.imagenet_reader()
-            random.seed(choosing_class_seed)
-            pretrain_classes = sorted(
-                random.sample(
-                    self.class_list, num_pretrain_classes
-                )
-            )
+        self.task_retrain_data = self.extract_data_for_retrain_task(
+            num_images_per_classes
+        )
 
-        self.seen_classes = pretrain_classes.copy()
-        # print(self.seen_classes)
-
-        # Retrain/unseen classes are all the classes in the dataset except
-        # the ones we have pretrained models with.
-        self.retrain_classes = self.class_list.copy()
-        for cls in pretrain_classes:
-            self.retrain_classes.remove(cls)
-        self.unseen_classes = self.retrain_classes.copy()
-
-        # [task1's data, task2's data]
-        self.all_task_retrain_data = []
-
-        for specs in task_specifications:
-            classes_for_retrain, nums_images_of_classes = \
-                self.translate_task_specs_to_data(specs)
-
-            # The first element of each tuple is the number of new classes
-            # If this number is not 0, then we are during class-incremental
-            # learning
-            is_incremental_learning = False
-            if specs[0] != 0:
-                is_incremental_learning = True
-            task_pretrain_data = self.extract_data_for_retrain_task(
-                classes_for_retrain,
-                nums_images_of_classes,
-                is_incremental_learning
-            )
-            self.all_task_retrain_data.append(task_pretrain_data)
-
-    def translate_task_specs_to_data(self, specs: tuple):
-        """translate_task_specs_to_data Translate specs into the specific
-        number of images for each individual class.
-
-
-        Parameters
-        ----------
-        specs : tuple
-            Contains (1) number of new classes (2) number of old classes and
-            (3) a seed to determine the number of each images for each class
-            during this retraining task
-
-        Returns
-        -------
-        list, list
-            the classes that will be used for retraining
-            and the numbers of images for those classes.
+    def get_remaining_avail_data_for_retrain(self):
+        """get_remaining_avail_data_for_retrain Gets all the available data for
+        retraining after cutting away the portions used for pretrianing and
+        test
         """
-        # num_new_classes determines how many new classes will be
-        # incrementally learned during this task
-        # num_old_classes determines how many old classes from
-        # which data to be drawn to perform data-incremental learning
-        num_new_classes, num_old_classes, seed = specs
-        if num_new_classes and not num_old_classes:
-            nums_images_of_classes = \
-                [self.num_total_images_each_task // num_new_classes for _ in
-                    range(num_new_classes)]
-            classes_for_retrain = self.unseen_classes[:num_new_classes]
-        elif not num_new_classes and num_old_classes:
-            nums_images_of_classes = self.match_class_data_to_total_data(
-                num_old_classes,
-                seed=seed
-                )
-            classes_for_retrain = self.seen_classes
 
-        return classes_for_retrain, nums_images_of_classes
+        pretrain_data_preparer = \
+            self.pretrain_data_preparer_dict[self.dataset_name]
+        pretrain_dataset = pretrain_data_preparer(
+            self.data_dir_path,
+            self.num_classes_for_pretrain,
+            self.num_imgs_from_chosen_pretrain_classes,
+            True,
+            self.choosing_class_seed,
+            self.pretrain_train_data_shuffle_seed,
+            self.pretrain_test_data_shuffle_seed
+        )
+        self.full_retrain_avail_dataset = \
+            pretrain_dataset.remaining_data
+        self.chosen_classes = pretrain_dataset.chosen_classes
+        del pretrain_dataset
+        for cls in self.chosen_classes:
+            self.full_retrain_avail_dataset[cls] = \
+                self.full_retrain_avail_dataset[cls][:-50]
 
     def extract_data_for_retrain_task(
         self,
-        classes_for_retrain: list,
-        nums_images_of_classes: list,
-        is_incremental_learning: bool = True,
+        num_images_per_classes: list
     ):
-        print(self.seen_classes)
-        """extract_data_for_retrain_task Extract data for the retraining task
+        """extract_data_for_retrain_task Extract the data from each class
+        and concat them together into one list
 
         Parameters
         ----------
-        nums_images_of_classes : list
-            the numbers of images for classes that will be used for retraining
+        num_images_per_classes : list of tuple
+            The number of images per individual class
+
+        Returns
+        -------
+        list
+            A list of all data that will be used for retraining
         """
         task_retrain_data = []
-        for class_idx, (class_name, num_images) in enumerate(
-                zip(classes_for_retrain, nums_images_of_classes)):
-            class_data = self.total_retrain_data[class_name][:num_images]
-            self.total_retrain_data[class_name] = \
-                self.total_retrain_data[class_name][num_images:]
-            if is_incremental_learning:
-                self.unseen_classes.remove(class_name)
-                self.seen_classes.append(class_name)
-
-            class_data = [
-                (x, self.seen_classes.index(class_name), class_name)
-                for x in class_data
-            ]
-            task_retrain_data.extend(class_data)
-
-        random.seed(self.retrain_data_shuffle_seed)
-        random.shuffle(task_retrain_data)
+        for number, clas in zip(num_images_per_classes, self.chosen_classes):
+            class_chosen_data = self.full_retrain_avail_dataset[clas][:number]
+            class_chosen_data = [(i, clas) for i in class_chosen_data]
+            self.full_retrain_avail_dataset[clas] = \
+                self.full_retrain_avail_dataset[clas][number:]
+            random.seed(self.retrain_data_shuffle_seed)
+            task_retrain_data.extend(class_chosen_data)
 
         return task_retrain_data
 
     def match_class_data_to_total_data(
         self,
         num_classes: int,
+        total_num_images: int,
         seed: int,
-        num_images_each_class_thrs_low: float = 0.8,
+        num_images_each_class_thrs_low: float = 0.6,
         num_images_each_class_thrs_high: float = 1.2,
     ):
         """match_class_data_to_total_data Match the sum of the numbers of
@@ -228,153 +210,92 @@ class RetrainingDatasetPreparer(object):
         seed : int
             The seed to generate the number of images for each class for this
             task
+        total_num_images : int
+            The total number of images used for this retraining task
         """
-        avg_num_each_class = self.num_total_images_each_task // num_classes
-        nums_images_of_classes = []
+        avg_num_each_class = total_num_images // num_classes
+        nums_images_per_classes = []
         random.seed(seed)
         for _ in range(int(num_classes/2)):
             num_image_this_class = random.randint(
                 int(avg_num_each_class*num_images_each_class_thrs_low),
                 avg_num_each_class
             )
-            nums_images_of_classes.append(num_image_this_class)
+            nums_images_per_classes.append(num_image_this_class)
         for _ in range(int(num_classes/2)+1, num_classes):
             num_image_this_class = random.randint(
                 avg_num_each_class,
                 int(avg_num_each_class*num_images_each_class_thrs_high),
             )
-            nums_images_of_classes.append(num_image_this_class)
-        nums_images_of_classes.append(self.num_total_images_each_task -
-                                      sum(nums_images_of_classes))
+            nums_images_per_classes.append(num_image_this_class)
+        nums_images_per_classes.append(total_num_images -
+                                       sum(nums_images_per_classes))
 
-        return nums_images_of_classes
+        # random.seed(seed)
+        random.shuffle(nums_images_per_classes)
+        return nums_images_per_classes
 
-    def cifar_reader(self):
-        data = {}
-        class_list = []
-        for class_data_file_name in os.listdir(self.data_dir_path):
-            class_idx = int(class_data_file_name.split('.')[0])
-            class_list.append(class_idx)
-            class_data_file_path = os.path.join(
-                self.data_dir_path,
-                class_data_file_name
-            )
-            with open(class_data_file_path, 'rb') as f:
-                class_data = load(f)
-                f.close()
-                random.seed(self.pretrain_test_data_shuffle_seed)
-                random.shuffle(class_data)
-                data[class_idx] = class_data[self.num_test_images_each_class:]
-        return data, class_list
+    def __getitem__(self, idx):
+        if self.dataset_name == 'imagenet100':
+            path, chosen_class = self.task_retrain_data[idx]
+            img = Image.open(path)
+        elif 'cifar' in self.dataset_name:
+            img, chosen_class = self.task_retrain_data[idx]
+        if self.transforms is not None:
+            img = self.transforms(img)
+        if self.target_transforms is not None:
+            chosen_class = self.target_transforms(chosen_class)
+        return img, chosen_class
 
-    def imagenet_reader(self):
-        data = {}
-        class_list = []
-        for class_data_dir_name in os.listdir(self.data_dir_path):
-            class_name = class_data_dir_name
-            class_list.append(class_name)
-            class_data_dir_path = os.path.join(
-                self.data_dir_path,
-                class_data_dir_name
-            )
-            class_image_list = os.listdir(class_data_dir_path)
-            class_image_path_list = [
-                os.path.join(
-                    self.data_dir_path,
-                    class_data_dir_name,
-                    x
-                ) for x in class_image_list
-            ]
-            random.seed(self.pretrain_test_data_shuffle_seed)
-            random.shuffle(class_image_path_list)
-            data[class_name] = \
-                class_image_path_list[self.num_test_images_each_class:]
-        return data, class_list
-
-
-class ImagenetRetrainDataset(object):
-    def __init__(
-        self,
-        task_num: int,
-        dataset_name: str,
-        data_dir_path: str,
-        num_total_classes: int,
-        num_pretrain_classes: int,
-        num_test_images_each_class: int,
-        num_total_images_each_task: int,
-        task_specifications: list,
-        choosing_class_seed: int = 2022,
-        retrain_data_shuffle_seed: int = 2,
-        pretrain_test_data_shuffle_seed: int = 222
-    ):
-        self.task_training_dataset = RetrainingDatasetPreparer(
-            dataset_name=dataset_name,
-            data_dir_path=data_dir_path,
-            num_total_classes=num_total_classes,
-            num_pretrain_classes=num_pretrain_classes,
-            num_test_images_each_class=num_test_images_each_class,
-            num_total_images_each_task=num_total_images_each_task,
-            task_specifications=task_specifications,
-            choosing_class_seed=choosing_class_seed,
-            retrain_data_shuffle_seed=retrain_data_shuffle_seed,
-            pretrain_test_data_shuffle_seed=pretrain_test_data_shuffle_seed
-        ).all_task_retrain_data[task_num]
-        # print(len(self.task_training_dataset))
-
-    def __call__(self, idx):
-        return self.task_training_dataset[idx]
-
-
-class CIFARRetrainDataset(object):
-    def __init__(
-        self,
-        task_num: int,
-        dataset_name: str,
-        data_dir_path: str,
-        num_total_classes: int,
-        num_pretrain_classes: int,
-        num_test_images_each_class: int,
-        num_total_images_each_task: int,
-        task_specifications: list,
-        choosing_class_seed: int = 2022,
-        retrain_data_shuffle_seed: int = 2,
-        pretrain_test_data_shuffle_seed: int = 222
-    ):
-        self.task_training_dataset = RetrainingDatasetPreparer(
-            dataset_name=dataset_name,
-            data_dir_path=data_dir_path,
-            num_total_classes=num_total_classes,
-            num_pretrain_classes=num_pretrain_classes,
-            num_test_images_each_class=num_test_images_each_class,
-            num_total_images_each_task=num_total_images_each_task,
-            task_specifications=task_specifications,
-            choosing_class_seed=choosing_class_seed,
-            retrain_data_shuffle_seed=retrain_data_shuffle_seed,
-            pretrain_test_data_shuffle_seed=pretrain_test_data_shuffle_seed
-        ).all_task_retrain_data[task_num]
-        # print(len(self.task_training_dataset))
-
-    def __call__(self, idx):
-        return self.task_training_dataset[idx]
+    def __len__(self):
+        return len(self.task_retrain_data)
 
 
 if __name__ == '__main__':
     dataset = 'cifar10'
-    dataset = CIFARRetrainDataset(
-        task_num=4,
+    temp = RetrainingDatasetPreparer(
         dataset_name=dataset,
-        data_dir_path='/data/{}/test'.format(dataset),
-        num_total_classes=10,
-        num_pretrain_classes=4,
-        num_test_images_each_class=50,
-        num_total_images_each_task=1000,
+        data_dir_path='/data/{}'.format(dataset),
+        num_classes_for_pretrain=10,
+        num_imgs_from_chosen_pretrain_classes=[
+            (500, 3), (1000, 3), (1500, 2), (2000, 2)
+        ],
+        num_imgs_from_chosen_test_classes=[
+            (50, 10)
+        ],
+        choosing_class_seed=2022,
+        pretrain_train_data_shuffle_seed=223,
+        pretrain_test_data_shuffle_seed=222,
         task_specifications=[
-            (2, 0, 605),
-            (0, 6, 570),
-            (2, 0, 576),
-            (0, 8, 504),
-            (2, 0, 604),
-            (0, 10, 304)
-        ]
+            (10, 100000, 810)
+        ],
+        retrain_data_shuffle_seed=2,
     )
-    print(dataset(10))
+    dataloader = DataLoader(
+        temp,
+        batch_size=32,
+        shuffle=True
+    )
+    for sample in dataloader:
+        print(sample)
+
+    # dataset = 'imagenet100'
+    # temp = RetrainingDatasetPreparer(
+    #     dataset_name=dataset,
+    #     data_dir_path='/data/imagenet100',
+    #     num_classes_for_pretrain=40,
+    #     num_imgs_from_chosen_pretrain_classes=[
+    #         (100, 10), (250, 20), (500, 10)
+    #     ],
+    #     num_imgs_from_chosen_test_classes=[
+    #         (50, 10)
+    #     ],
+    #     choosing_class_seed=2022,
+    #     pretrain_train_data_shuffle_seed=223,
+    #     pretrain_test_data_shuffle_seed=222,
+    #     task_specifications=[
+    #         (40, 10000, 810)
+    #     ],
+    #     retrain_data_shuffle_seed=2,
+    # )
+    # print(temp[1000])
