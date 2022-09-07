@@ -93,8 +93,8 @@ class RetrainingDatasetPreparer(Dataset):
         task_num: int = 0,
         task_specifications: list = None,
         retrain_data_shuffle_seed: int = 2,
-        transforms = None,
-        target_transforms = None
+        transforms=None,
+        target_transforms=None
     ):
         self.dataset_name = dataset_name
         self.data_dir_path = data_dir_path
@@ -109,7 +109,7 @@ class RetrainingDatasetPreparer(Dataset):
         self.pretrain_test_data_shuffle_seed = pretrain_test_data_shuffle_seed
         self.retrain_data_shuffle_seed = retrain_data_shuffle_seed
         self.transforms = transforms
-        self.target_transforms = transforms
+        self.target_transforms = target_transforms
 
         self.get_remaining_avail_data_for_retrain()
 

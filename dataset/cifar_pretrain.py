@@ -6,9 +6,7 @@ import os
 import sys
 from pickle import load
 import random
-import tracemalloc
-
-from matplotlib.pyplot import cla
+import numpy as np
 
 BASE_DIR = os.path.dirname(__file__)
 sys.path.append(BASE_DIR)
@@ -138,11 +136,13 @@ class LIGETIPretrainDataset(object):
             index of the item
         Returns
         -------
-        (np.darray, int, str)
+        (np.darray, int)
             an image of the dataset in un-preprocessed format, shaped
-            (32, 32, 3) and its class and the class's name
+            (3, 32, 32) and its class
         """
-        return self.chosen_data[idx]
+        img, clas = self.chosen_data[idx]
+        img = np.transpose(img, (2, 0, 1))
+        return (img, clas)
 
 
 class LIGETIPretrainCIFAR10(LIGETIPretrainDataset):
@@ -233,3 +233,4 @@ if __name__ == '__main__':
         train_data_shuffle_seed=223,
         test_data_shuffle_seed=222
     )
+    print(temp(10)[0].shape)
