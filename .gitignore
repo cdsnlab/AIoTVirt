@@ -55,8 +55,4 @@ test-*.py
 *.pkl
 *.tar.gz
 data_batch*
-<<<<<<< HEAD
 batches*
-=======
-batches*
->>>>>>> prepare-pretrain-data
