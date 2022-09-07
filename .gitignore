@@ -22,7 +22,6 @@ __pycache__/
 dataset/__pycache__/
 logs/
 requirements.yaml
-
 # folder
 .local
 .cache

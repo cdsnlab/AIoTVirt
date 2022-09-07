@@ -2,6 +2,9 @@ import torch
 from torchvision import datasets
 import torchvision
 import copy
+import torch.nn as nn
+from efficientnet_pytorch import EfficientNet
+
 
 # model = {'resnet18': resnet18, 'resnet34': resnet34, 'resnet50': resnet50, 'resnet101': resnet101,
 #          'resnext50': resnext50, 'resnext101': resnext101,
@@ -14,6 +17,16 @@ import copy
 #       'vgg11': vgg11.classifier, 'vgg13': vgg13.classifier, 'vgg16': vgg16.classifier, 'vgg19': vgg19.classifier,
 #       'alexnet': alexnet.classifier, 'googlenet': googlenet.fc,
 #       'mobilenetv2': mobilenetv2.classifier, 'shufflenetv2': shufflenetv2.fc}
+
+'''
+For initializing EfficientNet.
+'''
+def xavier_normal_init(m):
+    if isinstance(m, nn.Conv2d):
+        nn.init.xavier_normal_(m.weight, nonlinearity='relu')
+    elif isinstance(m, nn.Linear):
+        nn.init.xavier_normal_(m.weight, nonlinearity='sigmoid')
+
 fclayer = {'resnet18': 1, 'resnet34': 1, 'resnet50': 1, 'resnet101': 1,
             'resnext50': 1, 'resnext101': 1,
             'vgg11': 7, 'vgg13': 7, 'vgg16': 7, 'vgg19': 7,
@@ -23,6 +36,7 @@ totallayer = {'resnet18': 14, 'resnet34': 22, 'resnet50': 22, 'resnet101': 39,
                 'vgg11': 29, 'vgg13': 33, 'vgg16': 39, 'vgg19': 45,
                 'mobilenetv2': 21, 'shufflenetv2': 24, 'alexnet': 21, 'googlenet': 18, 'efficientnet_b0': 8}
 num_lastlayer = {'cifar10': 4, 'cifar100': 40, 'imagenet100': 40}
+# num_lastlayer = {'cifar10': 10, 'cifar100': 100, 'imagenet100': 100}
 
 def model_spec(model_name, dataset_name):
     input_transform = None
@@ -109,8 +123,10 @@ def model_spec(model_name, dataset_name):
         fc = model.fc
         input_transform = model._transform_input
     if model_name=='efficientnet_b0':
-        model = torchvision.models.efficientnet_b0(pretrained=False)
-        model.classifier[-1] = torch.nn.Linear(model.classifier[-1].in_features, num_lastlayer[dataset_name])
-        fc = model.classifier
+        # model = torchvision.models.efficientnet_b0(pretrained=False)
+        model = EfficientNet.from_pretrained('efficientnet-b0')
+        xavier_normal_init(model)
+        model._fc = torch.nn.Linear(model._fc.in_features, num_lastlayer[dataset_name])
+        fc = model._fc
 
     return model, fc, fclayer[model_name], totallayer[model_name], input_transform
