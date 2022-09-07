@@ -1,10 +1,35 @@
 /LwF.py
+/previous_IL.py
+/graph.ipynb
+.local
+.bash_history
+.vscode-server
+.gitconfig
+.ssh
+.gnupg
+*.pkl
+*.tar.gz
+data_batch*
+batches*
+__pycache__
+dataloader
+.conda
+.keras
+.bashrc
+.config
+.cache
+
 /datadrift.py
 ckpt/
 __pycache__/
 dataset/__pycache__/
 logs/
 requirements.yaml
+
+/test_pretrain.py
+head_model.pt
+tail_model.pt
+
 # folder
 .local
 .cache
@@ -23,6 +48,9 @@ __pycache__
 .config
 .conda
 dataloader
+cifar10/
+cifar100/
+imagenet100/
 
 # model files
 *.trt
