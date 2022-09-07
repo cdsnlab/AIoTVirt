@@ -6,9 +6,6 @@ import os
 import sys
 from pickle import load
 import random
-import tracemalloc
-
-from matplotlib.pyplot import cla
 
 BASE_DIR = os.path.dirname(__file__)
 sys.path.append(BASE_DIR)

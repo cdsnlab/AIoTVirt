@@ -8,7 +8,6 @@ import random
 from pickle import load
 from typing import Tuple
 from torch.utils.data import Dataset, DataLoader
-from memory_profiler import profile
 from PIL import Image
 
 BASE_DIR = os.path.dirname(
