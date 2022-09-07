@@ -140,9 +140,7 @@ class LIGETIPretrainDataset(object):
             an image of the dataset in un-preprocessed format, shaped
             (3, 32, 32) and its class
         """
-        img, clas = self.chosen_data[idx]
-        img = np.transpose(img, (2, 0, 1))
-        return (img, clas)
+        return self.chosen_data[idx]
 
 
 class LIGETIPretrainCIFAR10(LIGETIPretrainDataset):

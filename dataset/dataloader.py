@@ -200,23 +200,43 @@ if __name__ == '__main__':
     # for sample in cifar10_train_dataloader:
     #     print(sample)
     from torchvision.transforms import Compose, ToTensor, Resize
-    imagenet100_train_dataset = PretrainDataset(
-        dataset_name='imagenet100',
-        data_dir_path='/data/imagenet100',
+    # imagenet100_pretrain_dataset = PretrainDataset(
+    #     dataset_name='imagenet100',
+    #     data_dir_path='/data/imagenet100',
+    #     num_classes_for_pretrain=40,
+    #     num_imgs_from_chosen_classes=[
+    #         (100, 10), (250, 20), (500, 10)
+    #     ],
+    #     train=True,
+    #     choosing_class_seed=2022,
+    #     train_data_shuffle_seed=223,
+    #     test_data_shuffle_seed=222,
+    #     transform=Compose([Resize([224, 224]), ToTensor()])
+    # )
+    # imagenet100_dataloader = DataLoader(
+    #     imagenet100_pretrain_dataset,
+    #     batch_size=32
+    # )
+    # for sample in imagenet100_dataloader:
+    #     print(sample[0].shape)
+
+    cifar100_pretrain_dataset = PretrainDataset(
+        dataset_name='cifar100',
+        data_dir_path='/data/cifar100',
         num_classes_for_pretrain=40,
         num_imgs_from_chosen_classes=[
-            (100, 10), (250, 20), (500, 10)
+            (50, 40)
         ],
         train=True,
         choosing_class_seed=2022,
         train_data_shuffle_seed=223,
         test_data_shuffle_seed=222,
-        transform=Compose([Resize([224, 224]), ToTensor()])
+        transform=Compose([ToTensor()])
     )
-    imagenet100_dataloader = DataLoader(
-        imagenet100_train_dataset,
+    cifar100_dataloader = DataLoader(
+        cifar100_pretrain_dataset,
         batch_size=32
     )
-    for sample in imagenet100_dataloader:
+    for sample in cifar100_dataloader:
         print(sample[0].shape)
     # print(pretrain_dataset[1000])
