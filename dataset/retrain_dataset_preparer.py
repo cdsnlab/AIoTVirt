@@ -5,10 +5,8 @@ Author: Tung Nguyen (tungnt@kaist.ac.kr)
 import os
 import sys
 import random
-from pickle import load
-from typing import Tuple
+import numpy as np
 from torch.utils.data import Dataset, DataLoader
-from memory_profiler import profile
 from PIL import Image
 
 BASE_DIR = os.path.dirname(
@@ -241,6 +239,7 @@ class RetrainingDatasetPreparer(Dataset):
             img = Image.open(path)
         elif 'cifar' in self.dataset_name:
             img, chosen_class = self.task_retrain_data[idx]
+            img = np.transpose(img, (2, 0, 1))
         if self.transforms is not None:
             img = self.transforms(img)
         if self.target_transforms is not None:
@@ -277,7 +276,7 @@ if __name__ == '__main__':
         shuffle=True
     )
     for sample in dataloader:
-        print(sample)
+        print(sample[0].shape)
 
     # dataset = 'imagenet100'
     # temp = RetrainingDatasetPreparer(
