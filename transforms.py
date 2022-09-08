@@ -267,7 +267,6 @@ class Normalize:
             (H W C) format numpy array in float32 range from [0, 1]
         """        
         assert torch.is_tensor(img) and img.ndimension() == 3, 'not an image tensor'
-        print('########mean########' + mean[:, None, None])
 
         if not self.inplace:
             img = img.clone()
@@ -306,12 +305,12 @@ class NormalizeNumpy:
         """        
 
 
-        img = img.transpose(2, 0, 1)
-        img = img.float() / 255.0
+        img = img.transpose(2, 0, 1).astype(np.float32)
+        img = img / 255.0
 
-        # mean = torch.tensor(self.mean, dtype=torch.float32)
+        # mean = torch.tensor(self.mean, dtype=torch.float32)d
         # std = torch.tensor(self.std, dtype=torch.float32)
-        img = cv2.cvtColor(img, cv2.COLOR_HSV2BGR)
+        # img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
         img = img - self.mean
         img = img / self.std
         
