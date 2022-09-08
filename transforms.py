@@ -267,6 +267,7 @@ class Normalize:
             (H W C) format numpy array in float32 range from [0, 1]
         """        
         assert torch.is_tensor(img) and img.ndimension() == 3, 'not an image tensor'
+        print('########mean########' + mean[:, None, None])
 
         if not self.inplace:
             img = img.clone()
@@ -275,6 +276,46 @@ class Normalize:
         std = torch.tensor(self.std, dtype=torch.float32)
         img = cv2.cvtColor(img, cv2.COLOR_HSV2BGR)
         img.sub_(mean[:, None, None]).div_(std[:, None, None])
+
+        return img
+
+
+class NormalizeNumpy:
+    """Normalize a torch tensor (H, W, BGR order) with mean and standard deviation
+    
+    for each channel in torch tensor:
+        ``input[channel] = (input[channel] - mean[channel]) / std[channel]``
+
+    Args:
+        mean: sequence of means for each channel
+        std: sequence of stds for each channel
+    """
+
+    def __init__(self, mean, std):
+        self.mean = np.array(mean)
+        self.std = np.array(std)
+        self.mean = np.expand_dims(self.mean, axis=(1,2))
+        self.std = np.expand_dims(self.std, axis=(1,2))
+    
+    def __call__(self, img):
+        """
+        Args:
+            (H W C) format numpy array range from [0, 255]
+        Returns:
+            (H W C) format numpy array in float32 range from [0, 1]
+        """        
+
+
+        img = img.transpose(2, 0, 1)
+        img = img.float() / 255.0
+
+        # mean = torch.tensor(self.mean, dtype=torch.float32)
+        # std = torch.tensor(self.std, dtype=torch.float32)
+        img = cv2.cvtColor(img, cv2.COLOR_HSV2BGR)
+        img = img - self.mean
+        img = img / self.std
+        
+
 
         return img
 
