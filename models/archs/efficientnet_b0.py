@@ -3,11 +3,10 @@ import torch
 import torchvision
 import torch.nn as nn
 import torch.nn.functional as F
-from efficientnet_pytorch import EfficientNet
 
 
 def mobilenetv2_split_head(split_point=0):
-    original_model = EfficientNet(pretrained = False)
+    original_model = torchvision.models.efficientnet_b0(weights=None)
     torch.nn.init.xavier_uniform_(original_model, gain=1.0)
     defactolayer = 9
     modulelist = []

@@ -15,6 +15,7 @@ from torch.utils.tensorboard import SummaryWriter
 from utils import toGreen, toRed, toYellow, toBlue, toCyan, progress_bar
 from load_partial_model import model_spec
 from torch.autograd import Variable
+from torchvision.models import resnet18, ResNet18_Weights
 
 INIT_LR = 1e-3
 # INIT_LR = 0
@@ -25,8 +26,8 @@ The information of layer in each model is listed in dictionary.
 These are used when splitting the model.
 '''
 
-fclayer = {'resnet18': 1, 'mobilenetv2': 1, 'googlenet': 1, 'efficientnet_b0': 1}
-totallayer = {'resnet18': 14, 'mobilenetv2': 22, 'googlenet': 21, 'efficientnet_b0': 9}
+fclayer = {'resnet18': 1, 'mobilenetv2': 1, 'efficientnet_b0': 1, 'shufflenetv2': 1}
+totallayer = {'resnet18': 14, 'mobilenetv2': 20, 'efficientnet_b0': 10, 'shufflenetv2': 24}
 
 '''
 To make the right size of tensor before fc layer
@@ -136,9 +137,18 @@ class TailModel(nn.Module):
                 ct += 1
                 if ct + self.layernum > self.defactolayer:
                     self.modulelist.append(child)
-        self.fc = copy.deepcopy(self.original_model.fc)
+        if self.name =='mobilenetv2':
+            self.fc = copy.deepcopy(self.original_model.classifier[-1])
+        elif self.name == 'efficientnet_b0':
+            self._fc = copy.deepcopy(self.original_model._fc)
+        else:
+            self.fc = copy.deepcopy(self.original_model.fc)
+
         if self.layernum == 1:
-            self.model = self.fc
+            if self.name == 'efficientnet_b0':
+                self._fc = copy.deepcopy(self.original_model._fc)
+            else:
+                self.model = self.fc
         else:
             self.modulelist = self.modulelist[:-self.fclayer]
             self.model = torch.nn.Sequential(*self.modulelist)
@@ -154,7 +164,10 @@ class TailModel(nn.Module):
         else:
             x = self.model(x)
             x = pre_fc(x, self.name)
-            x = self.fc(x)
+            if self.name == 'efficientnet_b0':
+                x = self._fc(x)
+            else:
+                x = self.fc(x)
         return x
 
 
@@ -168,12 +181,15 @@ class Trainer():
         self.config = config
         self.name = self.config.network
         self.dataset = self.config.dataset
-        model, fc, _, _, _ = model_spec(self.name, self.dataset)
+        model, fc, _, _, input_transform = model_spec(self.name, self.dataset)
         model.load_state_dict(torch.load('./ckpt/pretrain/' + self.name + '_' + self.dataset + '.pt', map_location = 'cpu'))
         # model, fc, _, _, _ = model_spec(self.name, 'imagenet100')
         # model.load_state_dict(torch.load('./ckpt/pretrain/' + self.name + '_' + 'imagenet100' + '.pt', map_location = 'cpu'))
-        # fc = nn.Linear(fc.in_features, 10)
+        # model = resnet18(weights=ResNet18_Weights.IMAGENET1K_V1)
+        # fc = nn.Linear(fc.in_features, 100)
         print('All keys matched')
+        self.input_transform = input_transform
+        print(self.input_transform)
 
         # self.model = copy.deepcopy(model)
         self.device = self.config.device
@@ -211,20 +227,26 @@ class Trainer():
     4. reset networks
     '''
     def measure_latency(self, dataloader):
+        print(self.model)
         # tt = 0.
         flag = False
-        for split_point in range(totallayer[self.name]):
+        for split_point in range(0, totallayer[self.name]):
             head_model = HeadModel(self.name, split_point, self.model).to(self.device)
             tail_model = TailModel(self.name, totallayer[self.name] - fclayer[self.name] + 1 - split_point, self.model).to(self.device)
-            # print(toBlue(head_model, tail_model))
+            print(toGreen(head_model), toBlue(tail_model))
             tail_optimizer = torch.optim.SGD(tail_model.parameters(), lr=INIT_LR, momentum=0.9)
+            # print(tail_model.parameters())
             intermediate_tensors = []
             intermediate_tensor_size = 1
             with torch.no_grad():
                 for batch_idx, data in enumerate(dataloader):
                     images, _ = data
-                    images = Variable(images.float()).to(self.device)
-                    intermediate_tensor = head_model.forward(images.to(self.device))
+                    # print(images)
+                    # break
+                    # images = Variable(images.float()).to(self.device)
+                    # print(self.model(images))
+                    intermediate_tensor = head_model.forward(images.float().to(self.device))
+                    # intermediate_tensor = head_model.forward(self.input_transform(images.to(self.device)))
                     intermediate_tensors.append(intermediate_tensor)
                     if batch_idx == 0:
                         for s in intermediate_tensor.size():
@@ -235,7 +257,11 @@ class Trainer():
                     t = time.perf_counter()
                     _, targets = data
                     targets = Variable(targets).to(self.device)
+                    # print(intermediate_tensors[batch_idx].size())
+                    # self.model(intermediate_tensors[batch_idx])
+
                     outputs = tail_model.forward(intermediate_tensors[batch_idx])
+
                     if self.name == 'googlenet':
                         outputs = outputs[0]
                     inference_latency = time.perf_counter() - t
@@ -359,11 +385,15 @@ class Trainer():
     And then retrain the tail model in IL manner.
     You can use this function when measuring retrain_one_epoch_time by setting the epoch param to 1.
     '''
-    def incremental_learning(self, dataloader, test_dataloader, epoch, num_task, is_profile=False):
+    def incremental_learning(self, dataloader, test_dataloader, epoch, allocated_time, num_task, is_profile=False):
         # if is_profile:
         self.old_head_model, self.old_tail_model = copy.deepcopy(self.head_model), copy.deepcopy(self.tail_model)
         # self.old_head_model.eval()
         # self.old_tail_model.eval()
+
+
+        # if is_profile:
+        #     self.tail_optimizer = torch.optim.SGD(self.tail_model.parameters(), lr=1e-3, momentum=0.9, weight_decay=5e-4)
 
         # log
         if not is_profile:
@@ -371,6 +401,8 @@ class Trainer():
     
         self.test(dataloader=test_dataloader, num_task=num_task, epoch = 0)
 
+        t = time.perf_counter()
+        end_flag = False
         '''
         Make output of the old version model before retraining.
         This can be changed to the grpc-based implementation.
@@ -404,11 +436,11 @@ class Trainer():
 
                 outputs = self.forward(images)
 
-                # KD_loss = self.kd_loss_function(F.log_softmax(outputs/self.T, dim=1), F.softmax(outputs_old[batch_idx]/self.T, dim=1)) * (self.alpha * self.T * self.T)
+                KD_loss = self.kd_loss_function(F.log_softmax(outputs/self.T, dim=1), F.softmax(outputs_old[batch_idx]/self.T, dim=1)) * (self.T * self.T)
                 CE_loss = F.cross_entropy(outputs, targets) * (1. - self.alpha)
-                # # print(KD_loss, CE_loss, KD_loss + CE_loss)
-                # loss = KD_loss + CE_loss
-                loss = CE_loss
+                # print(KD_loss, CE_loss, KD_loss + CE_loss)
+                loss = KD_loss + CE_loss
+                # loss = CE_loss
 
                 loss.backward()
 
@@ -421,6 +453,12 @@ class Trainer():
                     total_label[targets[i]] += 1
                     if predicted[i] == targets[i]:
                         correct_label[targets[i]] += 1
+
+                if time.perf_counter() - t > allocated_time:
+                    end_flag = True
+                    break
+
+
             retrain_acc = 100.*correct/total
             
             
@@ -438,6 +476,7 @@ class Trainer():
                 #     new_fc.weight = nn.Parameter((old_norm / new_norm) * new_fc.weight)
                 #     self.tail_model.fc = new_fc
                     
+                print(toRed('Remained time : {}'.format(allocated_time - (time.perf_counter() - t))))
                 if is_profile:
                     print(toGreen('(Profile) Model: {}\tSplit Point: {}\tRetrain Accuracy: {}'.format(self.name, self.split_point, retrain_acc)))
                 else:
@@ -449,8 +488,12 @@ class Trainer():
             if not is_profile:
                 writer.add_scalar('acc/train', retrain_acc, e)
 
+            if end_flag:
+                break
+
         if not is_profile:
             writer.close()
+            self.concat_models()
         else:
             self.head_model = self.old_head_model
             self.tail_model = self.old_tail_model
@@ -459,7 +502,6 @@ class Trainer():
         # IL_time = time() - t
         self.head_model.eval()    
         self.tail_model.eval()
-        self.concat_models()
         return retrain_acc#, IL_time
     
     '''
@@ -499,7 +541,7 @@ class Trainer():
             writer.add_scalar('acc/test/task{}/label{}'.format(num_task, i), 100.*correct_label[i]/total_label[i], epoch)
             print(toGreen('label: {}\taccuracy: {}/{} = {}'.format(i, correct_label[i], total_label[i], 100.*correct_label[i]/total_label[i])))
 
-        writer.add_scalar('acc/test/task{}'.format(num_task), 100.*correct/total, epoch)
+        writer.add_scalar('acc/test/IL/task{}'.format(num_task), 100.*correct/total, epoch)
         writer.close()
 
         return eval_acc

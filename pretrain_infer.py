@@ -4,6 +4,7 @@ from torch.autograd import Variable
 from utils import toGreen, toRed
 from torch.utils.tensorboard import SummaryWriter
 
+import tqdm
 import numpy as np
 import torch
 import torch.nn as nn
@@ -20,8 +21,8 @@ And Each model is trained with below 3 datasets.
 Several augmentation methods are used in training phase.
 '''
 directory = './ckpt/pretrain/'
-models = ['resnet18', 'googlenet', 'mobilenetv2', 'efficientnet_b0']
-# models = ['efficientnet_b0']
+# models = ['resnet18', 'googlenet', 'mobilenetv2', 'efficientnet_b0']
+models = ['efficientnet_b0', 'shufflenetv2']
 datasets = ['cifar10', 'cifar100', 'imagenet100']
 # datasets = ['imagenet100']
 
@@ -33,8 +34,9 @@ train_transforms = transforms.Compose([
         # transforms.Resize((64,64)),
         transforms.ToTensor(),
         # transforms.RandomResizedCrop(5),
+        # transforms.RandomResizedCrop(224),
         transforms.RandomHorizontalFlip(),
-        transforms.ColorJitter(brightness=0.4, saturation=0.4, hue=0.4),
+        #transforms.ColorJitter(brightness=0.4, saturation=0.4, hue=0.4),
         transforms.Normalize(
             [0.48560741861744905, 0.49941626449353244, 0.43237713785804116],
             [0.2321024260764962, 0.22770540015765814, 0.2665100547329813])
@@ -43,6 +45,7 @@ train_transforms = transforms.Compose([
 test_transforms = transforms.Compose([
         # transforms.ToCVImage(),
         transforms.ToTensor(),
+        # transforms.RandomResizedCrop(224),
         # transforms.CenterCrop(5),
         transforms.Normalize(
             [0.4862169586881995, 0.4998156522834164, 0.4311430419332438],
@@ -164,15 +167,15 @@ imagenet100_test_dataset = PretrainDataset(
     )
 imagenet100_train_dataloader = torch.utils.data.DataLoader(
     imagenet100_train_dataset,
-    64,
-    num_workers = 4,
-    shuffle=True
+    1,
+    num_workers = 8,
+    shuffle=False
 )
 imagenet100_test_dataloader = torch.utils.data.DataLoader(
     imagenet100_test_dataset,
     64,
-    num_workers = 4,
-    shuffle=True
+    # num_workers = 1,
+    shuffle=False
 )
 train_dataloaders.append(imagenet100_train_dataloader)
 test_dataloaders.append(imagenet100_test_dataloader)
@@ -207,7 +210,8 @@ for num_dataloader in range(len(train_dataloaders)):
             total = 0
             
             model.train()
-            for inputs, labels  in train_dataloader:
+            for batch_idx, data  in tqdm.tqdm(enumerate(train_dataloader)):
+                inputs, labels = data
                 inputs, labels = Variable(inputs.float()).cuda(0), Variable(labels).cuda(0)
                 # print(inputs)
                 

@@ -10,6 +10,7 @@ import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
 import torch.backends.cudnn as cudnn
+from transforms import NormalizeNumpy
 import torchvision.transforms as transforms
 import torchvision
 import os
@@ -18,6 +19,7 @@ from utils import *
 from easydict import EasyDict as edict
 from dataset.dataloader import PretrainDataset, RetrainDataset
 from dataset.retrain_dataset_preparer import RetrainingDatasetPreparer
+
 import numpy as np
 import random
 
@@ -29,8 +31,8 @@ from LwF_trainer import Trainer
 The information of layer in each model is listed in dictionary.
 These are used when splitting the model.
 '''
-fclayer = {'resnet18': 1, 'mobilenetv2': 1, 'googlenet': 1, 'efficientnet_b0': 1}
-totallayer = {'resnet18': 14, 'mobilenetv2': 22, 'googlenet': 21, 'efficientnet_b0': 9}
+fclayer = {'resnet18': 1, 'mobilenetv2': 2, 'googlenet': 1, 'efficientnet_b0': 2}
+totallayer = {'resnet18': 14, 'mobilenetv2': 20, 'googlenet': 21, 'efficientnet_b0': 10}
 
 if __name__ == '__main__':
 
@@ -49,13 +51,13 @@ if __name__ == '__main__':
     '''
     import argparse
     parser = argparse.ArgumentParser()
-    parser.add_argument('-n', '--name', type = str, default = 'resnet18', help = 'name of network')
+    parser.add_argument('-n', '--name', type = str, default = 'googlenet', help = 'name of network')
     parser.add_argument('-a', '--alpha', type = float, default = 0.5, help = 'forgetting hyperparameter. (bigger then faster) (0.1-0.3)')
     parser.add_argument('-t', '--temp', type = int, default = 2, help = 'distillation temperature')
     parser.add_argument('-d', '--dataset', type = str, default = 'cifar10', help = 'name of dataset')
     parser.add_argument('-f', '--finetune_epoch', type = int, default = 70, help = 'the number of finetuning before IL')
-    parser.add_argument('-b', '--profile_budget', type = int, default = 3, help = 'time budget for profiling (minute)')
-    parser.add_argument('-r', '--retrain_budget', type = int, default = 10, help = 'time budget for retraining (minute)')
+    parser.add_argument('-b', '--profile_budget', type = int, default = 2, help = 'time budget for profiling (minute)')
+    parser.add_argument('-r', '--retrain_budget', type = int, default = 2, help = 'time budget for retraining (minute)')
     args, _ = parser.parse_known_args()
     
     config = edict()
@@ -87,18 +89,35 @@ if __name__ == '__main__':
     '''
     ######################################## dataset load ########################################
     
+    # train_transforms = transforms.Compose([
+    #         # ㄴtransforms.ToPILImage(),
+    #         # transforms.ToCVImage(),
+    #         # transforms.Resize((64,64)),
+    #         transforms.ToTensor(),
+    #         # transforms.RandomResizedCrop(224),
+    #         # transforms.RandomResizedCrop(5),
+    #         # transforms.RandomHorizontalFlip(),
+    #         # transforms.ColorJitter(brightness=0.4, saturation=0.4, hue=0.4),
+    #         transforms.Normalize(
+    #             [0.48560741861744905, 0.49941626449353244, 0.43237713785804116],
+    #             [0.2321024260764962, 0.22770540015765814, 0.2665100547329813])
+    #     ])
+        
+
     train_transforms = transforms.Compose([
             # ㄴtransforms.ToPILImage(),
             # transforms.ToCVImage(),
             # transforms.Resize((64,64)),
-            transforms.ToTensor(),
+            # transforms.ToTensor(),
+            # transforms.RandomResizedCrop(224),
             # transforms.RandomResizedCrop(5),
-            transforms.RandomHorizontalFlip(),
-            transforms.ColorJitter(brightness=0.4, saturation=0.4, hue=0.4),
-            transforms.Normalize(
+            # transforms.RandomHorizontalFlip(),
+            # transforms.ColorJitter(brightness=0.4, saturation=0.4, hue=0.4),
+            NormalizeNumpy(
                 [0.48560741861744905, 0.49941626449353244, 0.43237713785804116],
                 [0.2321024260764962, 0.22770540015765814, 0.2665100547329813])
         ])
+
 
     target_transforms = transforms.Compose([
         transforms.ToTensor()
@@ -107,6 +126,7 @@ if __name__ == '__main__':
     test_transforms = transforms.Compose([
             # transforms.ToCVImage(),
             transforms.ToTensor(),
+            # transforms.RandomResizedCrop(224),
             # transforms.CenterCrop(5),
             transforms.Normalize(
                 [0.4862169586881995, 0.4998156522834164, 0.4311430419332438],
@@ -207,7 +227,7 @@ if __name__ == '__main__':
                     (100, 10000, i)
                 ],
                 retrain_data_shuffle_seed=2,
-                target_transforms=train_transforms
+                transforms=train_transforms
             )
             cifar100_train_dataloader = torch.utils.data.DataLoader(
                 cifar100_train_dataset,
@@ -259,7 +279,7 @@ if __name__ == '__main__':
                     (100, 10000, i)
                 ],
                 retrain_data_shuffle_seed=2,
-                target_transforms=train_transforms
+                transforms=train_transforms
             )
             imagenet100_train_dataloader = torch.utils.data.DataLoader(
                 imagenet100_train_dataset,
@@ -318,50 +338,16 @@ if __name__ == '__main__':
     The computation time and network time can be differenct if batch size is changed.
     To insult equal number of lables, use the pretrain dataset.
     '''
-    trainer.measure_latency(dataloader=train_dataloaders[0])
-    ######################################## dataset load ########################################
-    
-    
-    ######################################## golden model ########################################
-    golden_model = None
-    ######################################## golden model ########################################
-    
-    
+    trainer.measure_latency(dataloader=train_dataloaders[0])        
+
     # trainer.set_network(split_point=0)
-    
-
-    # cifar10_test_dataset = PretrainDataset(
-    #         dataset_name='cifar10',
-    #         data_dir_path='/data/cifar10',
-    #         num_classes_for_pretrain=4,
-    #         num_imgs_from_chosen_classes=[
-    #             (50, 4)
-    #         ],
-    #         train=False,
-    #         choosing_class_seed=2022,
-    #         train_data_shuffle_seed=223,
-    #         test_data_shuffle_seed=222,
-    #         transform = test_transforms
-    #     )
-    # cifar10_test_dataloader = torch.utils.data.DataLoader(
-    #     cifar10_test_dataset,
-    #     64,
-    #     num_workers = 4,
-    #     shuffle=True
-    # )
-    # trainer.test(dataloader = cifar10_test_dataloader, num_task = 0, epoch = 0)
-    # trainer.test(dataloader = cifar10_test_dataloader, num_task = 0, epoch = 1)
-
-
-    # print(trainer.tail_model.model)
-
 
     # for dataloader_idx in range(len(train_dataloaders)):
     #     dataloader = train_dataloaders[dataloader_idx]
     #     test_dataloader = test_dataloaders[dataloader_idx]
     #     # num_new_class = config.new_class[dataloader_idx] 
     #     print(toYellow('######### Retrain Start Task {} #########'.format(dataloader_idx)))
-    #     trainer.incremental_learning(dataloader=dataloader, test_dataloader=test_dataloader, epoch=70, num_task=dataloader_idx)
+    #     trainer.incremental_learning(dataloader=dataloader, test_dataloader=test_dataloader, epoch=100, allocated_time=config.retrain_budget, num_task=dataloader_idx)
     #     trainer.save_network(dataset = config.dataset, num_task = dataloader_idx)
 
 
@@ -381,6 +367,7 @@ if __name__ == '__main__':
     total_history = []
     
     allocated_profile_time = config.profile_budget / totallayer[config.network]
+    # allocated_retrain_time = config.retrain_budget / totallayer[config.network]
     for dataloader_idx in range(len(train_dataloaders)):
         dataloader = train_dataloaders[dataloader_idx]
         test_dataloader = test_dataloaders[dataloader_idx]
@@ -404,7 +391,7 @@ if __name__ == '__main__':
                 + toRed('allocated epoch : {},\t'.format(number_of_profile_epoch)))
             trainer.set_network(split_point=split_point)
             retrain_results[split_point] = trainer.incremental_learning(dataloader=dataloader, test_dataloader=test_dataloader,
-                                            epoch=number_of_profile_epoch, num_task=dataloader_idx, is_profile=True)
+                                            epoch=number_of_profile_epoch, allocated_time = allocated_profile_time, num_task=dataloader_idx, is_profile=True)
 
         '''
         After profiling phase finish, then split the model and execute IL until accuracy converges.
@@ -420,8 +407,9 @@ if __name__ == '__main__':
                 best_idx = i
         best_split_train_acc = best_val
         best_split_point = best_idx
+        # best_split_point = 0
         trainer.set_network(split_point=best_split_point)
-        trainer.set_network(split_point=0)
+        # trainer.set_network(split_point=0)
 
         '''
         Similarly with profiling phase, the number of retraining epoch is decided 
@@ -439,7 +427,7 @@ if __name__ == '__main__':
             + toMagenta('allocated time : {},\t'.format(config.retrain_budget))
             + toRed('allocated epoch : {},\t'.format(number_of_retrain_epoch)))
         trainer.incremental_learning(dataloader=dataloader, test_dataloader = test_dataloader, 
-                                    epoch=number_of_retrain_epoch, num_task=dataloader_idx, is_profile=False)
+                                    epoch=number_of_retrain_epoch, allocated_time=config.retrain_budget, num_task=dataloader_idx, is_profile=False)
         # test the model
         # best_split_test_acc = trainer.test()
 

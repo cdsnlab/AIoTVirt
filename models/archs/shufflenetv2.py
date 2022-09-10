@@ -1,14 +1,13 @@
 import copy
-import numpy as np
 import torch
 import torchvision
 import torch.nn as nn
 import torch.nn.functional as F
 
 
-def mobilenetv2_split_head(split_point=0):
-    original_model = torchvision.models.mobilenet_v2(pretrained=False)
-    defactolayer = 19
+def shufflenetv2_split_head(split_point=0):
+    original_model = torchvision.models.shufflenet_v2_x0_5(pretrained=False)
+    defactolayer = 23
     modulelist = []
     
     ct = 0
@@ -33,8 +32,7 @@ def mobilenetv2_split_head(split_point=0):
 
 
 if __name__ == '__main__':
-    for i in range(20):
-        m = mobilenetv2_split_head(i)
-        print(m)
+    for i in range(24):
+        m = shufflenetv2_split_head(i)
         print(i)
-        m(torch.Tensor(np.random.rand(4,3,32,32)))
+        print(m)

@@ -194,7 +194,7 @@ class LIGETIPretrainImageNet100(LIGETIPretrainCIFAR10):
             (height, width, 3), its class and the class's name
         """
         path, chosen_class = self.chosen_data[idx]
-        img = Image.open(path)
+        img = Image.open(path).convert('RGB')
         return (img, chosen_class)
 
 
