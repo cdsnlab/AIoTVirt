@@ -31,8 +31,8 @@ from LwF_trainer import Trainer
 The information of layer in each model is listed in dictionary.
 These are used when splitting the model.
 '''
-fclayer = {'resnet18': 1, 'mobilenetv2': 2, 'googlenet': 1, 'efficientnet_b0': 2}
-totallayer = {'resnet18': 14, 'mobilenetv2': 20, 'googlenet': 21, 'efficientnet_b0': 10}
+fclayer = {'resnet18': 1, 'mobilenetv2': 1, 'efficientnet_b0': 1, 'shufflenetv2': 1}
+totallayer = {'resnet18': 14, 'mobilenetv2': 20, 'efficientnet_b0': 10, 'shufflenetv2': 24}
 
 if __name__ == '__main__':
 
@@ -54,7 +54,7 @@ if __name__ == '__main__':
     parser.add_argument('-n', '--name', type = str, default = 'googlenet', help = 'name of network')
     parser.add_argument('-a', '--alpha', type = float, default = 0.5, help = 'forgetting hyperparameter. (bigger then faster) (0.1-0.3)')
     parser.add_argument('-t', '--temp', type = int, default = 2, help = 'distillation temperature')
-    parser.add_argument('-d', '--dataset', type = str, default = 'cifar10', help = 'name of dataset')
+    parser.add_argument('-d', '--dataset', type = str, default = 'cifar100', help = 'name of dataset')
     parser.add_argument('-f', '--finetune_epoch', type = int, default = 70, help = 'the number of finetuning before IL')
     parser.add_argument('-b', '--profile_budget', type = int, default = 2, help = 'time budget for profiling (minute)')
     parser.add_argument('-r', '--retrain_budget', type = int, default = 2, help = 'time budget for retraining (minute)')
@@ -104,19 +104,34 @@ if __name__ == '__main__':
     #     ])
         
 
+    # train_transforms = transforms.Compose([
+    #         # ㄴtransforms.ToPILImage(),
+    #         # transforms.ToCVImage(),
+    #         # transforms.Resize((64,64)),
+    #         # transforms.ToTensor(),
+    #         # transforms.RandomResizedCrop(224),
+    #         # transforms.RandomResizedCrop(5),
+    #         # transforms.RandomHorizontalFlip(),
+    #         # transforms.ColorJitter(brightness=0.4, saturation=0.4, hue=0.4),
+    #         NormalizeNumpy(
+    #             [0.48560741861744905, 0.49941626449353244, 0.43237713785804116],
+    #             [0.2321024260764962, 0.22770540015765814, 0.2665100547329813])
+    #     ])
+
     train_transforms = transforms.Compose([
-            # ㄴtransforms.ToPILImage(),
-            # transforms.ToCVImage(),
-            # transforms.Resize((64,64)),
-            # transforms.ToTensor(),
-            # transforms.RandomResizedCrop(224),
-            # transforms.RandomResizedCrop(5),
-            # transforms.RandomHorizontalFlip(),
-            # transforms.ColorJitter(brightness=0.4, saturation=0.4, hue=0.4),
-            NormalizeNumpy(
-                [0.48560741861744905, 0.49941626449353244, 0.43237713785804116],
-                [0.2321024260764962, 0.22770540015765814, 0.2665100547329813])
-        ])
+        # transforms.ToCVImage(),
+        # transforms.Resize((64,64)),
+        transforms.ToTensor(),
+        # transforms.RandomResizedCrop(5),
+        # transforms.RandomResizedCrop(224),
+        transforms.RandomCrop(32, padding=4),
+        transforms.RandomRotation(15),
+        transforms.RandomHorizontalFlip(),
+        transforms.ColorJitter(brightness=0.4, saturation=0.4, hue=0.4),
+        transforms.Normalize(
+            [0.48560741861744905, 0.49941626449353244, 0.43237713785804116],
+            [0.2321024260764962, 0.22770540015765814, 0.2665100547329813])
+    ])
 
 
     target_transforms = transforms.Compose([
@@ -162,7 +177,8 @@ if __name__ == '__main__':
                 data_dir_path='/data/{}'.format(config.dataset),
                 num_classes_for_pretrain=10,
                 num_imgs_from_chosen_pretrain_classes=[
-                    (500, 2), (1000, 3), (1500, 2), (2000, 3)
+                    # (500, 2), (1000, 3), (1500, 2), (2000, 3)
+                    (500, 10)
                 ],
                 num_imgs_from_chosen_test_classes=[
                     (50, 10)
@@ -215,7 +231,8 @@ if __name__ == '__main__':
                 data_dir_path='/data/{}'.format(config.dataset),
                 num_classes_for_pretrain=100,
                 num_imgs_from_chosen_pretrain_classes=[
-                    (50, 20), (100, 30), (150, 20), (200, 30)
+                    # (50, 20), (100, 30), (150, 20), (200, 30)
+                    (100, 100)
                 ],
                 num_imgs_from_chosen_test_classes=[
                     (50, 100)
@@ -338,17 +355,17 @@ if __name__ == '__main__':
     The computation time and network time can be differenct if batch size is changed.
     To insult equal number of lables, use the pretrain dataset.
     '''
-    trainer.measure_latency(dataloader=train_dataloaders[0])        
+    # trainer.measure_latency(dataloader=train_dataloaders[0])        
 
-    # trainer.set_network(split_point=0)
+    trainer.set_network(split_point=0)
 
-    # for dataloader_idx in range(len(train_dataloaders)):
-    #     dataloader = train_dataloaders[dataloader_idx]
-    #     test_dataloader = test_dataloaders[dataloader_idx]
-    #     # num_new_class = config.new_class[dataloader_idx] 
-    #     print(toYellow('######### Retrain Start Task {} #########'.format(dataloader_idx)))
-    #     trainer.incremental_learning(dataloader=dataloader, test_dataloader=test_dataloader, epoch=100, allocated_time=config.retrain_budget, num_task=dataloader_idx)
-    #     trainer.save_network(dataset = config.dataset, num_task = dataloader_idx)
+    for dataloader_idx in range(len(train_dataloaders)):
+        dataloader = train_dataloaders[dataloader_idx]
+        test_dataloader = test_dataloaders[dataloader_idx]
+        # num_new_class = config.new_class[dataloader_idx] 
+        print(toYellow('######### Retrain Start Task {} #########'.format(dataloader_idx)))
+        trainer.incremental_learning(dataloader=dataloader, test_dataloader=test_dataloader, epoch=100, allocated_time=config.retrain_budget, num_task=dataloader_idx)
+        trainer.save_network(dataset = config.dataset, num_task = dataloader_idx)
 
 
 

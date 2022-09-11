@@ -124,6 +124,8 @@ class TailModel(nn.Module):
         self.totallayer = totallayer[name]
         self.defactolayer = self.totallayer - self.fclayer + 1
         self.modulelist = []
+        self.fc = None
+        self.classifier = None
 
         ct = 0
         for child in self.original_model.children():
@@ -137,16 +139,14 @@ class TailModel(nn.Module):
                 ct += 1
                 if ct + self.layernum > self.defactolayer:
                     self.modulelist.append(child)
-        if self.name =='mobilenetv2':
-            self.fc = copy.deepcopy(self.original_model.classifier[-1])
-        elif self.name == 'efficientnet_b0':
-            self._fc = copy.deepcopy(self.original_model._fc)
+        if self.name == 'mobilenetv2' or self.name == 'efficientnet_b0':
+            self.classifier = copy.deepcopy(self.original_model.classifier)
         else:
             self.fc = copy.deepcopy(self.original_model.fc)
 
-        if self.layernum == 1:
-            if self.name == 'efficientnet_b0':
-                self._fc = copy.deepcopy(self.original_model._fc)
+        if self.layernum == self.fclayer:
+            if self.name == 'mobilenetv2' or self.name == 'efficientnet_b0':
+                self.model = self.classifier
             else:
                 self.model = self.fc
         else:
@@ -158,14 +158,14 @@ class TailModel(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         if self.layernum == 0:
             return x
-        if self.layernum == 1:
+        if self.layernum == self.fclayer:
             x = pre_fc(x, self.name)
             x = self.model(x)
         else:
             x = self.model(x)
             x = pre_fc(x, self.name)
-            if self.name == 'efficientnet_b0':
-                x = self._fc(x)
+            if self.name == 'mobilenetv2' or self.name == 'efficientnet_b0':
+                x = self.classifier(x)
             else:
                 x = self.fc(x)
         return x
@@ -537,9 +537,9 @@ class Trainer():
         print(toGreen('Model: {} Split Point: {} Test Accuracy: {}'.
                         format(self.name, self.split_point, eval_acc)))
         
-        for i in range(self.output_num):
-            writer.add_scalar('acc/test/task{}/label{}'.format(num_task, i), 100.*correct_label[i]/total_label[i], epoch)
-            print(toGreen('label: {}\taccuracy: {}/{} = {}'.format(i, correct_label[i], total_label[i], 100.*correct_label[i]/total_label[i])))
+        # for i in range(self.output_num):
+        #     writer.add_scalar('acc/test/task{}/label{}'.format(num_task, i), 100.*correct_label[i]/total_label[i], epoch)
+        #     print(toGreen('label: {}\taccuracy: {}/{} = {}'.format(i, correct_label[i], total_label[i], 100.*correct_label[i]/total_label[i])))
 
         writer.add_scalar('acc/test/IL/task{}'.format(num_task), 100.*correct/total, epoch)
         writer.close()
