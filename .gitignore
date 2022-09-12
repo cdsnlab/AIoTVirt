@@ -6,6 +6,10 @@ dataset/__pycache__/
 logs/
 requirements.yaml
 
+/test_pretrain.py
+head_model.pt
+tail_model.pt
+
 # folder
 .local
 .cache
@@ -24,6 +28,9 @@ __pycache__
 .config
 .conda
 dataloader
+cifar10/
+cifar100/
+imagenet100/
 
 # model files
 *.trt

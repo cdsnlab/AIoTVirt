@@ -1,10 +1,10 @@
-from dataset import dataloader
 from load_partial_model import model_spec
-from dataloader import PretrainDataset
+from dataset.dataloader import PretrainDataset
 from torch.autograd import Variable
 from utils import toGreen, toRed
 from torch.utils.tensorboard import SummaryWriter
 
+import tqdm
 import numpy as np
 import torch
 import torch.nn as nn
@@ -21,9 +21,10 @@ And Each model is trained with below 3 datasets.
 Several augmentation methods are used in training phase.
 '''
 directory = './ckpt/pretrain/'
-models = ['resnet18', 'googlenet', 'mobilenetv2', 'efficientnet_b0']
-
+# models = ['resnet18', 'googlenet', 'mobilenetv2', 'efficientnet_b0']
+models = ['efficientnet_b0', 'shufflenetv2']
 datasets = ['cifar10', 'cifar100', 'imagenet100']
+# datasets = ['imagenet100']
 
 train_dataloaders = []
 test_dataloaders = []
@@ -33,8 +34,9 @@ train_transforms = transforms.Compose([
         # transforms.Resize((64,64)),
         transforms.ToTensor(),
         # transforms.RandomResizedCrop(5),
+        # transforms.RandomResizedCrop(224),
         transforms.RandomHorizontalFlip(),
-        transforms.ColorJitter(brightness=0.4, saturation=0.4, hue=0.4),
+        #transforms.ColorJitter(brightness=0.4, saturation=0.4, hue=0.4),
         transforms.Normalize(
             [0.48560741861744905, 0.49941626449353244, 0.43237713785804116],
             [0.2321024260764962, 0.22770540015765814, 0.2665100547329813])
@@ -43,6 +45,7 @@ train_transforms = transforms.Compose([
 test_transforms = transforms.Compose([
         # transforms.ToCVImage(),
         transforms.ToTensor(),
+        # transforms.RandomResizedCrop(224),
         # transforms.CenterCrop(5),
         transforms.Normalize(
             [0.4862169586881995, 0.4998156522834164, 0.4311430419332438],
@@ -56,9 +59,9 @@ And store them in list.
 cifar10_train_dataset = PretrainDataset(
         dataset_name='cifar10',
         data_dir_path='/data/cifar10',
-        num_classes_for_pretrain=4,
+        num_classes_for_pretrain=10,
         num_imgs_from_chosen_classes=[
-            (500, 1), (1000, 1), (1500, 1), (2000, 1)
+            (500, 10)#, (1000, 3), (1500, 2), (2000, 3)
         ],
         train=True,
         choosing_class_seed=2022,
@@ -70,9 +73,9 @@ cifar10_train_dataset = PretrainDataset(
 cifar10_test_dataset = PretrainDataset(
         dataset_name='cifar10',
         data_dir_path='/data/cifar10',
-        num_classes_for_pretrain=4,
+        num_classes_for_pretrain=10,
         num_imgs_from_chosen_classes=[
-            (50, 4)
+            (50, 10)
         ],
         train=False,
         choosing_class_seed=2022,
@@ -98,9 +101,9 @@ test_dataloaders.append(cifar10_test_dataloader)
 cifar100_train_dataset = PretrainDataset(
         dataset_name='cifar100',
         data_dir_path='/data/cifar100',
-        num_classes_for_pretrain=40,
+        num_classes_for_pretrain=100,
         num_imgs_from_chosen_classes=[
-            (50, 10), (150, 20), (200, 10)
+            (50, 100)#, (100, 30), (150, 20), (200, 30)
         ],
         train=True,
         choosing_class_seed=2022,
@@ -111,9 +114,9 @@ cifar100_train_dataset = PretrainDataset(
 cifar100_test_dataset = PretrainDataset(
         dataset_name='cifar100',
         data_dir_path='/data/cifar100',
-        num_classes_for_pretrain=40,
+        num_classes_for_pretrain=100,
         num_imgs_from_chosen_classes=[
-            (50, 40)
+            (50, 100)
         ],
         train=False,
         choosing_class_seed=2022,
@@ -139,9 +142,9 @@ test_dataloaders.append(cifar100_test_dataloader)
 imagenet100_train_dataset = PretrainDataset(
         dataset_name='imagenet100',
         data_dir_path='/data/imagenet100',
-        num_classes_for_pretrain=40,
+        num_classes_for_pretrain=100,
         num_imgs_from_chosen_classes=[
-            (100, 10), (250, 20), (500, 10)
+            (50, 100)#, (100, 30), (150, 20), (200, 30)
         ],
         train=True,
         choosing_class_seed=2022,
@@ -152,9 +155,9 @@ imagenet100_train_dataset = PretrainDataset(
 imagenet100_test_dataset = PretrainDataset(
         dataset_name='imagenet100',
         data_dir_path='/data/imagenet100',
-        num_classes_for_pretrain=40,
+        num_classes_for_pretrain=100,
         num_imgs_from_chosen_classes=[
-            (50, 40)
+            (50, 100)
         ],
         train=False,
         choosing_class_seed=2022,
@@ -164,15 +167,15 @@ imagenet100_test_dataset = PretrainDataset(
     )
 imagenet100_train_dataloader = torch.utils.data.DataLoader(
     imagenet100_train_dataset,
-    64,
-    num_workers = 4,
-    shuffle=True
+    1,
+    num_workers = 8,
+    shuffle=False
 )
 imagenet100_test_dataloader = torch.utils.data.DataLoader(
     imagenet100_test_dataset,
     64,
-    num_workers = 4,
-    shuffle=True
+    # num_workers = 1,
+    shuffle=False
 )
 train_dataloaders.append(imagenet100_train_dataloader)
 test_dataloaders.append(imagenet100_test_dataloader)
@@ -194,21 +197,23 @@ for num_dataloader in range(len(train_dataloaders)):
         xavier_normal_init(model)
         model.cuda(0)
         loss_fn = nn.CrossEntropyLoss()
-        optimizer = optim.Adam(model.parameters(),lr=0.001)
+        optimizer = optim.Adam(model.parameters(),lr=0.0001)
         writer = SummaryWriter('logs/pretrain/' + datasets[num_dataloader] + '/' + name + '/')
 
         epoch = 0
         before_eval_acc = 0.
 
         # epoch
-        while epoch < 200:
+        while epoch < 50:
             epoch += 1
             total_right = 0
             total = 0
             
             model.train()
-            for inputs, labels, _ in train_dataloader:
+            for batch_idx, data  in tqdm.tqdm(enumerate(train_dataloader)):
+                inputs, labels = data
                 inputs, labels = Variable(inputs.float()).cuda(0), Variable(labels).cuda(0)
+                # print(inputs)
                 
                 optimizer.zero_grad()
                 
@@ -230,13 +235,13 @@ for num_dataloader in range(len(train_dataloaders)):
             if epoch % 10 == 0:
                 print("Model: {}, Training accuracy for epoch {} : {}".format(name, str(epoch), train_acc))
             
-            num_label = 0
-            if num_dataloader==0:
-                num_label = 4
-            elif num_dataloader==1:
-                num_label = 40
-            else:
-                num_label = 40
+            num_label = 100
+            # if num_dataloader==0:
+            #     num_label = 4
+            # elif num_dataloader==1:
+            #     num_label = 40
+            # else:
+            #     num_label = 40
 
             label_right = [0 for i in range(num_label)]
             label_total = [0 for i in range(num_label)]
@@ -244,7 +249,7 @@ for num_dataloader in range(len(train_dataloaders)):
             total = 0
             model.eval()
             with torch.no_grad():
-                for images, labels, _ in test_dataloader:
+                for images, labels in test_dataloader:
                     images, labels = Variable(images.float()).cuda(0),Variable(labels).cuda(0)
                     
                     outputs = model(images)
@@ -260,8 +265,9 @@ for num_dataloader in range(len(train_dataloaders)):
             
             eval_acc = 100 * total_right / total
             writer.add_scalar('acc/test', eval_acc, epoch)
-            if epoch % 10 == 0:
+            if epoch % 5 == 0:
                 print("Model: {}, Test accuracy for epoch {}: {}".format(name, str(epoch), eval_acc))
+                torch.save(model.state_dict(), directory + name + '_' + datasets[num_dataloader] + '.pt')
                 # for i in range(num_label):
                 #     print(toGreen('class {}: ').format(i), end='')
                 #     print('{}/{}={}'.format(label_right[i], label_total[i], 100*label_right[i]/label_total[i]), end='\t')
@@ -273,4 +279,3 @@ for num_dataloader in range(len(train_dataloaders)):
         #     before_eval_acc = total_right/total
 
         writer.close()
-        torch.save(model.state_dict(), directory + name + '_' + datasets[num_dataloader] + '.pt')

@@ -5,6 +5,7 @@ Author: Tung Nguyen (tungnt@kaist.ac.kr)
 import os
 import sys
 from PIL import Image
+from matplotlib.transforms import TransformNode
 
 from torch.utils.data import Dataset, DataLoader
 
@@ -131,19 +132,19 @@ class RetrainDataset(Dataset):
 
         self.transforms = transforms
         self.target_transforms = target_transforms
-    
+
     def __len__(self):
         return len(self.task_retrain_data)
 
     def __getitem__(self, index):
-        img, class_idx, class_name = self.task_retrain_data[index]
+        img, class_idx = self.task_retrain_data[index]
         if type(img) is str:
             img = Image.load(img)
         if self.transforms is not None:
             img = self.transforms(img)
         if self.target_transforms is not None:
             class_idx = self.target_transforms(class_idx)
-        return (img, class_name)
+        return (img, class_idx)
 
 
 if __name__ == '__main__':
@@ -179,26 +180,27 @@ if __name__ == '__main__':
     #     train_data_shuffle_seed=223,
     #     test_data_shuffle_seed=222
     # )
-    cifar10_train_dataset = PretrainDataset(
-        dataset_name='cifar10',
-        data_dir_path='/data/cifar10',
-        num_classes_for_pretrain=4,
-        num_imgs_from_chosen_classes=[
-            (500, 1), (1000, 1), (1500, 1), (2000, 1)
-        ],
-        train=True,
-        choosing_class_seed=2022,
-        train_data_shuffle_seed=223,
-        test_data_shuffle_seed=222,
-    )
-    cifar10_train_dataloader = DataLoader(
-        cifar10_train_dataset,
-        batch_size=32,
-        shuffle=True
-    )
-    for sample in cifar10_train_dataloader:
-        print(sample)
-    # imagenet100_train_dataset = PretrainDataset(
+    # cifar10_train_dataset = PretrainDataset(
+    #     dataset_name='cifar10',
+    #     data_dir_path='/data/cifar10',
+    #     num_classes_for_pretrain=4,
+    #     num_imgs_from_chosen_classes=[
+    #         (500, 1), (1000, 1), (1500, 1), (2000, 1)
+    #     ],
+    #     train=True,
+    #     choosing_class_seed=2022,
+    #     train_data_shuffle_seed=223,
+    #     test_data_shuffle_seed=222,
+    # )
+    # cifar10_train_dataloader = DataLoader(
+    #     cifar10_train_dataset,
+    #     batch_size=32,
+    #     shuffle=True
+    # )
+    # for sample in cifar10_train_dataloader:
+    #     print(sample)
+    from torchvision.transforms import Compose, ToTensor, Resize
+    # imagenet100_pretrain_dataset = PretrainDataset(
     #     dataset_name='imagenet100',
     #     data_dir_path='/data/imagenet100',
     #     num_classes_for_pretrain=40,
@@ -209,5 +211,30 @@ if __name__ == '__main__':
     #     choosing_class_seed=2022,
     #     train_data_shuffle_seed=223,
     #     test_data_shuffle_seed=222,
+    #     transform=Compose([Resize([224, 224]), ToTensor()])
     # )
+    # imagenet100_dataloader = DataLoader(
+    #     imagenet100_pretrain_dataset,
+    #     batch_size=32
+    # )
+    # for sample in imagenet100_dataloader:
+    #     print(sample[0].shape)
+
+    cifar100_pretrain_dataset = PretrainDataset(
+        dataset_name='cifar100',
+        data_dir_path='/data/cifar100',
+        num_classes_for_pretrain=40,
+        num_imgs_from_chosen_classes=[
+            (50, 40)
+        ],
+        train=True,
+        choosing_class_seed=2022,
+        train_data_shuffle_seed=223,
+        test_data_shuffle_seed=222,
+        transform=Compose([ToTensor()])
+    )
+    cifar100_dataloader = DataLoader(
+        cifar100_pretrain_dataset,
+        batch_size=32
+    )
     # print(pretrain_dataset[1000])

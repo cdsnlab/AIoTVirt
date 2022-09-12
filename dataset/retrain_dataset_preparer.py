@@ -5,10 +5,8 @@ Author: Tung Nguyen (tungnt@kaist.ac.kr)
 import os
 import sys
 import random
-from pickle import load
-from typing import Tuple
+import numpy as np
 from torch.utils.data import Dataset, DataLoader
-from memory_profiler import profile
 from PIL import Image
 
 BASE_DIR = os.path.dirname(
@@ -93,8 +91,8 @@ class RetrainingDatasetPreparer(Dataset):
         task_num: int = 0,
         task_specifications: list = None,
         retrain_data_shuffle_seed: int = 2,
-        transforms = None,
-        target_transforms = None
+        transforms=None,
+        target_transforms=None
     ):
         self.dataset_name = dataset_name
         self.data_dir_path = data_dir_path
@@ -109,7 +107,7 @@ class RetrainingDatasetPreparer(Dataset):
         self.pretrain_test_data_shuffle_seed = pretrain_test_data_shuffle_seed
         self.retrain_data_shuffle_seed = retrain_data_shuffle_seed
         self.transforms = transforms
-        self.target_transforms = transforms
+        self.target_transforms = target_transforms
 
         self.get_remaining_avail_data_for_retrain()
 
@@ -241,10 +239,13 @@ class RetrainingDatasetPreparer(Dataset):
             img = Image.open(path)
         elif 'cifar' in self.dataset_name:
             img, chosen_class = self.task_retrain_data[idx]
+            # img = np.transpose(img, (2, 0, 1))
+        # print(img.shape)
         if self.transforms is not None:
             img = self.transforms(img)
         if self.target_transforms is not None:
             chosen_class = self.target_transforms(chosen_class)
+        # print(img.shape)
         return img, chosen_class
 
     def __len__(self):
@@ -277,7 +278,7 @@ if __name__ == '__main__':
         shuffle=True
     )
     for sample in dataloader:
-        print(sample)
+        print(sample[0].shape)
 
     # dataset = 'imagenet100'
     # temp = RetrainingDatasetPreparer(
