@@ -8,6 +8,7 @@ import grpc
 import asyncio
 import json
 import logging
+from torch.utils.data import DataLoader
 from logging.config import dictConfig
 import datetime
 from pickle import dumps
@@ -25,7 +26,7 @@ BASE_DIR = os.path.dirname(
 sys.path.append(BASE_DIR)
 
 try:
-    # from dataset.retrain_dataset_preparer import RetrainingDatasetPreparer
+    from dataset.retrain_dataset_preparer import RetrainingDatasetPreparer
     from distributed.cli.trt_inference import allocate_buffers, do_inference
     import distributed.cli.ligeti_inter_data_pb2_grpc as ligeti_grpc_server
     import distributed.cli.ligeti_inter_data_pb2 as ligeti_grpc_msg
@@ -199,19 +200,30 @@ class LigetiClient():
             await asyncio.sleep(1/1000)
 
     async def profile(self, task_num):
-        # retrain_dataset = RetrainingDatasetPreparer(
-        #     self.config.dataset_name,
-        #     self.config.data_dir_path,
-        #     self.config.num_classes_for_pretrain,
-        #     self.config.num_imgs_from_chosen_pretrain_classes,
-        #     self.config.num_imgs_from_chosen_test_classes,
-        #     self.config.choosing_class_seed,
-        #     self.config.pretrain_train_data_shuffle_seed,
-        #     self.config.pretrain_test_data_shuffle_seed,
-        #     self.config.task_specifications,
-        #     self.config.retrain_data_shuffle_seed,
-        #     task_num=task_num
-        # )
+        retrain_dataset = RetrainingDatasetPreparer(
+            self.config.dataset_name,
+            self.config.data_dir_path,
+            self.config.num_classes_for_pretrain,
+            self.config.num_imgs_from_chosen_pretrain_classes,
+            self.config.num_imgs_from_chosen_test_classes,
+            self.config.choosing_class_seed,
+            self.config.pretrain_train_data_shuffle_seed,
+            self.config.pretrain_test_data_shuffle_seed,
+            self.config.task_specifications[0],
+            task_num,
+            self.config.retrain_data_shuffle_seed,
+            transforms=self.config.transforms
+        )
+        retrain_dataloader = DataLoader(
+            dataset=retrain_dataset,
+            shuffle=False,
+            batch_size=self.batch_size,
+            drop_last=True
+        )
+        for imgs, classes in retrain_dataloader:
+            print(imgs.shape, classes.shape)
+        input()
+        data = np.random.rand(self.batch_size, 3, 32, 32).astype(np.float32)
         # self.convert_model()
         print(1)
         data = np.ones((3, 32, 32))
