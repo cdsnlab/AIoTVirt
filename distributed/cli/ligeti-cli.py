@@ -219,7 +219,7 @@ class LigetiClient():
             num_classes=self.num_classes,
             batch_size=self.batch_size,
             split_point=split_point,
-            num_batches=1000//self.batch_size,
+            num_batches=self.num_batches,
             lr=self.lr
         )
         resp = self.stub.config_sync(config_msg, 1)
@@ -286,13 +286,10 @@ class LigetiClient():
             drop_last=True,
             collate_fn=collate_fn
         )
-        for imgs, classes in retrain_dataloader:
-            print(imgs.shape, classes.shape)
-        input()
-        data = np.random.rand(self.batch_size, 3, 32, 32).astype(np.float32)
+        self.num_batches = len(retrain_dataloader)
         # self.convert_model()
         # input()
-        self.logger.info('Start profiling for model {} with dataset {}'
+        self.logger.info('Start profiling for model {} with dataset {} '
                          'at different split points.'.format(
                             self.model_name,
                             self.dataset_name
@@ -336,9 +333,9 @@ class LigetiClient():
                                  'is ready.')
             else:
                 self.logger.info('Server acknowledged that client is ready. '
-                                 'Proceed')
-            for batch_num in range(30):
-                inputs[0].host = data
+                                 'Proceed to send data')
+            for batch_num, (imgs, classes) in enumerate(retrain_dataloader):
+                inputs[0].host = imgs
                 trt_outputs = do_inference(
                     context=self.context,
                     bindings=bindings,
@@ -347,10 +344,7 @@ class LigetiClient():
                     stream=stream,
                     batch_size=self.batch_size
                 )
-                final_outputs = np.reshape(trt_outputs[0], (-1, 64, 16, 16))
-                print(final_outputs)
-                # print(trt_outputs[0])
-                input()
+                print(trt_outputs[0].shape)
                 # serialized_out_data = dumps(outputs[0])
                 # self.outbound_queue.append((
                 #     split_point,
