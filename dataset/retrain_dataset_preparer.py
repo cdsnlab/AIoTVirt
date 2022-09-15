@@ -88,8 +88,8 @@ class RetrainingDatasetPreparer(Dataset):
         pretrain_test_data_shuffle_seed: int = 223,
         # The remaining parameters are used to construct the retraining
         # datasets each of which corresponds to a retraining task
-        task_num: int = 0,
         task_specifications: list = None,
+        task_num: int = 0,
         retrain_data_shuffle_seed: int = 2,
         transforms=None,
         target_transforms=None
