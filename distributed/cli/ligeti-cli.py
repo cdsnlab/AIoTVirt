@@ -26,7 +26,8 @@ BASE_DIR = os.path.dirname(
 sys.path.append(BASE_DIR)
 
 try:
-    from dataset.retrain_dataset_preparer import RetrainingDatasetPreparer
+    from dataset.retrain_dataset_preparer import RetrainingDatasetPreparer,\
+        collate_fn
     from distributed.cli.trt_inference import allocate_buffers, do_inference
     import distributed.cli.ligeti_inter_data_pb2_grpc as ligeti_grpc_server
     import distributed.cli.ligeti_inter_data_pb2 as ligeti_grpc_msg
@@ -282,7 +283,8 @@ class LigetiClient():
             dataset=retrain_dataset,
             shuffle=False,
             batch_size=self.batch_size,
-            drop_last=True
+            drop_last=True,
+            collate_fn=collate_fn
         )
         for imgs, classes in retrain_dataloader:
             print(imgs.shape, classes.shape)
