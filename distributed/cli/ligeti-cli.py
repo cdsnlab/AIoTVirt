@@ -85,7 +85,11 @@ class LigetiClient():
 
         # Each config file should have a path to a log config file, which
         # regulates the format of the logs
-        with open(self.config.log_config_path, 'r') as log_config_file:
+        self.log_config_path = os.path.join(
+            BASE_DIR,
+            self.config.log_config_path
+        )
+        with open(self.log_config_path, 'r') as log_config_file:
             self.log_config = json.load(log_config_file)
 
         for handler in self.log_config['handlers']:
@@ -106,28 +110,43 @@ class LigetiClient():
         self.logger.info('Finished preparing the logging process.')
         self.logger.info('Start logging.')
 
-        input()
         self.num_retrain_tasks = len(self.config.task_specifications)
         self.model_name = self.config.model_name
         self.dataset_name = self.config.dataset_name
-        self.split_point_list = self.config.split_point_list
         self.batch_size = self.config.batch_size
         self.num_classes = self.config.num_classes_for_pretrain
+        self.logger.info('There are {} retraining task(s) for model'
+                         '{} with {} class(es) using dataset {} with'
+                         'a batch size of {}'.format(
+                            self.num_retrain_tasks,
+                            self.model_name,
+                            self.num_classes,
+                            self.dataset_name,
+                            self.batch_size
+                         ))
+        self.split_point_list = self.config.split_point_list
+        self.logger.info('Potential split points {}'.format(
+            self.split_point_list
+        ))
         self.lr = self.config.learning_rate
         self.img_num_channels = 3
         self.img_height = self.config.img_height
         self.img_width = self.config.img_width
         self.fp = self.config.fp
+        self.logger.info('Client side uses fp{}'.format(self.fp))
+
         with open(self.config.interdata_shape_dict_path, 'r') as f:
             try:
                 self.interdata_shape_dict = json.load(f)
                 f.close()
             except json.decoder.JSONDecodeError:
                 self.interdata_shape_dict = {}
+        self.logger.info('Load dictionary for intermediate data\'s shape')
         self.server_ip = server_ip
         self.server_port = server_port
         self.inbound_queue = deque()
         self.outbound_queue = deque()
+
 
         # for task_num in range(self.num_retrain_tasks):
         #     self.profile(task_num)
@@ -270,14 +289,18 @@ class LigetiClient():
         input()
         data = np.random.rand(self.batch_size, 3, 32, 32).astype(np.float32)
         # self.convert_model()
-        print(1)
-        data = np.ones((3, 32, 32))
-        print(data.shape)
+        # input()
+        self.logger.info('Start profiling for model {} with dataset {}'
+                         'at different split points.'.format(
+                            self.model_name,
+                            self.dataset_name
+                         ))
         for split_point in self.split_point_list:
             if split_point == 0:
                 continue
-            print(split_point)
-            self.config_sync(split_point)
+            self.logger.info('Proling at split point {}'.format(
+                split_point
+            ))
             trt_model_name = \
                 '{}_{}_split_{}_shape_{}_{}_{}_batch_{}_fp{}'.format(
                     self.model_name,
@@ -294,31 +317,46 @@ class LigetiClient():
                 'distributed/cli/trt_models',
                 trt_model_name+'.trt'
             )
-            print(trt_model_name)
             output_shape = \
                 self.interdata_shape_dict[trt_model_name]
-            print(output_shape)
-            self.load_trt_model(trt_model_path)
+            inputs, outputs, bindings, stream = \
+                self.load_trt_model(trt_model_path)
+            self.logger.info('Loaded tensorrt model at {}'.format(
+                trt_model_path
+            ))
+            self.logger.debug('Output of {} is {}'.format(
+                trt_model_name,
+                output_shape
+            ))
+            resp = self.profile_ready_signal()
+            if resp is None:
+                self.logger.info('Server failed to acknowledge that client '
+                                 'is ready.')
+            else:
+                self.logger.info('Server acknowledged that client is ready. '
+                                 'Proceed')
             for batch_num in range(30):
-                outputs = do_inference(
+                inputs[0].host = data
+                trt_outputs = do_inference(
                     context=self.context,
-                    bindings=self.bindings,
-                    inputs=self.inputs,
-                    outputs=self.outputs,
-                    stream=self.stream,
-                    batch_size=1
+                    bindings=bindings,
+                    inputs=inputs,
+                    outputs=outputs,
+                    stream=stream,
+                    batch_size=self.batch_size
                 )
-                # final_outputs = np.reshape(outputs[0], (-1, 64, 16, 16))
-                # print(final_outputs)
-                print(outputs[0].shape)
-                serialized_out_data = dumps(outputs[0])
-                self.outbound_queue.append((
-                    split_point,
-                    batch_num,
-                    serialized_out_data,
-                    output_shape
-                ))
-                await asyncio.sleep(1/1000)
+                final_outputs = np.reshape(trt_outputs[0], (-1, 64, 16, 16))
+                print(final_outputs)
+                # print(trt_outputs[0])
+                input()
+                # serialized_out_data = dumps(outputs[0])
+                # self.outbound_queue.append((
+                #     split_point,
+                #     batch_num,
+                #     serialized_out_data,
+                #     output_shape
+                # ))
+                # await asyncio.sleep(1/1000)
             break
 
     def load_trt_model(self, engine_path):
@@ -332,8 +370,9 @@ class LigetiClient():
         self.context = engine.create_execution_context()
         assert self.context
 
-        self.inputs, self.outputs, self.bindings, self.stream = \
+        inputs, outputs, bindings, stream = \
             allocate_buffers(engine)
+        return inputs, outputs, bindings, stream
 
     def import_from_path(self, path):
         spec = importlib.util.spec_from_file_location(
@@ -346,9 +385,16 @@ class LigetiClient():
 
     def convert_model(self):
         top_layer = model_top_layers[self.model_name]
+        self.logger.info('Converting partial models of {} with dataset {} '
+                         'at different split points'.format(
+                            self.model_name,
+                            self.dataset_name
+                         ))
         for layer_num in range(top_layer):
             if layer_num == 0:
                 continue
+            self.logger.info('Converting at split layer {}'
+                             .format(layer_num))
             head_model = split_head(
                 model_name=self.model_name,
                 split_point=layer_num
@@ -371,20 +417,38 @@ class LigetiClient():
                 height=self.img_height,
                 width=self.img_width
             )
-            _, trt_model_name, output_shape = onnx2trt_convert(
+            self.logger.debug('Successfully converted pytorch to onnx model.'
+                              'Stored at {}'.format(
+                                onnx_model
+                              ))
+            trt_model_path, trt_model_name, output_shape = onnx2trt_convert(
                 onnx_model,
                 os.path.join(BASE_DIR, 'distributed/cli/trt_models'),
                 fp=self.fp,
+                batch_size=self.batch_size,
                 num_channels=3,
                 height=self.img_height,
-                width=self.img_width
+                width=self.img_width,
+                logger=self.logger
             )
+            self.logger.debug('Successfully converted onnx to tensorrt model.'
+                              'Stored at {}'.format(
+                                trt_model_path
+                              ))
+            self.logger.debug('Output shape of model {} is {}'.format(
+                trt_model_name,
+                output_shape
+            ))
             self.interdata_shape_dict[trt_model_name] = {
                 'num_channels': output_shape[1],
                 'height': output_shape[2],
                 'width': output_shape[3]
             }
-            break
+        self.logger.info('Successfully converted partial models of {} with' 
+                         'dataset {} at ALL split points'.format(
+                            self.model_name,
+                            self.dataset_name
+                         ))
 
 
 if __name__ == '__main__':
