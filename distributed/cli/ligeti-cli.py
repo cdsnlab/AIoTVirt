@@ -40,7 +40,9 @@ MSG_CODE = {
     'inter_data': 1,
     'inter_data_confirm': 2,
     'config_sync': 3,
-    'config_sync_confirm': 4
+    'config_sync_confirm': 4,
+    'profile_ready': 5,
+    'profile_ready_confirm': 6
 }
 
 
@@ -58,7 +60,7 @@ def json_list_to_py(json_list, key_list):
 class LigetiClient():
     def __init__(
         self,
-        data_config_path='distributed/cli/default_config.py',
+        data_config_path='/home/ligeti/distributed/cli/default_config.py',
         server_ip: str = '143.248.55.76',
         server_port: str = '5001'
     ):
@@ -68,7 +70,7 @@ class LigetiClient():
         # The should be two folder inside the "logs" folder
         # One is `client`, the other `server`
         self.log_folder_path = os.path.join(BASE_DIR, 'logs', 'client')
-    
+
         now = datetime.datetime.now()
         self.config.time_stamp = now.strftime('%Y-%m-%dT%H:%M:%S') + \
             ('-%02d' % (now.microsecond / 10000))
@@ -135,6 +137,25 @@ class LigetiClient():
             json.dump(self.interdata_shape_dict, f)
             f.close()
 
+    def grpc_server_on(self, channel, timeout=3) -> bool:
+        """grpc_server_on Verify if the connection is successful
+
+        Parameters
+        ----------
+        channel : grpc.aio.Channel
+            An GRPC channel object
+
+        Returns
+        -------
+        bool
+            Whether the channel is on
+        """
+        try:
+            grpc.channel_ready_future(channel).result(timeout=timeout)
+            return True
+        except grpc.FutureTimeoutError:
+            return False
+
     async def main(self):
         try:
             channel_options = [
@@ -147,8 +168,21 @@ class LigetiClient():
                 self.server_port
                 ), options=channel_options
             )
+            if self.grpc_server_on(self.channel):
+                self.logger.info('Successfully connected to {}:{}'.format(
+                    self.server_ip,
+                    self.server_port
+                ))
+            else:
+                self.logger.debug('Failed to connect to the server.')
+
             self.stub = ligeti_grpc_server.LigetiProfileStub(self.channel)
             loop = asyncio.get_event_loop()
+
+            # Running two concurrent tasks
+            # One (`send`) constantly checks if there is anything put into
+            # the `outbound queue` and send them to server.
+            # The other runs the profiling for the current retraining task.
             tasks = [
                 loop.create_task(self.send()),
                 loop.create_task(self.profile(task_num=0))
