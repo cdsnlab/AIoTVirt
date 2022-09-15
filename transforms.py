@@ -277,6 +277,46 @@ class Normalize:
 
         return img
 
+
+class NormalizeNumpy:
+    """Normalize a torch tensor (H, W, BGR order) with mean and standard deviation
+    
+    for each channel in torch tensor:
+        ``input[channel] = (input[channel] - mean[channel]) / std[channel]``
+
+    Args:
+        mean: sequence of means for each channel
+        std: sequence of stds for each channel
+    """
+
+    def __init__(self, mean, std):
+        self.mean = np.array(mean)
+        self.std = np.array(std)
+        self.mean = np.expand_dims(self.mean, axis=(1,2))
+        self.std = np.expand_dims(self.std, axis=(1,2))
+    
+    def __call__(self, img):
+        """
+        Args:
+            (H W C) format numpy array range from [0, 255]
+        Returns:
+            (H W C) format numpy array in float32 range from [0, 1]
+        """        
+
+
+        img = img.transpose(2, 0, 1).astype(np.float32)
+        img = img / 255.0
+
+        # mean = torch.tensor(self.mean, dtype=torch.float32)d
+        # std = torch.tensor(self.std, dtype=torch.float32)
+        # img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+        img = img - self.mean
+        img = img / self.std
+        
+
+
+        return img
+
 class CenterCrop:
     """resize each image’s shorter edge to r pixels while keeping its aspect ratio. 
     Next, we crop out the cropped region in the center 

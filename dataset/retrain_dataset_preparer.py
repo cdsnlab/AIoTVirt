@@ -239,11 +239,13 @@ class RetrainingDatasetPreparer(Dataset):
             img = Image.open(path)
         elif 'cifar' in self.dataset_name:
             img, chosen_class = self.task_retrain_data[idx]
-            img = np.transpose(img, (2, 0, 1))
+            # img = np.transpose(img, (2, 0, 1))
+        # print(img.shape)
         if self.transforms is not None:
             img = self.transforms(img)
         if self.target_transforms is not None:
             chosen_class = self.target_transforms(chosen_class)
+        # print(img.shape)
         return img, chosen_class
 
     def __len__(self):

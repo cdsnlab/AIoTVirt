@@ -237,6 +237,4 @@ if __name__ == '__main__':
         cifar100_pretrain_dataset,
         batch_size=32
     )
-    for sample in cifar100_dataloader:
-        print(sample[0].shape)
     # print(pretrain_dataset[1000])
