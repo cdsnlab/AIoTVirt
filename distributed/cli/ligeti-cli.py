@@ -203,12 +203,23 @@ class LigetiClient():
             lr=self.lr
         )
         resp = self.stub.config_sync(config_msg, 1)
+        return resp.ack
+
+    def profile_ready_signal(self):
+        current_time = Timestamp()
+        current_time.GetCurrentTime()
+        msg = ligeti_grpc_msg.ProfileReadySignal(
+            msg_type=MSG_CODE['profile_ready'],
+            timestamp=current_time
+        )
+
+        resp = self.stub.profile_ready_signal(msg, 1)
         return resp
 
     async def send(self):
         while True:
             try:
-                print('send')
+                # print('send')
                 nxt_outbound_data = self.outbound_queue.popleft()
                 current_time = Timestamp()
                 current_time.GetCurrentTime()
@@ -226,7 +237,7 @@ class LigetiClient():
                     timestamp=current_time
                 )
                 resp = self.stub.inter_data_stream(out_msg, 1)
-                print(resp)
+                # print(resp)
                 # return resp
             except IndexError:
                 pass
