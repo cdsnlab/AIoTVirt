@@ -2,8 +2,6 @@ import pycuda.autoinit
 import pycuda.driver as cuda
 import tensorrt as trt
 
-TRT_LOGGER = trt.Logger(trt.Logger.INFO)
-
 
 class HostDeviceMem(object):
     def __init__(self, host_mem, device_mem):
@@ -53,3 +51,22 @@ def do_inference(context, bindings, inputs, outputs, stream, batch_size=1):
     stream.synchronize()
     # Return only the host outputs.
     return [out.host for out in outputs]
+
+
+def load_trt_model(engine_path):
+    TRT_LOGGER = trt.Logger(trt.Logger.INFO)
+    runtime = trt.Runtime(TRT_LOGGER)
+    assert runtime
+
+    with open(engine_path, 'rb') as f:
+        engine = runtime.deserialize_cuda_engine(f.read())
+    assert engine
+    context = engine.create_execution_context()
+    assert context
+    inputs, outputs, bindings, stream = \
+        allocate_buffers(engine)
+    return inputs, outputs, bindings, stream, context
+
+
+if __name__ == "__main__":
+    load_trt_model('/home/ligeti/distributed/cli/trt_models/resnet18_batch_32_fp16.trt')

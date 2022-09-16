@@ -14,8 +14,6 @@ import datetime
 from pickle import dumps
 from google.protobuf.timestamp_pb2 import Timestamp
 
-TRT_LOGGER = trt.Logger(trt.Logger.INFO)
-
 BASE_DIR = os.path.dirname(
     os.path.dirname(
         os.path.dirname(
@@ -28,7 +26,7 @@ sys.path.append(BASE_DIR)
 try:
     from dataset.retrain_dataset_preparer import RetrainingDatasetPreparer,\
         collate_fn
-    from distributed.cli.trt_inference import allocate_buffers, do_inference
+    from distributed.cli.trt_inference import do_inference, load_trt_model
     import distributed.cli.ligeti_inter_data_pb2_grpc as ligeti_grpc_server
     import distributed.cli.ligeti_inter_data_pb2 as ligeti_grpc_msg
     from models.model_split import model_top_layers, split_head
@@ -318,8 +316,8 @@ class LigetiClient():
             )
             output_shape = \
                 self.interdata_shape_dict[trt_model_name]
-            inputs, outputs, bindings, stream = \
-                self.load_trt_model(trt_model_path)
+            inputs, outputs, bindings, stream, context = \
+                load_trt_model(trt_model_path)
             self.logger.info('Loaded tensorrt model at {}'.format(
                 trt_model_path
             ))
@@ -337,7 +335,7 @@ class LigetiClient():
             for batch_num, (imgs, classes) in enumerate(retrain_dataloader):
                 inputs[0].host = imgs
                 trt_outputs = do_inference(
-                    context=self.context,
+                    context=context,
                     bindings=bindings,
                     inputs=inputs,
                     outputs=outputs,
@@ -354,21 +352,6 @@ class LigetiClient():
                 # ))
                 # await asyncio.sleep(1/1000)
             break
-
-    def load_trt_model(self, engine_path):
-        runtime = trt.Runtime(TRT_LOGGER)
-        assert runtime
-
-        with open(engine_path, 'rb') as f:
-            engine = runtime.deserialize_cuda_engine(f.read())
-        assert engine
-
-        self.context = engine.create_execution_context()
-        assert self.context
-
-        inputs, outputs, bindings, stream = \
-            allocate_buffers(engine)
-        return inputs, outputs, bindings, stream
 
     def import_from_path(self, path):
         spec = importlib.util.spec_from_file_location(
