@@ -7,13 +7,16 @@ ARG host_uid
 ARG host_gid
 ARG host_name
 
-COPY requirements.txt .
+COPY requirements.amd.txt .
 
+RUN apt-get update --fix-missing
 RUN apt-get update ##[edited]
 RUN apt install python3-pip -y
 RUN pip3 install pip --upgrade
 RUN pip3 install -r requirements.txt
 RUN apt install vim -y
+RUN apt-get install software-properties-common ffmpeg libsm6 libxext6 imagemagick lsof -y
+RUN pip3 install torch==1.11.0+cu113 torchvision==0.12.0+cu113 torchaudio==0.11.0 --extra-index-url https://download.pytorch.org/whl/cu113
 
 
 # ENV PATH="/usr/local/cuda-10.2/bin:${PATH}"
