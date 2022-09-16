@@ -27,7 +27,7 @@ then
     -f $DOCKERFILE \
     -t $CONTAINER_NAME .
 fi
-if [[ "$RUN" -eq 1 ]]
+if [[ "$RUN" -eq 1 ]] 
 then
     docker run -t -d \
     --runtime nvidia \
@@ -38,15 +38,35 @@ then
     -e HOME=/home/$USER_NAME/distributed/cli \
     -p 5000-5050:5000-5050 \
     $CONTAINER_NAME
-elif [["$RUN" -eq 2 ]]
+elif [[ "$RUN" -eq 2 ]]
 then 
     docker run -it --rm \
     --runtime nvidia \
     --gpus all \
     -u $HOST_UID \
     -v /home/$HOST_NAME/LIGETI:/home/$USER_NAME \
+    -v /data:/data \
     -e HOME=/home/$USER_NAME/distributed/cli \
     -p 5000-5050:5000-5050 \
+    $CONTAINER_NAME \
+    /bin/bash
+elif [[ "$RUN" -eq 3 ]]
+then
+    docker run -t -d \
+    --gpus all \
+    -u $HOST_UID:$HOST_GID \
+    -v /home/$HOST_NAME/LIGETI/LIGETI:/home/$USER_NAME \
+    -v /data:/data \
+    -e HOME=/home/$USER_NAME/distributed/cli \
+    $CONTAINER_NAME
+elif [[ "$RUN" -eq 4 ]]
+then
+    docker run -it \
+    --gpus all \
+    -u $HOST_UID:$HOST_GID \
+    -v /home/$HOST_NAME/LIGETI/LIGETI:/home/$USER_NAME \
+    -v /data:/data \
+    -e HOME=/home/$USER_NAME/distributed/cli \
     $CONTAINER_NAME \
     /bin/bash
 fi
