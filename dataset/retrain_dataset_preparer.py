@@ -88,8 +88,8 @@ class RetrainingDatasetPreparer(Dataset):
         pretrain_test_data_shuffle_seed: int = 223,
         # The remaining parameters are used to construct the retraining
         # datasets each of which corresponds to a retraining task
-        task_num: int = 0,
         task_specifications: list = None,
+        task_num: int = 0,
         retrain_data_shuffle_seed: int = 2,
         transforms=None,
         target_transforms=None
@@ -250,6 +250,37 @@ class RetrainingDatasetPreparer(Dataset):
 
     def __len__(self):
         return len(self.task_retrain_data)
+
+
+def collate_fn(batch: list):
+    """collate_fn Basic collate function to make sure data comes out
+    in numpy format, not tensor.
+
+    Torch's `default_collate` will turn everything into tensor, which
+    is not supported by tensorrt.
+
+    Parameters
+    ----------
+    batch : list
+        Torch's Dataloader takes items using `__getitem__` method implemented
+        in the Dataset class and get them into a list.
+
+    Returns
+    -------
+    images : np.darray
+        An array of images with the shape of [batch_size, ...]
+    labels : np.darray
+        The labels those images [batch_size, ...]
+    """
+    images = []
+    labels = []
+    for img, label in batch:
+        images.append(img)
+        labels.append(label)
+
+    images = np.array(images, dtype='float32')
+    labels = np.array(labels, dtype='int8')
+    return images, labels
 
 
 if __name__ == '__main__':

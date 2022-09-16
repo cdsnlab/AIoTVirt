@@ -1,0 +1,50 @@
+{
+    "version": 1,
+    "disable_existing_loggers": false,
+    "formatters": {
+      "default": {
+        "format": "%(levelname)s :: %(asctime)s :: %(module)s :: %(name)s :: %(message)s",
+        "datefmt": "%Y-%m-%d %H:%M:%S"
+      },
+      "error": {
+        "format": "%(levelname)s :: %(asctime)s :: %(module)s :: %(name)s :: %(lineno)s :: %(message)s",
+        "datefmt": "%Y-%m-%d %H:%M:%S"
+      }
+    },
+    "handlers": {
+      "dev_console_handler": {
+        "class": "logging.StreamHandler",
+        "level": "DEBUG",
+        "formatter": "error"
+      },
+      "dev_file_handler": {
+        "class": "logging.FileHandler",
+        "level": "DEBUG",
+        "formatter": "error",
+        "filename": "dev_log.log"
+      },
+      "prod_console_handler": {
+        "class": "logging.StreamHandler",
+        "level": "INFO",
+        "formatter": "default"
+      },
+      "prod_file_handler": {
+        "class": "logging.FileHandler",
+        "level": "INFO",
+        "formatter": "default",
+        "filename": "prod_log.log"
+      }
+    },
+    "loggers": {
+      "dev_logger": {
+        "level": "DEBUG",
+        "handlers": ["dev_console_handler", "dev_file_handler"],
+        "propagate": true
+      },
+      "prod_logger": {
+        "level": "INFO",
+        "handlers": ["prod_console_handler", "prod_file_handler"],
+        "propagate": true
+      }
+    }
+  }

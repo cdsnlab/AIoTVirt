@@ -10,6 +10,11 @@ ARG host_name
 RUN apt-get update ##[edited]
 RUN apt install python3-pip -y
 RUN pip3 install pip --upgrade
+RUN apt install vim
+RUN apt update
+RUN apt install tzdata
+RUN dpkg-reconfigure tzdata
+
 
 # ENV PATH="/usr/local/cuda-10.2/bin:${PATH}"
 # ENV LD_LIBRARY_PATH="/usr/local/cuda-10.2/lib64:${LD_LIBRARY_PATH}"
