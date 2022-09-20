@@ -135,6 +135,29 @@ class LigetiServer():
         self.kd_loss_function = torch.nn.KLDivLoss()
         self.server_logger.info('Set config {}'.format(config))
 
+        if self.task_logger is None:
+            task_log_config_path = os.path.join(
+                BASE_DIR,
+                self.config.task_log_config_path
+            )
+
+            with open(task_log_config_path, 'r') as log_config_file:
+                log_config = json.load(log_config_file)
+
+            now = datetime.datetime.now()
+            time_stamp = now.strftime('%Y-%m-%dT%H:%M:%S') + \
+                ('-%02d' % (now.microsecond / 10000))
+            log_config['handlers']['task_file_handler']['filename'] = \
+                os.path.join(
+                    self.run_root,
+                    'retrain_{}'.format(time_stamp)
+                )
+            dictConfig(log_config)
+            self.task_logger = logging.getLogger('task_logger')
+
+            self.task_logger.info('Start task logging.')
+
+        self.config_done = True
 
     async def profile(self):
         while True:
