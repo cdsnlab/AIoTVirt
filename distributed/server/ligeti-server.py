@@ -189,24 +189,39 @@ class LigetiServer():
             try:
                 nxt = self.ligeti_grpc_servicer.inbound_queue.popleft()
                 if nxt['msg_type'] == MSG_CODE['config_sync']:
-                    self.config_list.append(nxt)
+                    self.server_logger.info('Received Retraining Config '
+                                            'Synchronization request from a '
+                                            'client.')
+                    if self.config_done:
+                        self.server_logger.info('Added Config into the wait'
+                                                'list.')
+                        self.config_list.append(nxt)
+                    else:
+                        self.server_logger.info('Proceed to sync Config now.')
+                        self.config_sync(nxt)
                 elif nxt['msg_type'] == MSG_CODE['inter_data']:
+                    self.task_logger.info('Received inter data of split point'
+                                          ' {}, batch {}.'.format(
+                                              nxt['split_point'],
+                                              nxt['batch_num']
+                                          ))
                     inter_data = np.reshape(
                         nxt['inter_data'],
-                        nxt['data_shape']
+                        self.data_shape
                     )
+                    classes = nxt['classes']
                     try:
                         self.inter_data_list[nxt['split_point']].append(
-                            inter_data
+                            (inter_data, classes)
                         )
                     except KeyError:
                         print('See data from a new split point')
                         self.inter_data_list[nxt['split_point']] = []
                         self.inter_data_list[nxt['split_point']].append(
-                            inter_data
+                            (inter_data, classes)
                         )
                 elif nxt['msg_type'] == MSG_CODE['profile_ready']:
-                    self.client_model_convert_done = True
+                    self.client_model_load_done = True
             except IndexError:
                 pass
             await asyncio.sleep(1/1000)
