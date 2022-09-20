@@ -217,7 +217,13 @@ class LigetiClient():
             batch_size=self.batch_size,
             split_point=split_point,
             num_batches=self.num_batches,
-            lr=self.lr
+            lr=self.lr,
+            data_shape=self.output_shape,
+            temperature=self.config.temperature,
+            alpha=self.config.alpha,
+            num_profile_epochs=self.config.num_profile_epochs,
+            num_retrain_epochs=self.config.num_retrain_epochs,
+            retrain_time_budget=self.config.retrain_time_budget,
         )
         resp = self.stub.config_sync(config_msg, 1)
         return resp.ack
