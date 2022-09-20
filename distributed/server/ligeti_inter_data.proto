@@ -1,0 +1,64 @@
+syntax="proto3";
+
+import "google/protobuf/timestamp.proto";
+
+service LigetiProfile {
+    rpc inter_data_stream(InterData) returns (InterDataRecvConfirm) {}
+    rpc config_sync(ConfigSend) returns (ConfigConfirm) {}
+    rpc profile_ready_signal(ProfileReadySignal) returns (ProfileReadyConfirm) {}
+}
+
+message InterData {
+    int32 msg_type = 1;
+    int32 split_point = 2;
+    int32 batch_num = 3;
+    bytes inter_data = 4;
+    bytes classes = 5;
+    google.protobuf.Timestamp timestamp = 6;
+}
+
+message DataShape {
+    int32 num_channels = 1;
+    int32 height = 2;
+    int32 width = 3;
+}
+
+message InterDataRecvConfirm {
+    int32 msg_type = 1;
+    int32 split_point = 2;
+    int32 batch_num = 3;
+    int32 ack = 4;
+    google.protobuf.Timestamp timestamp = 5;
+}
+
+message ConfigSend {
+    int32 msg_type = 1;
+    string model_name = 2;
+    string dataset_name = 3;
+    int32 num_classes = 4;
+    int32 batch_size = 5;
+    int32 split_point = 6;
+    int32 num_batches = 7;
+    float lr = 8;
+    DataShape data_shape = 9;
+    int32 temperature = 10;
+    float alpha = 11;
+    int32 num_profile_epochs = 12;
+    int32 num_retrain_epochs = 13;
+    int32 retrain_time_budget = 14;
+}
+
+message ConfigConfirm {
+    int32 msg_type = 1;
+    int32 ack = 2;
+}
+
+message ProfileReadySignal {
+    int32 msg_type = 1;
+    google.protobuf.Timestamp timestamp = 2;
+}
+
+message ProfileReadyConfirm {
+    int32 msg_type = 1;
+    google.protobuf.Timestamp timestamp = 2;
+}

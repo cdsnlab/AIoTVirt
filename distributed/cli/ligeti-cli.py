@@ -14,8 +14,6 @@ import datetime
 from pickle import dumps
 from google.protobuf.timestamp_pb2 import Timestamp
 
-TRT_LOGGER = trt.Logger(trt.Logger.INFO)
-
 BASE_DIR = os.path.dirname(
     os.path.dirname(
         os.path.dirname(
@@ -28,12 +26,13 @@ sys.path.append(BASE_DIR)
 try:
     from dataset.retrain_dataset_preparer import RetrainingDatasetPreparer,\
         collate_fn
-    from distributed.cli.trt_inference import allocate_buffers, do_inference
+    from distributed.cli.trt_inference import do_inference, load_trt_model
     import distributed.cli.ligeti_inter_data_pb2_grpc as ligeti_grpc_server
     import distributed.cli.ligeti_inter_data_pb2 as ligeti_grpc_msg
     from models.model_split import model_top_layers, split_head
     from pytorch_onnx import pytorch2onnx_convert
     from onnx_tensorrt import onnx2trt_convert
+    from utils import import_from_path
 except ModuleNotFoundError:
     raise
 
@@ -61,12 +60,10 @@ def json_list_to_py(json_list, key_list):
 class LigetiClient():
     def __init__(
         self,
-        data_config_path='/home/ligeti/distributed/cli/default_config.py',
-        server_ip: str = '143.248.55.76',
-        server_port: str = '5001'
+        data_config_path='/home/ligeti/distributed/cli/default_config.py'
     ):
         # Loading the config from a file allows flexible argument parsing
-        self.config = self.import_from_path(data_config_path).config()
+        self.config = import_from_path(data_config_path).config()
 
         # The should be two folder inside the "logs" folder
         # One is `client`, the other `server`
@@ -97,7 +94,7 @@ class LigetiClient():
             try:
                 self.log_config['handlers'][handler]['filename'] = \
                     os.path.join(
-                        os.path.join(self.run_root),
+                        self.run_root,
                         self.log_config['handlers'][handler]['filename'],
                     )
             except KeyError:
@@ -143,16 +140,12 @@ class LigetiClient():
             except json.decoder.JSONDecodeError:
                 self.interdata_shape_dict = {}
         self.logger.info('Load dictionary for intermediate data\'s shape')
-        self.server_ip = server_ip
-        self.server_port = server_port
         self.inbound_queue = deque()
         self.outbound_queue = deque()
-
-
         # for task_num in range(self.num_retrain_tasks):
         #     self.profile(task_num)
 
-    def log_out(self):
+    def save_shape_dict(self):
         with open(self.config.interdata_shape_dict_path, 'w') as f:
             json.dump(self.interdata_shape_dict, f)
             f.close()
@@ -184,17 +177,21 @@ class LigetiClient():
             ]
 
             self.channel = grpc.insecure_channel('{}:{}'.format(
-                self.server_ip,
-                self.server_port
+                self.config.server_ip,
+                self.config.server_port
                 ), options=channel_options
             )
             if self.grpc_server_on(self.channel):
                 self.logger.info('Successfully connected to {}:{}'.format(
-                    self.server_ip,
-                    self.server_port
+                    self.config.server_ip,
+                    self.config.server_port
                 ))
             else:
-                self.logger.debug('Failed to connect to the server.')
+                self.logger.debug('Failed to connect to the server, at {}:{}.'
+                                  .format(
+                                      self.config.server_ip,
+                                      self.config.server_port
+                                  ))
 
             self.stub = ligeti_grpc_server.LigetiProfileStub(self.channel)
             loop = asyncio.get_event_loop()
@@ -209,7 +206,7 @@ class LigetiClient():
             ]
             await asyncio.gather(*tasks)
         finally:
-            self.log_out()
+            self.save_shape_dict()
 
     def config_sync(self, split_point):
         config_msg = ligeti_grpc_msg.ConfigSend(
@@ -220,7 +217,13 @@ class LigetiClient():
             batch_size=self.batch_size,
             split_point=split_point,
             num_batches=self.num_batches,
-            lr=self.lr
+            lr=self.lr,
+            data_shape=self.output_shape,
+            temperature=self.config.temperature,
+            alpha=self.config.alpha,
+            num_profile_epochs=self.config.num_profile_epochs,
+            num_retrain_epochs=self.config.num_retrain_epochs,
+            retrain_time_budget=self.config.retrain_time_budget,
         )
         resp = self.stub.config_sync(config_msg, 1)
         return resp.ack
@@ -234,30 +237,28 @@ class LigetiClient():
         )
 
         resp = self.stub.profile_ready_signal(msg, 1)
-        return resp
+        return resp.msg_type
 
     async def send(self):
         while True:
             try:
-                # print('send')
                 nxt_outbound_data = self.outbound_queue.popleft()
                 current_time = Timestamp()
                 current_time.GetCurrentTime()
-                out_data_shape = ligeti_grpc_msg.DataShape(
-                    num_channels=nxt_outbound_data[3]['num_channels'],
-                    height=nxt_outbound_data[3]['height'],
-                    width=nxt_outbound_data[3]['width']
-                )
                 out_msg = ligeti_grpc_msg.InterData(
                     msg_type=MSG_CODE['inter_data'],
                     split_point=nxt_outbound_data[0],
                     batch_num=nxt_outbound_data[1],
                     inter_data=nxt_outbound_data[2],
-                    data_shape=out_data_shape,
+                    classes=nxt_outbound_data[3],
                     timestamp=current_time
                 )
-                resp = self.stub.inter_data_stream(out_msg, 1)
-                # print(resp)
+                resp = self.stub.inter_data_stream(out_msg, timeout=5)
+                self.logger.info('SENT intermediate data of split point '
+                                 '{}, batch {}'.format(
+                                    nxt_outbound_data[0],
+                                    nxt_outbound_data[1]
+                                 ))
                 # return resp
             except IndexError:
                 pass
@@ -281,14 +282,18 @@ class LigetiClient():
         )
         retrain_dataloader = DataLoader(
             dataset=retrain_dataset,
-            shuffle=False,
+            shuffle=True,
             batch_size=self.batch_size,
             drop_last=True,
             collate_fn=collate_fn
         )
         self.num_batches = len(retrain_dataloader)
         # self.convert_model()
-        # input()
+        self.save_shape_dict()
+        self.logger.info('Saved inter data shapes at {}'
+                         .format(
+                             self.config.interdata_shape_dict_path
+                         ))
         self.logger.info('Start profiling for model {} with dataset {} '
                          'at different split points.'.format(
                             self.model_name,
@@ -300,6 +305,7 @@ class LigetiClient():
             self.logger.info('Proling at split point {}'.format(
                 split_point
             ))
+
             trt_model_name = \
                 '{}_{}_split_{}_shape_{}_{}_{}_batch_{}_fp{}'.format(
                     self.model_name,
@@ -316,16 +322,23 @@ class LigetiClient():
                 'distributed/cli/trt_models',
                 trt_model_name+'.trt'
             )
-            output_shape = \
+            self.output_shape = \
                 self.interdata_shape_dict[trt_model_name]
-            inputs, outputs, bindings, stream = \
-                self.load_trt_model(trt_model_path)
-            self.logger.info('Loaded tensorrt model at {}'.format(
+            self.logger.info('Sending Retraining Config Synchronization'
+                             'request to the server.')
+            resp = self.config_sync(split_point)
+            if resp:
+                self.logger.info('Server acknowledged the request.')
+
+            self.logger.info('Loading tensorrt model at {}'.format(
                 trt_model_path
             ))
+            inputs, outputs, bindings, stream, context = \
+                load_trt_model(trt_model_path)
+            self.logger.info('Finished loading tensorrt model')
             self.logger.debug('Output of {} is {}'.format(
                 trt_model_name,
-                output_shape
+                self.output_shape
             ))
             resp = self.profile_ready_signal()
             if resp is None:
@@ -333,51 +346,39 @@ class LigetiClient():
                                  'is ready.')
             else:
                 self.logger.info('Server acknowledged that client is ready. '
-                                 'Proceed to send data')
+                                 'Proceed to send data.')
             for batch_num, (imgs, classes) in enumerate(retrain_dataloader):
                 inputs[0].host = imgs
                 trt_outputs = do_inference(
-                    context=self.context,
+                    context=context,
                     bindings=bindings,
                     inputs=inputs,
                     outputs=outputs,
                     stream=stream,
                     batch_size=self.batch_size
                 )
-                print(trt_outputs[0].shape)
-                # serialized_out_data = dumps(outputs[0])
-                # self.outbound_queue.append((
-                #     split_point,
-                #     batch_num,
-                #     serialized_out_data,
-                #     output_shape
-                # ))
-                # await asyncio.sleep(1/1000)
-            break
-
-    def load_trt_model(self, engine_path):
-        runtime = trt.Runtime(TRT_LOGGER)
-        assert runtime
-
-        with open(engine_path, 'rb') as f:
-            engine = runtime.deserialize_cuda_engine(f.read())
-        assert engine
-
-        self.context = engine.create_execution_context()
-        assert self.context
-
-        inputs, outputs, bindings, stream = \
-            allocate_buffers(engine)
-        return inputs, outputs, bindings, stream
-
-    def import_from_path(self, path):
-        spec = importlib.util.spec_from_file_location(
-            'config', path
-        )
-        module = importlib.util.module_from_spec(spec)
-        sys.modules['config'] = module
-        spec.loader.exec_module(module)
-        return module
+                self.logger.info('Passed input of split point {}, batch {}'
+                                 .format(
+                                    split_point,
+                                    batch_num
+                                 ))
+                serialized_out_data = dumps(trt_outputs[0])
+                serialized_out_classes = dumps(classes)
+                self.outbound_queue.append((
+                    split_point,
+                    batch_num,
+                    serialized_out_data,
+                    serialized_out_classes
+                ))
+                self.logger.info('PUT in queue intermediate data of split '
+                                 'point {}, batch {}'
+                                 .format(
+                                    split_point,
+                                    batch_num
+                                 ))
+                await asyncio.sleep(1/1000)
+            if split_point == 2:
+                break
 
     def convert_model(self):
         top_layer = model_top_layers[self.model_name]
