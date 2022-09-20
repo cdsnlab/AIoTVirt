@@ -30,8 +30,7 @@ except ModuleNotFoundError:
 class LigetiServer():
     def __init__(
         self,
-        device='cuda:0',
-        port=5001
+        config_path='/home/ligeti/distributed/server/default_config.py'
     ):
         self.port = port
         self.running_mode = 'profile'
@@ -58,7 +57,9 @@ class LigetiServer():
             self.ligeti_grpc_servicer,
             self.grpc_server
         )
-        self.grpc_server.add_insecure_port('[::]:{}'.format(self.port))
+        self.grpc_server.add_insecure_port('[::]:{}'.format(self.config.port))
+        self.server_logger.info('Start LISTENing to port {}.'
+                                .format(self.config.port))
 
         await self.grpc_server.start()
         await self.grpc_server.wait_for_termination()
