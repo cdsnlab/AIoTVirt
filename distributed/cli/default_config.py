@@ -28,12 +28,16 @@ class config:
 
     split_point_list = np.arange(10)
 
+    num_profile_epochs = 3
+    num_retrain_epochs = 25
+    retrain_time_budget = 200   # seconds
+
     dataset_name = 'cifar10'
     data_dir_path = '/data/cifar10'
     interdata_shape_dict_path = \
         '/home/ligeti/models/source/interdata_shape_dict.json'
     log_config_path = 'logs/log_config.json'
-    
+
     learning_rate = 1e-6
     num_classes_for_pretrain = 10
     num_imgs_from_chosen_pretrain_classes = [
@@ -53,6 +57,8 @@ class config:
     img_height = 32
     img_width = 32
     fp = 16
+    temperature = 2
+    alpha = 0.5
 
     transforms = Compose([
         RandomHorizontalFlip(),
