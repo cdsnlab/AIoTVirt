@@ -1,18 +1,21 @@
 import numpy as np
-import operator
-import collections
 import os
 import fnmatch
-import termcolor
 import time
-import string
-import math
-from shutil import rmtree
-from pathlib import Path
 import sys
 import torch.nn as nn
 import torch.nn.init as init
+import importlib.util
 
+
+def import_from_path(path):
+    spec = importlib.util.spec_from_file_location(
+        'config', path
+    )
+    module = importlib.util.module_from_spec(spec)
+    sys.modules['config'] = module
+    spec.loader.exec_module(module)
+    return module
 
 def get_mean_and_std(dataset):
     '''Compute the mean and std value of dataset.'''

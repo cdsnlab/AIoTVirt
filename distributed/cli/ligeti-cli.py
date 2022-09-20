@@ -32,6 +32,7 @@ try:
     from models.model_split import model_top_layers, split_head
     from pytorch_onnx import pytorch2onnx_convert
     from onnx_tensorrt import onnx2trt_convert
+    from utils import import_from_path
 except ModuleNotFoundError:
     raise
 
@@ -64,7 +65,7 @@ class LigetiClient():
         server_port: str = '5001'
     ):
         # Loading the config from a file allows flexible argument parsing
-        self.config = self.import_from_path(data_config_path).config()
+        self.config = import_from_path(data_config_path).config()
 
         # The should be two folder inside the "logs" folder
         # One is `client`, the other `server`
