@@ -19,6 +19,10 @@ except ModuleNotFoundError as e:
 
 
 class config:
+
+    server_ip = '143.248.55.76'
+    server_port = '5001'
+
     model_name = 'resnet18'
     dev = True
 

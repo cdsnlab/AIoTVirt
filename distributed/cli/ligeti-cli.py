@@ -60,9 +60,7 @@ def json_list_to_py(json_list, key_list):
 class LigetiClient():
     def __init__(
         self,
-        data_config_path='/home/ligeti/distributed/cli/default_config.py',
-        server_ip: str = '143.248.55.76',
-        server_port: str = '5001'
+        data_config_path='/home/ligeti/distributed/cli/default_config.py'
     ):
         # Loading the config from a file allows flexible argument parsing
         self.config = import_from_path(data_config_path).config()
@@ -96,7 +94,7 @@ class LigetiClient():
             try:
                 self.log_config['handlers'][handler]['filename'] = \
                     os.path.join(
-                        os.path.join(self.run_root),
+                        self.run_root,
                         self.log_config['handlers'][handler]['filename'],
                     )
             except KeyError:
@@ -142,12 +140,8 @@ class LigetiClient():
             except json.decoder.JSONDecodeError:
                 self.interdata_shape_dict = {}
         self.logger.info('Load dictionary for intermediate data\'s shape')
-        self.server_ip = server_ip
-        self.server_port = server_port
         self.inbound_queue = deque()
         self.outbound_queue = deque()
-
-
         # for task_num in range(self.num_retrain_tasks):
         #     self.profile(task_num)
 
@@ -183,17 +177,21 @@ class LigetiClient():
             ]
 
             self.channel = grpc.insecure_channel('{}:{}'.format(
-                self.server_ip,
-                self.server_port
+                self.config.server_ip,
+                self.config.server_port
                 ), options=channel_options
             )
             if self.grpc_server_on(self.channel):
                 self.logger.info('Successfully connected to {}:{}'.format(
-                    self.server_ip,
-                    self.server_port
+                    self.config.server_ip,
+                    self.config.server_port
                 ))
             else:
-                self.logger.debug('Failed to connect to the server.')
+                self.logger.debug('Failed to connect to the server, at {}:{}.'
+                                  .format(
+                                      self.config.server_ip,
+                                      self.config.server_port
+                                  ))
 
             self.stub = ligeti_grpc_server.LigetiProfileStub(self.channel)
             loop = asyncio.get_event_loop()
