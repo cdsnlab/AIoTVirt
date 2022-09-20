@@ -7,6 +7,9 @@ import json
 from collections import deque
 import datetime
 import torch
+import torch.nn.functional as F
+import logging
+from logging.config import dictConfig
 
 BASE_DIR = os.path.dirname(
     os.path.dirname(
@@ -32,18 +35,62 @@ class LigetiServer():
         self,
         config_path='/home/ligeti/distributed/server/default_config.py'
     ):
-        self.port = port
-        self.running_mode = 'profile'
-        self.start_profiling = True
-        self.device = device
+        # Loading the config from a file allows flexible argument parsing
+        self.config = import_from_path(config_path).config()
+
+        # The should be two folder inside the "logs" folder
+        # One is `client`, the other `server`
+        self.log_folder_path = os.path.join(BASE_DIR, 'logs', 'server')
+
+        now = datetime.datetime.now()
+        time_stamp = now.strftime('%Y-%m-%dT%H:%M:%S') + \
+            ('-%02d' % (now.microsecond / 10000))
+        self.run_name = 'server_log_{}'.format(time_stamp)
+        self.run_root = os.path.join(
+            self.log_folder_path,
+            self.run_name
+        )
+        os.makedirs(self.run_root)
+
+        # Each config file should have a path to a log config file, which
+        # regulates the format of the logs
+        log_config_path = os.path.join(
+            BASE_DIR,
+            self.config.log_config_path
+        )
+        with open(log_config_path, 'r') as log_config_file:
+            log_config = json.load(log_config_file)
+
+        for handler in log_config['handlers']:
+            try:
+                log_config['handlers'][handler]['filename'] = \
+                    os.path.join(
+                        self.run_root,
+                        log_config['handlers'][handler]['filename'],
+                    )
+            except KeyError:
+                pass
+
+        if self.config.dev:
+            logger_name = 'dev_logger'
+        else:
+            logger_name = 'prod_logger'
+        dictConfig(log_config)
+        self.server_logger = logging.getLogger(logger_name)
+
+        self.server_logger.info('Finished preparing the logging process.')
+        self.server_logger.info('Start logging.')
+
+        self.device = self.config.device
+
+        self.task_logger = None
         self.inter_data_list = {}
-        self.tail_model = None
         self.config_done = False
-        self.client_model_convert_done = False
+        self.client_model_load_done = False
         self.config_list = deque()
 
     def ready_to_profile(self):
-        return self.client_model_convert_done and self.config_done
+        return self.client_model_load_done and self.config_done
 
     async def define_grpc_server(self):
         channel_options = [
