@@ -126,7 +126,15 @@ class LigetiServer():
         self.num_classes = config['num_classes']
         self.num_batches = config['num_batches']
         self.split_point = config['split_point']
-        print('Set config {}'.format(config))
+        self.data_shape = config['data_shape']
+        self.temperature = config['temperature']
+        self.alpha = config['alpha']
+        self.num_profile_epochs = config['num_profile_epochs']
+        self.num_retrain_epochs = config['num_retrain_epochs']
+        self.retrain_time_budget = config['retrain_time_budget']
+        self.kd_loss_function = torch.nn.KLDivLoss()
+        self.server_logger.info('Set config {}'.format(config))
+
 
     async def profile(self):
         while True:
