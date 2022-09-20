@@ -159,6 +159,99 @@ class LigetiServer():
 
         self.config_done = True
 
+    async def train_one_epoch(
+        self,
+        epoch,
+        profile=True,
+        test=True
+    ):
+        """run_one_epoch trains model for one single epoch
+
+        Parameters
+        ----------
+        epoch : int
+            The current epoch index
+        """
+        self.tail_model.train()
+        stage = 'Profiling' if profile else 'Retraining'
+        self.task_logger.info('{} split point {} epoch {}.'.format(
+            stage,
+            self.split_point,
+            epoch
+        ))
+        correct = 0
+        total = 0
+        for batch_idx in range(self.num_batches):
+            self.tail_optimizer.zero_grad()
+
+            inter_data, targets = self.inter_data_list[self.split_point][
+                batch_idx
+            ]
+            inter_data = torch.from_numpy(inter_data).to(self.device)
+            targets = torch.from_numpy(targets).to(self.device)
+
+            outputs = self.tail_model(inter_data)
+
+            KD_loss = self.kd_loss_function(
+                F.log_softmax(outputs/self.temperature, dim=1),
+                F.softmax(
+                    self.old_outputs[batch_idx]/self.temperature,
+                    dim=1
+                )
+            ) * (self.temperature ** 2)
+            CE_loss = F.cross_entropy(outputs, targets) * \
+                (1. - self.alpha)
+            loss = KD_loss + CE_loss
+            self.task_logger.info('{} split point {} epoch {}, batch {}, '
+                                  'training loss = {}'
+                                  .format(
+                                    stage,
+                                    self.split_point,
+                                    epoch,
+                                    batch_idx,
+                                    loss.item()
+                                    ))
+
+            loss.backward()
+            self.tail_optimizer.step()
+
+            _, predicted = torch.max(outputs, 1)
+            correct += (predicted == targets).sum().item()
+            total += targets.size(0)
+            await asyncio.sleep(1/1000)
+
+        self.server_logger.info('{} split point {} epoch {}, training '
+                                'accuracy {}'.format(
+                                    stage,
+                                    self.split_point,
+                                    epoch,
+                                    correct/total
+                                ))
+
+        if not test:
+            return
+        self.tail_model.eval()
+        correct = 0
+        total = 0
+        with torch.no_grad():
+            for batch_data in self.test_data:
+                inter_data, targets = batch_data
+                inter_data = torch.from_numpy(inter_data).to(self.device)
+                targets = torch.from_numpy(targets).to(self.device)
+
+                outputs = self.tail_model(inter_data)
+
+                _, predicted = torch.max(outputs, 1)
+                correct += (predicted == targets).sum().item()
+                total += targets.size(0)
+                await asyncio.sleep(1/1000)
+
+        self.server_logger.info('{} epoch {}, test accuracy {}'.format(
+            stage,
+            epoch,
+            correct/total
+        ))
+
     async def profile(self):
         while True:
             if self.ready_to_profile():
