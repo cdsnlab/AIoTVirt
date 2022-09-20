@@ -254,30 +254,75 @@ class LigetiServer():
 
     async def profile(self):
         while True:
-            if self.ready_to_profile():
-                try:
-                    current_config = self.config_list.popleft()
-                    self.config_sync(current_config)
-                    self.config_done = True
-                    batch_idx = 0
-                    while batch_idx < self.num_batches:
-                        try:
-                            inter_data = self.inter_data_list[
-                                self.split_point
-                            ][batch_idx]
-                            print(self.split_point, batch_idx, inter_data.shape)
-                            batch_idx += 1
-                        except (IndexError, KeyError):
-                            print('Wait for intermediate data to come.')
-                            await asyncio.sleep(1/10)
-                    self.client_model_convert_done = False
-                    self.config_done = False
-                except IndexError:
-                    await asyncio.sleep(1/10)
-            else:
+            if not self.client_model_load_done or not self.config_done:
+                if not self.config_done and len(self.config_list) > 0:
+                    self.config_sync(self.config_list.popleft())
+                    continue
                 await asyncio.sleep(1/10)
+                continue
+
+            batch_idx = 0
+            self.old_outputs = []
+            self.tail_model.eval()
+
+            with torch.no_grad():
+                self.task_logger.info('Starting to collect outputs of the'
+                                      'old model at split point {}.'.format(
+                                          self.split_point
+                                      ))
+                while batch_idx < self.num_batches:
+                    try:
+                        inter_data, _ = self.inter_data_list[
+                            self.split_point][batch_idx]
+
+                        inter_data = \
+                            torch.from_numpy(inter_data).to(self.device)
+
+                        outputs = self.tail_model(inter_data)
+                        self.old_outputs.append(outputs)
+                        self.task_logger.info('Passed data of split point {} '
+                                              'batch {}'.format(
+                                                  self.split_point,
+                                                  batch_idx
+                                              ))
+                        batch_idx += 1
+                    except (IndexError, KeyError):
+                        self.task_logger.warning('Empty data queue.')
+                        await asyncio.sleep(1/10)
+                    await asyncio.sleep(1/1000)
+                self.task_logger.info('Finished collecting outputs of the'
+                                      ' old model at split point {}.'.format(
+                                          self.split_point
+                                      ))
+                self.task_logger.info('Proceeding to profiling for {} '
+                                      'epochs for split point {}.'.format(
+                                          self.num_profile_epochs,
+                                          self.split_point
+                                      ))
+
+            self.num_task_images = self.num_batches * self.batch_size
+            # Getting data for test dataset.
+            # The number of data used as for testing is roughly 10%
+            self.test_data = []
+            for batch_idx in range(self.num_batches-1, 0, -1):
+                test = self.inter_data_list[self.split_point].pop(batch_idx)
+                self.test_data.append(test)
+                self.num_batches -= 1
+                if (len(self.test_data) * self.batch_size) >= \
+                        int(0.1 * self.num_task_images):
+                    break
+
+            for epoch in range(self.num_profile_epochs):
+                test = False
+                if (epoch % (self.num_profile_epochs-1) == 0) and epoch:
+                    test = True
+                await self.train_one_epoch(epoch, test=test)
+
+            self.task_logger = None
+            self.config_done = False
 
     async def run_server(self):
+        self.server_logger.info('READY for incoming messages.')
         while True:
             try:
                 nxt = self.ligeti_grpc_servicer.inbound_queue.popleft()

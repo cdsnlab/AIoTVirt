@@ -237,30 +237,28 @@ class LigetiClient():
         )
 
         resp = self.stub.profile_ready_signal(msg, 1)
-        return resp
+        return resp.msg_type
 
     async def send(self):
         while True:
             try:
-                # print('send')
                 nxt_outbound_data = self.outbound_queue.popleft()
                 current_time = Timestamp()
                 current_time.GetCurrentTime()
-                out_data_shape = ligeti_grpc_msg.DataShape(
-                    num_channels=nxt_outbound_data[3]['num_channels'],
-                    height=nxt_outbound_data[3]['height'],
-                    width=nxt_outbound_data[3]['width']
-                )
                 out_msg = ligeti_grpc_msg.InterData(
                     msg_type=MSG_CODE['inter_data'],
                     split_point=nxt_outbound_data[0],
                     batch_num=nxt_outbound_data[1],
                     inter_data=nxt_outbound_data[2],
-                    data_shape=out_data_shape,
+                    classes=nxt_outbound_data[3],
                     timestamp=current_time
                 )
-                resp = self.stub.inter_data_stream(out_msg, 1)
-                # print(resp)
+                resp = self.stub.inter_data_stream(out_msg, timeout=5)
+                self.logger.info('SENT intermediate data of split point '
+                                 '{}, batch {}'.format(
+                                    nxt_outbound_data[0],
+                                    nxt_outbound_data[1]
+                                 ))
                 # return resp
             except IndexError:
                 pass
@@ -324,16 +322,23 @@ class LigetiClient():
                 'distributed/cli/trt_models',
                 trt_model_name+'.trt'
             )
-            output_shape = \
+            self.output_shape = \
                 self.interdata_shape_dict[trt_model_name]
-            inputs, outputs, bindings, stream, context = \
-                load_trt_model(trt_model_path)
-            self.logger.info('Loaded tensorrt model at {}'.format(
+            self.logger.info('Sending Retraining Config Synchronization'
+                             'request to the server.')
+            resp = self.config_sync(split_point)
+            if resp:
+                self.logger.info('Server acknowledged the request.')
+
+            self.logger.info('Loading tensorrt model at {}'.format(
                 trt_model_path
             ))
+            inputs, outputs, bindings, stream, context = \
+                load_trt_model(trt_model_path)
+            self.logger.info('Finished loading tensorrt model')
             self.logger.debug('Output of {} is {}'.format(
                 trt_model_name,
-                output_shape
+                self.output_shape
             ))
             resp = self.profile_ready_signal()
             if resp is None:
@@ -341,7 +346,7 @@ class LigetiClient():
                                  'is ready.')
             else:
                 self.logger.info('Server acknowledged that client is ready. '
-                                 'Proceed to send data')
+                                 'Proceed to send data.')
             for batch_num, (imgs, classes) in enumerate(retrain_dataloader):
                 inputs[0].host = imgs
                 trt_outputs = do_inference(
@@ -352,25 +357,28 @@ class LigetiClient():
                     stream=stream,
                     batch_size=self.batch_size
                 )
-                print(trt_outputs[0].shape)
-                # serialized_out_data = dumps(outputs[0])
-                # self.outbound_queue.append((
-                #     split_point,
-                #     batch_num,
-                #     serialized_out_data,
-                #     output_shape
-                # ))
-                # await asyncio.sleep(1/1000)
-            break
-
-    def import_from_path(self, path):
-        spec = importlib.util.spec_from_file_location(
-            'config', path
-        )
-        module = importlib.util.module_from_spec(spec)
-        sys.modules['config'] = module
-        spec.loader.exec_module(module)
-        return module
+                self.logger.info('Passed input of split point {}, batch {}'
+                                 .format(
+                                    split_point,
+                                    batch_num
+                                 ))
+                serialized_out_data = dumps(trt_outputs[0])
+                serialized_out_classes = dumps(classes)
+                self.outbound_queue.append((
+                    split_point,
+                    batch_num,
+                    serialized_out_data,
+                    serialized_out_classes
+                ))
+                self.logger.info('PUT in queue intermediate data of split '
+                                 'point {}, batch {}'
+                                 .format(
+                                    split_point,
+                                    batch_num
+                                 ))
+                await asyncio.sleep(1/1000)
+            if split_point == 2:
+                break
 
     def convert_model(self):
         top_layer = model_top_layers[self.model_name]
