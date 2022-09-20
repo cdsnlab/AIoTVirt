@@ -34,9 +34,13 @@ totallayer = {'resnet18': 14, 'resnet34': 22, 'resnet50': 22, 'resnet101': 39,
 
 def split_head(
     model_name: str,
-    split_point: int = 0
+    split_point: int = 0,
+    pretrained_weights=None
 ):
     original_model = source.__dict__[model_name](pretrained=False)
+    if pretrained_weights is not None:
+        state_dict = torch.load(pretrained_weights)
+        original_model.load_state_dict(state_dict)
     if model_name == 'efficientnet_0':
         torch.nn.init.xavier_uniform_(original_model, gain=1.0)
     top_layer = model_top_layers[model_name]
@@ -74,10 +78,13 @@ def pre_fc(x, name, train=False):
 
 
 class TailModel(torch.nn.Module):
-    def __init__(self, model_name, split_point):
+    def __init__(self, model_name, split_point, pretrained_weights=None):
         super(TailModel, self).__init__()
 
         self.original_model = source.__dict__[model_name](pretrained=False)
+        if pretrained_weights is not None:
+            state_dict = torch.load(pretrained_weights)
+            self.original_model.load_state_dict(state_dict)
         self.model = None
         self.model_name = model_name
         self.split_point = totallayer[self.model_name] - fclayer[self.model_name] + \
