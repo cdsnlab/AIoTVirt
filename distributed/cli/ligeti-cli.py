@@ -145,7 +145,7 @@ class LigetiClient():
         # for task_num in range(self.num_retrain_tasks):
         #     self.profile(task_num)
 
-    def log_out(self):
+    def save_shape_dict(self):
         with open(self.config.interdata_shape_dict_path, 'w') as f:
             json.dump(self.interdata_shape_dict, f)
             f.close()
@@ -206,7 +206,7 @@ class LigetiClient():
             ]
             await asyncio.gather(*tasks)
         finally:
-            self.log_out()
+            self.save_shape_dict()
 
     def config_sync(self, split_point):
         config_msg = ligeti_grpc_msg.ConfigSend(
@@ -278,14 +278,18 @@ class LigetiClient():
         )
         retrain_dataloader = DataLoader(
             dataset=retrain_dataset,
-            shuffle=False,
+            shuffle=True,
             batch_size=self.batch_size,
             drop_last=True,
             collate_fn=collate_fn
         )
         self.num_batches = len(retrain_dataloader)
         # self.convert_model()
-        # input()
+        self.save_shape_dict()
+        self.logger.info('Saved inter data shapes at {}'
+                         .format(
+                             self.config.interdata_shape_dict_path
+                         ))
         self.logger.info('Start profiling for model {} with dataset {} '
                          'at different split points.'.format(
                             self.model_name,
@@ -297,6 +301,7 @@ class LigetiClient():
             self.logger.info('Proling at split point {}'.format(
                 split_point
             ))
+
             trt_model_name = \
                 '{}_{}_split_{}_shape_{}_{}_{}_batch_{}_fp{}'.format(
                     self.model_name,
