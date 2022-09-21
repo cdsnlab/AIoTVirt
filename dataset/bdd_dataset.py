@@ -10,15 +10,16 @@ from PIL import Image
 label_dict = {'person':0, 'car':1, 'bus':2, 'motorcycle':3, 'bicycle':4, 'traffic light':5, 'truck':6, 'stop sign':7, 'train':8}
 # PATH = '/home/nahappy15/sdb/cropped_leftImg8bit/'
 
-class CityscapeDataset(Dataset):
-    """Cityscape Dataset.
+class BDDDataset(Dataset):
+    """BDD100K Dataset.
 
     Parameters
     ----------
     data_dir_path : str
-        The root path of the dataset directory.
-    city : str
-        name of city
+        The root path if the dataset directory.
+    video_idx : str
+        video index.
+        The length of each video is 40s.
     train : bool
         train or not. front part of sequential data
     pretrain : bool
@@ -34,7 +35,7 @@ class CityscapeDataset(Dataset):
     def __init__(
         self,
         data_dir_path: str,
-        city: str,
+        video_idx: int,
         train: bool,
         pretrain: bool,
         task: int,
@@ -46,7 +47,7 @@ class CityscapeDataset(Dataset):
         
         self.data, self.label = self.read_data(
             data_dir_path=data_dir_path,
-            city=city,
+            video_idx=video_idx,
             train=train,
             pretrain=pretrain,
             task=task,
@@ -62,7 +63,7 @@ class CityscapeDataset(Dataset):
     def read_data(
         self,
         data_dir_path: str,
-        city: str,
+        video_idx: int,
         train: bool,
         pretrain: bool,
         task: int,
@@ -76,10 +77,10 @@ class CityscapeDataset(Dataset):
         weight_on_first_window = float(1/total_task) # can be 0.4
         
         if pretrain:
-            city_data_dir_path = os.path.join(data_dir_path, city)
-            frames = sorted(os.listdir(city_data_dir_path))
+            video_data_dir_path = os.path.join(data_dir_path, str(video_idx))
+            frames = sorted(os.listdir(video_data_dir_path))
             for frame_idx in range(len(frames)):
-                frame_path = os.path.join(city_data_dir_path, str(frame_idx))
+                frame_path = os.path.join(video_data_dir_path, str(frame_idx))
                 crops = sorted(os.listdir(frame_path))
                 del crops[-1]
                 labels = None
@@ -90,8 +91,8 @@ class CityscapeDataset(Dataset):
                     full_label.append(label_dict[labels[crop_idx]])
                         
         else:
-            city_data_dir_path = os.path.join(data_dir_path, city)
-            frames = sorted(os.listdir(city_data_dir_path))
+            video_data_dir_path = os.path.join(data_dir_path, str(video_idx))
+            frames = sorted(os.listdir(video_data_dir_path))
             task_dist = []
             for i in range(total_task):
                 if i == 0:
@@ -103,7 +104,7 @@ class CityscapeDataset(Dataset):
                 task_dir_num.append(task_dir_num[i]+task_dist[i])
             if train:
                 for frame_idx in range(task_dir_num[task], int(task_dir_num[task+1] - 0.1*task_dist[task])):
-                    frame_path = os.path.join(city_data_dir_path, str(frame_idx))
+                    frame_path = os.path.join(video_data_dir_path, str(frame_idx))
                     crops = sorted(os.listdir(frame_path))
                     del crops[-1]
                     labels = None
@@ -115,7 +116,7 @@ class CityscapeDataset(Dataset):
                 
             else:
                 for frame_idx in range(int(task_dir_num[task+1] - 0.1*task_dist[task]), task_dir_num[task+1]):
-                    frame_path = os.path.join(city_data_dir_path, str(frame_idx))
+                    frame_path = os.path.join(video_data_dir_path, str(frame_idx))
                     crops = sorted(os.listdir(frame_path))
                     del crops[-1]
                     labels = None
@@ -140,9 +141,9 @@ class CityscapeDataset(Dataset):
         return img, img_class
 
 if __name__ == '__main__':
-    dataset = CityscapeDataset(
-        data_dir_path= '/home/nahappy15/sdb/cropped_leftImg8bit/',
-        city = 'berlin',
+    dataset = BDDDataset(
+        data_dir_path= '/home/nahappy15/sdb/cropped_frame_bdd100k_0',
+        video_idx = 0,
         train = True,
         pretrain = True,
         task = 1,
