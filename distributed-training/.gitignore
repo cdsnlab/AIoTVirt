@@ -1,0 +1,48 @@
+/LwF.py
+/datadrift.py
+ckpt/
+__pycache__/
+dataset/__pycache__/
+logs/
+requirements.yaml
+
+/test_pretrain.py
+head_model.pt
+tail_model.pt
+
+# folder
+.local
+.cache
+.bash_history
+.vscode-server
+.gitconfig
+.ssh
+.gnupg
+.cache
+.viminfo
+.python_history
+__pycache__
+.keras
+.nv
+.bashrc
+.config
+.conda
+dataloader
+cifar10/
+cifar100/
+imagenet100/
+
+# model files
+*.trt
+*.onnx
+
+# test code
+test_*.py
+test*.py
+test-*.py
+
+# misc
+*.pkl
+*.tar.gz
+data_batch*
+batches*

@@ -1,0 +1,4 @@
+grpcio==1.48.1
+grpcio-tools==1.48.1
+protobuf==3.19.4
+onnxruntime-gpu==1.12.1
