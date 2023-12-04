@@ -80,18 +80,6 @@ class ValDataMetaIR(data.Dataset):
         if gt_img.mode != 'RGB':
             gt_img = gt_img.convert('RGB')
 
-        # # Resizing image in the multiple of 16"
-        # wd_new,ht_new = input_img.size
-        # if ht_new>wd_new and ht_new>1024:
-        #     wd_new = int(np.ceil(wd_new*1024/ht_new))
-        #     ht_new = 1024
-        # elif ht_new<=wd_new and wd_new>1024:
-        #     ht_new = int(np.ceil(ht_new*1024/wd_new))
-        #     wd_new = 1024
-        # wd_new = int(16*np.ceil(wd_new/16.0))
-        # ht_new = int(16*np.ceil(ht_new/16.0))
-        # input_img = input_img.resize((wd_new,ht_new), Image.ANTIALIAS)
-        # gt_img = gt_img.resize((wd_new, ht_new), Image.ANTIALIAS)
         
         
         width, height = input_img.size
