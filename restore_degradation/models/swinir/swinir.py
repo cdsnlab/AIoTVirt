@@ -568,7 +568,6 @@ class PatchUnEmbed(nn.Module):
         flops = 0
         return flops
 
-
 class Upsample(nn.Sequential):
     """Upsample module.
 
