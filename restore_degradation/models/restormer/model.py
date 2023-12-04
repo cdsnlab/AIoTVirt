@@ -12,7 +12,6 @@ from .reshape import from_4d_to_6d, from_6d_to_4d, parse_BTN
 from typing import List
 
 # from model.matching_modules import ChannelMatchingModule
-
 class Restormer_Encoder(nn.Module):
     def __init__(self, 
         inp_channels=3, 
@@ -52,9 +51,7 @@ class Restormer_Encoder(nn.Module):
         latent = self.latent(inp_enc_level4) 
 
         return out_enc_level1, out_enc_level2, out_enc_level3, latent
-                    
 
-                    
 ##---------- Restormer -----------------------
 class Restormer_Decoder(nn.Module):
     def __init__(self, 
