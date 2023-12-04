@@ -6,6 +6,7 @@ import numpy as np
 
 from dataset_utils import get_dataset
 
+
 # --- Validation/test dataset --- #
 class ValData(data.Dataset):
     def __init__(self, val_data_dir,val_filename):
