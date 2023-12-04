@@ -123,4 +123,3 @@ class IRUnitDataset(torch.utils.data.Dataset):
 
     def __len__(self) -> int:
         return self.dset_size
-    
