@@ -318,10 +318,8 @@ def measure_inference_speed(model, data, max_iter=200, log_interval=50):
     num_warmup = 5
     pure_inf_time = 0
     fps = 0
-
     # benchmark with 2000 image and take the average
     for i in range(max_iter):
-
         torch.cuda.synchronize()
         start_time = time.perf_counter()
 
