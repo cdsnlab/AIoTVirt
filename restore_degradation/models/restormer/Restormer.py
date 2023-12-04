@@ -440,31 +440,4 @@ class Restormer_IB(nn.Module):
         x1 = self.IB_output(x1)
         x1 = x1 + inp_img
         
-        
-        # inp_dec_level3_IB = self.IB_up4_3(grad_reverse(latent))
-        # inp_dec_level3_IB = torch.cat([inp_dec_level3_IB, out_enc_level3], 1)
-        # inp_dec_level3_IB = self.IB_reduce_chan_level3(inp_dec_level3_IB)
-        # out_dec_level3_IB = self.IB_decoder_level3(inp_dec_level3_IB) 
-
-        # inp_dec_level2_IB = self.IB_up3_2(out_dec_level3_IB)
-        # inp_dec_level2_IB = torch.cat([inp_dec_level2_IB, out_enc_level2], 1)
-        # inp_dec_level2_IB = self.IB_reduce_chan_level2(inp_dec_level2_IB)
-        # out_dec_level2_IB = self.IB_decoder_level2(inp_dec_level2_IB) 
-
-        # inp_dec_level1_IB = self.IB_up2_1(out_dec_level2_IB)
-        # inp_dec_level1_IB = torch.cat([inp_dec_level1_IB, out_enc_level1], 1)
-        # out_dec_level1_IB = self.IB_decoder_level1(inp_dec_level1_IB)
-        
-        # out_dec_level1_IB = self.IB_refinement(out_dec_level1_IB)
-
-        # #### For Dual-Pixel Defocus Deblurring Task ####
-        # # if self.IB_dual_pixel_task:
-        # #     out_dec_level1 = out_dec_level1 + self.IB_skip_conv(inp_enc_level1)
-        # #     out_dec_level1 = self.IB_output(out_dec_level1)
-        # ###########################
-        # # else:
-        # out_dec_level1_IB = self.IB_output(out_dec_level1_IB)
-
-
-
         return out_dec_level1, x1 # restored, degrad
