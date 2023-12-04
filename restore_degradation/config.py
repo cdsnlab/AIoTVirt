@@ -31,3 +31,8 @@ def get_config(args: argparse.Namespace, meta=True) -> EasyDict:
         config.data_root = data_conf['data_root']
         config.datasets = data_conf['datasets']
     
+    if 'task' not in config:
+        from dataset.utils import TASK_DATASETS_TEST, TASK_DATASETS_TRAIN
+        config.task = TASK_DATASETS_TEST[config.adapt_ver] if config.stage > 1 else TASK_DATASETS_TRAIN
+    
+    return config
