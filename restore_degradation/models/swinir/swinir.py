@@ -704,23 +704,23 @@ class SwinIR(nn.Module):
         self.layers = nn.ModuleList()
         for i_layer in range(self.num_layers):
             layer = RSTB(dim=embed_dim,
-                         input_resolution=(patches_resolution[0],
-                                           patches_resolution[1]),
-                         depth=depths[i_layer],
-                         num_heads=num_heads[i_layer],
-                         window_size=window_size,
-                         mlp_ratio=self.mlp_ratio,
-                         qkv_bias=qkv_bias, qk_scale=qk_scale,
-                         drop=drop_rate, attn_drop=attn_drop_rate,
-                         drop_path=dpr[sum(depths[:i_layer]):sum(depths[:i_layer + 1])],  # no impact on SR results
-                         norm_layer=norm_layer,
-                         downsample=None,
-                         use_checkpoint=use_checkpoint,
-                         img_size=img_size,
-                         patch_size=patch_size,
-                         resi_connection=resi_connection
+                            input_resolution=(patches_resolution[0],
+                                            patches_resolution[1]),
+                            depth=depths[i_layer],
+                            num_heads=num_heads[i_layer],
+                            window_size=window_size,
+                            mlp_ratio=self.mlp_ratio,
+                            qkv_bias=qkv_bias, qk_scale=qk_scale,
+                            drop=drop_rate, attn_drop=attn_drop_rate,
+                            drop_path=dpr[sum(depths[:i_layer]):sum(depths[:i_layer + 1])],  # no impact on SR results
+                            norm_layer=norm_layer,
+                            downsample=None,
+                            use_checkpoint=use_checkpoint,
+                            img_size=img_size,
+                            patch_size=patch_size,
+                            resi_connection=resi_connection
 
-                         )
+                            )
             self.layers.append(layer)
         self.norm = norm_layer(self.num_features)
 
