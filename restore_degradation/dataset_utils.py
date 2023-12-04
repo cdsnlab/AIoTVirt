@@ -1,12 +1,10 @@
 from typing import Tuple, Callable, Dict
 
-import torch
 from torch.utils.data import DataLoader
 import yaml
 from easydict import EasyDict
 
 import os
-from typing import List
 
 """
 Rain13k : same name
