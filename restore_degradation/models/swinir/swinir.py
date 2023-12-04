@@ -850,7 +850,6 @@ class SwinIR(nn.Module):
         flops += self.upsample.flops()
         return flops
 
-
 if __name__ == '__main__':
     upscale = 4
     window_size = 8
