@@ -80,8 +80,6 @@ class ValDataMetaIR(data.Dataset):
             input_img = input_img.convert('RGB')
         if gt_img.mode != 'RGB':
             gt_img = gt_img.convert('RGB')
-
-        
         
         width, height = input_img.size
 
