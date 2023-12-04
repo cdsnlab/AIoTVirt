@@ -238,8 +238,7 @@ class Cutmix(BinaryAugmentation):
         mask_mix = mask_1.clone()
         mask_mix[:, :, bbx1:bbx2, bby1:bby2] = mask_2[:, :, bbx1:bbx2, bby1:bby2]
 
-        return label_mix, mask_mix
-    
+        return label_mix, mask_mix    
 class CutmixMulti(BinaryAugmentation):
     def __init__(self, alpha=1.0):
         self.alpha = alpha
