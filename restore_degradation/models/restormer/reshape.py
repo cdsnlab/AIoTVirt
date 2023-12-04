@@ -20,7 +20,6 @@ def get_reshaper(pattern):
     
     return reshaper
 
-
 from_6d_to_4d = get_reshaper('B T N C H W -> (B T N) C H W')
 from_4d_to_6d = get_reshaper('(B T N) C H W -> B T N C H W')
 
@@ -29,7 +28,6 @@ from_3d_to_6d = get_reshaper('(B T) (N H W) C -> B T N C H W')
 
 from_4d_to_3d = get_reshaper('(B T N) C H W -> (B T) (N H W) C')
 from_3d_to_4d = get_reshaper('(B T) (N H W) C -> (B T N) C H W')
-
 
 def parse_BTN(x):
     if isinstance(x, torch.Tensor):
@@ -42,7 +40,6 @@ def parse_BTN(x):
         raise ValueError(f'unsupported type: {type(x)}')
 
     return B, T, N
-
 
 def forward_6d_as_4d(func, x, t_idx=None, **kwargs):
     B, T, N = parse_BTN(x)
