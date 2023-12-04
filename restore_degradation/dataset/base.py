@@ -116,7 +116,6 @@ class IRUnitDataset(torch.utils.data.Dataset):
         else:
             return input_im, gt
 
-
     def __getitem__(self, index):
         res = self.get_images(index)
         return res
