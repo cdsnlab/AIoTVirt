@@ -97,15 +97,6 @@ except:
 loss_network = LossNetwork(vgg_model)
 loss_network.eval()
 
-# --- Load training data and validation/test data --- #
-
-### The following file should be placed inside the directory "./data/train/"
-
-labeled_name = 'rain800.txt' # Change this based on the dataset you choose to train on
-
-### The following files should be placed inside the directory "./data/test/"
-
-val_filename1 = 'rain800_test.txt' # Change this based on the dataset you choose to test on
 
 # --- Load training data and validation/test data --- #
 lbl_train_data_loader = DataLoader(TrainData(crop_size, train_data_dir,labeled_name), batch_size=train_batch_size, shuffle=True, num_workers=8)
