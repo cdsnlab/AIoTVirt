@@ -86,14 +86,14 @@ def create_unit_dataset(config, task: str, split: str, mode: str, dset_size: int
     dconf = config.datasets[task]
     name = task.strip().lower()
     return IRUnitDataset(crop_size=(config.img_size, config.img_size), 
-                         data_dir=os.path.join(config.data_root, dconf.path), 
-                         data_filename=os.path.join(config.data_root, dconf[split]), 
-                         mode=mode,
-                         name=name,
-                         shuffle=shuffle,
-                         dset_size=dset_size,
-                         image_augmentation=image_augmentation,
-                         fn_gt_name=gt_name_functions[name] if name in gt_name_functions else None)
+                            data_dir=os.path.join(config.data_root, dconf.path), 
+                            data_filename=os.path.join(config.data_root, dconf[split]), 
+                            mode=mode,
+                            name=name,
+                            shuffle=shuffle,
+                            dset_size=dset_size,
+                            image_augmentation=image_augmentation,
+                            fn_gt_name=gt_name_functions[name] if name in gt_name_functions else None)
     
 
 def create_dataset(config, split: str, mode: str, tasks: List[str]=None, dset_size: int = None, verbose=True) -> IRDataset:
