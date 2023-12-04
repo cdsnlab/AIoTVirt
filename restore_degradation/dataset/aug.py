@@ -179,7 +179,6 @@ class RandomSigmoidTransform(Augmentation):
         
         return label, mask
 
-
 class RandomGaussianBlur(Augmentation):
     def __init__(self, kernel_size, sigma):
         self.kernel_size = kernel_size
