@@ -31,4 +31,3 @@ class LossNetwork(torch.nn.Module):
             loss.append(F.mse_loss(pred_im_feature, gt_feature))
 
         return sum(loss)/len(loss)
-
