@@ -207,7 +207,6 @@ def get_support_data(config, task: str, split: str='shots', support_idx: int=0, 
     loader = DataLoader(dataset, batch_size=1, shuffle=False, drop_last=False)
     for support_data in loader: break
     return support_data
-
 # for train
 def generate_support_data(config, data_path: str, split: str='shots', support_idx: int=0, verbose:bool=True):
     if os.path.exists(data_path):
