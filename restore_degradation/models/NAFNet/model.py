@@ -173,19 +173,7 @@ class NAFNet_Fewshot(nn.Module):
 
         out = self.decoder(*matched, residual=from_6d_to_4d(out_X_query) if self.use_residual else None)
         out = from_4d_to_6d(out, B=Bq, T=Tq, N=Nq)
-        # out = out + from_4d_to_6d(X_query, B=Bq, T=Tq, N=Nq)
-
-        # matched_deg = self.matching_module(out_X_query, out_X_sup, out_Y_sup, ib=True)
-        # matched_deg = from_6d_to_4d(matched_deg)
         
-        # out_deg_Q = self.decoder_deg_Q(*matched)
-        # out_deg_Q = from_4d_to_6d(out_deg_Q, B=Bq, T=Tq, N=Nq)
-        # out_deg_Q = out_deg_Q + from_4d_to_6d(X_query, B=Bq, T=Tq, N=Nq)
-        
-        # out_deg_S = self.decoder_deg_S(*out_X_sup)
-        # out_deg_S = from_4d_to_6d(out_deg_S, B=Bq, T=Tq, N=Nq)
-        # out_deg_S = out_deg_S + from_4d_to_6d(X_sup, B=Bq, T=Tq, N=Nq)
-
         return out[:, :, :H, :W]#, out_deg_Q[:, :, :H, :W]#, out_deg_S[:, :, :H, :W]
 
     def check_image_size(self, x):
