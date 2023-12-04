@@ -155,10 +155,8 @@ for epoch in range(epoch_start,num_epochs):
 
     # --- Calculate the average training PSNR in one epoch --- #
     train_psnr = sum(psnr_list) / len(psnr_list)
-
     # --- Save the network parameters --- #
     torch.save(net.state_dict(), './{}/latest'.format(exp_name))
-
     # --- Use the evaluation model in testing --- #
     net.eval()
 
