@@ -41,14 +41,14 @@ def average(path):
 
 def filter_lanes(img, cvt=None):
     hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
-    white = cv2.inRange(hsv, (0, 0, 180), (150, 32, 255))
-    yellow = cv2.inRange(hsv, (10, 30, 100), (50, 255, 255))
+    white = cv2.inRange(hsv, (0, 0, 180), (180, 32, 255))
+    yellow = cv2.inRange(hsv, (5, 30, 100), (70, 255, 255))
 
     if cvt is not None:
         white = cv2.cvtColor(white, cvt)
         yellow = cv2.cvtColor(yellow, cvt)
     return white, yellow
-
+    
 
 def detect(path):
     src = cv2.imread(path)
