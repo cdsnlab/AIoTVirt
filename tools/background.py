@@ -65,7 +65,18 @@ def detect(path):
     lines, c = detect_lines(white, yellow)
 
     print(len(lines))
-    # cv2.imshow('video', show_img)
+    for line in lines:
+        r, t = line[0]
+        tx, ty = np.cos(t), np.sin(t)
+        x0, y0 = r * tx, r * ty
+        x1, y1 = int(x0 - w * ty), int(y0 + h * tx)
+        x2, y2 = int(x0 + w * ty), int(y0 - h * tx)
+
+        src = cv2.line(src, (x1, y1), (x2, y2), color=(0, 255, 0), thickness=2)
+
+    c = cv2.cvtColor(c, cv2.COLOR_GRAY2BGR)
+    show_img = np.hstack([src, white, c])
+    cv2.imshow('video', show_img)
 
 
 if __name__ == '__main__':
