@@ -34,15 +34,14 @@ def main(path: str, lane_file: str = None):
     tmp_dict = dict()
     while True:
         img = frame.copy()
-        cv2.imshow('frame', img)
+        cv2.putText(img, f'key={state["key"]}', org=(20, 20), fontFace=cv2.FONT_HERSHEY_PLAIN, fontScale=2, color=(255, 0, 0))
 
+        cv2.imshow('frame', img)
         ch = cv2.waitKey(1)
         if ch == 27:
             break
         elif ch in [ord(c) for c in 'qweasd']:
             state['key'] = chr(ch)
-
-
 
 
 if __name__ == '__main__':
