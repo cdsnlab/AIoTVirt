@@ -76,6 +76,7 @@ def detect(path):
 
     c = cv2.cvtColor(c, cv2.COLOR_GRAY2BGR)
     show_img = np.hstack([src, white, c])
+    show_img = cv2.resize(show_img, dsize=(0,0), fx=0.5, fy=0.5)
     cv2.imshow('video', show_img)
 
 
