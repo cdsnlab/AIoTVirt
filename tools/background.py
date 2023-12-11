@@ -48,7 +48,13 @@ def filter_lanes(img, cvt=None):
         white = cv2.cvtColor(white, cvt)
         yellow = cv2.cvtColor(yellow, cvt)
     return white, yellow
-    
+
+
+def detect_lines(white, yellow):
+    w = cv2.Canny(white, 120, 150)
+    lines = cv2.HoughLines(w, 1, math.pi / 180, 100)
+
+    return lines, w
 
 def detect(path):
     src = cv2.imread(path)
@@ -56,8 +62,10 @@ def detect(path):
     
     white, yellow = filter_lanes(src, cvt=cv2.COLOR_GRAY2BGR)
 
-    cv2.imshow('white', white)
-    cv2.imshow('yellow', yellow)
+    lines, c = detect_lines(white, yellow)
+
+    print(len(lines))
+    # cv2.imshow('video', show_img)
 
 
 if __name__ == '__main__':
