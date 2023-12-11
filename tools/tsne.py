@@ -70,3 +70,73 @@ def visualize_tsne(features: List[List[torch.Tensor]], labels: List[str]=None,
     plt.show()
 
     return cluster, clst, fig
+
+
+
+class ProgressCallback(openTSNE.callbacks.Callback):
+    def __init__(self, pbar: tqdm, step: int=1) -> None:
+        super().__init__()
+        self.pbar = pbar
+        self.step = step
+
+    def __call__(self, iteration, error, embedding):
+        self.pbar.update(self.step)
+        return False
+
+
+def visualize_tsne_raw(features: np.ndarray, labels: np.ndarray, label_names: list[str]=None,
+                   adapted_features: np.ndarray=None, adapted_labels: np.ndarray=None,
+                   figsize=(10, 10), dimension=2, perplexity=30, legend_nrow=2):
+    
+    print(f'{features.shape=}, {labels.shape=}')
+
+    with tqdm(total=750) as pbar:
+        tsne = TSNE(n_jobs=8, 
+                    n_components=dimension, 
+                    perplexity=perplexity, 
+                    callbacks_every_iters=25,
+                    callbacks=ProgressCallback(pbar, 25))
+        trained = tsne.fit(features)
+
+    cluster = np.array(trained)
+
+    print('t-SNE computed, waiting for plot...')
+
+    fig = plt.figure(figsize=figsize)
+    ax = fig.add_subplot() if dimension < 3 else fig.add_subplot(projection='3d')
+    
+    classes = np.unique(labels)
+    for i in classes:
+        idx = np.where(labels == i)
+        ax_args = dict(
+            marker = '.' if i < 10 else 'o', 
+            label = i if label_names is None else label_names[i], 
+            edgecolors = 'face' if i<10 else '#000000bb', 
+            linewidths = 0.5
+        )
+
+        if dimension < 3:
+            ax.scatter(cluster[idx, 0], cluster[idx, 1], **ax_args)
+        else:
+            ax.scatter(cluster[idx, 0], cluster[idx, 1] ,cluster[idx, 2], **ax_args)
+            
+    clst = None
+    if adapted_features is not None and len(adapted_features) > 0:
+        clst = trained.transform(adapted_features)
+
+        for i in np.unique(adapted_labels):
+            idx = np.where(adapted_labels == i)
+            if dimension < 3:
+                ax.scatter(clst[idx, 0], clst[idx, 1], marker='*', s=100, label=i if label_names is None else label_names[i])
+            else:
+                ax.scatter(clst[idx, 0], clst[idx, 1], clst[idx, 2], marker='*', s=100, label=i if label_names is None else label_names[i])
+
+    ax.autoscale()
+
+    plt.legend(loc='lower center', ncol=len(classes)//legend_nrow, bbox_to_anchor=(0.5, -0.05))
+    plt.axis('off')
+    plt.show()
+
+    return cluster, clst, fig
+
+
