@@ -49,6 +49,32 @@ def main(path: str, lane_file: str = None):
         img = frame.copy()
         cv2.putText(img, f'key={state["key"]}', org=(20, 20), fontFace=cv2.FONT_HERSHEY_PLAIN, fontScale=2, color=(255, 0, 0))
 
+        for e in clicked:
+            key, pos = e
+            x, y = pos
+            cv2.circle(img, pos, 5, (255, 0, 0), 2)
+            if key in tmp_dict:
+                cv2.line(img, pos, tmp_dict[key], color=(255,0,0), thickness=1)
+            tmp_dict[key] = pos
+
+            c = None
+            x -= 5
+            y += 5
+            if key == 'w':
+                c = '^'
+                y -= 8
+            elif key == 'a':
+                c = '<'
+                x -= 8
+            elif key == 'd':
+                c = '>'
+                x += 8
+            elif key == 's':
+                c = 'v'
+                y += 8
+            if c is not None:
+                cv2.putText(img, c, org=(x, y), fontFace=cv2.FONT_HERSHEY_PLAIN, fontScale=1, color=(255, 0, 0), thickness=2)
+
         cv2.imshow('frame', img)
         ch = cv2.waitKey(1)
         if ch == 27:
