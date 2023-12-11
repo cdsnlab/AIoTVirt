@@ -55,6 +55,14 @@ def main(path: str, lane_file: str = None):
             break
         elif ch in [ord(c) for c in 'qweasd']:
             state['key'] = chr(ch)
+        elif ch == ord('`'):
+            print(clicked)
+            with open(os.path.join(os.path.dirname(__file__), 'lane.txt'), 'w') as f:
+                for e in clicked:
+                    k, (x, y) = e
+                    f.write(f'{k} {x} {y}\n')
+
+
 
 
 if __name__ == '__main__':
