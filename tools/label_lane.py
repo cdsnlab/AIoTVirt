@@ -14,6 +14,19 @@ def get_frame(path) -> np.ndarray:
         if ret_val:
             return frame
     
+
+
+def on_mouse(clicked_list: list, state: dict):
+    def _on(event, x, y, flags, param):
+        if event == cv2.EVENT_LBUTTONUP:
+            clicked_list.append((state['key'], (x, y)))
+        elif event == cv2.EVENT_MBUTTONUP:
+            if len(clicked_list) > 0:
+                pos = np.array([x, y])
+                nearest = min(clicked_list, key=lambda e: np.sum((np.array(e[1]) - pos)**2))
+                clicked_list.remove(nearest)
+    return _on
+
 def main(path: str, lane_file: str = None):
     cv2.namedWindow('frame')
     state = {'key': 'w'}
