@@ -32,6 +32,6 @@ def extract_embeddings(model, dataset, save_path='.'):
     for i, s in enumerate(style_vars):
         style_vars[i] = s.sqrt()
 
-    save_path = os.path.join(os.path.expanduser(save_path)))
+    save_path = os.path.join(os.path.expanduser(save_path))
     torch.save({'mean': style_means, 'std': style_vars}, os.path.join(save_path, 'style.pth'))
     torch.save({'embedding': embedding}, os.path.join(save_path, 'embedding.pth'))
