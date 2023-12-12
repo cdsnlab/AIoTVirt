@@ -5,6 +5,7 @@ import numpy as np
 import random
 from tqdm import tqdm
 from config import get_opts
+from tools.time import Timer
 
 from .network.wide_resnet import wide_resnet_28_10
 
@@ -38,6 +39,8 @@ def main():
     avg_err = 0
     cur_iter = 0
     
+    timer = Timer()
+    timer.tick()
     for i_s, severity in enumerate(severities):
         with tqdm(total=num_samples * len(CORRUPTIONS)) as pbar:
             for ic, corruption in enumerate(CORRUPTIONS):
@@ -66,9 +69,13 @@ def main():
                 print(f'[{corruption}{severity}] acc={accuracy:.3f}, err={err:.3f}')
 
                 avg_err += err
+                timer.tick()
         
             print(f'**{severity}: avg error rate = {avg_err / len(CORRUPTIONS):.4f}')
             avg_err = 0
+    print("** Time: ", timer.performances(verbose=True))
+    print("** Time(>10): ", timer.performances(offset=10, verbose=True))
+
 
 
 
