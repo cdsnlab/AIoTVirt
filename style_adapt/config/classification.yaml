@@ -1,0 +1,14 @@
+gpu_id: 0
+crop_size: 768
+batch_size: 1
+
+model: wideresnet28
+data: CIFAR10C
+pretrained: data/cifar10/Standard.pt
+
+lr: 0.001
+weight_decay: 0.0001
+total_it: 100
+
+resize_feat: False
+random_seed: 1
