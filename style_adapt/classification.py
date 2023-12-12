@@ -75,6 +75,7 @@ def main():
             avg_err = 0
     print("** Time: ", timer.performances(verbose=True))
     print("** Time(>10): ", timer.performances(offset=10, verbose=True))
+    print("** Memory: ", torch.cuda.max_memory_allocated(device=device))
 
 
 
