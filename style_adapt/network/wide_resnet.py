@@ -100,4 +100,5 @@ def _wide_resnet(depth=28, num_classes=10, widen_factor=10, **kwargs):
     model = WideResNet(depth=depth, num_classes=num_classes, widen_factor=widen_factor, **kwargs)
     return model
 
-
+def wide_resnet_28_10(num_classes=10):
+    return _wide_resnet(depth=28, num_classes=num_classes, widen_factor=10)
