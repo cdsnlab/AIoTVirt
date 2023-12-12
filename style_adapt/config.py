@@ -84,3 +84,22 @@ def execute_by(branches: Dict[str, Tuple[Callable[[EasyDict], any]]], by='task')
     
     raise NotImplementedError(f"{by} is not in the opts")
 
+
+def opts_to_dict(opts: EasyDict) -> dict:
+    return {
+        k: opts_to_dict(v) if isinstance(v, EasyDict) else v \
+            for k, v in opts.items() if not k.startswith('_')
+    }
+    
+
+def dump_opts(opts: Dict[str, any]) -> str:
+    def _dump_opt(opt: Dict[str, any], level) -> str:
+        results = []
+        for k, v in opt.items():
+            if k.startswith('_'): continue
+            if isinstance(v, dict):
+                v = '\n' + _dump_opt(v, level=level+1)
+            results.append(f'{"    " * level}* {k}: {v}')
+        return "\n".join(results)
+    return _dump_opt(opts, level=0)
+
