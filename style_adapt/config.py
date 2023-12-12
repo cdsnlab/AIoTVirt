@@ -66,3 +66,21 @@ def get_opts(config_path='configs/config.yaml') -> EasyDict:
 # opts.config is preferred to config_path
 def merge_opts(opts: Dict, config_path='configs/config.yaml') -> argparse.Namespace:
     return get_config(opts, config_path=opts.config if opts.config else config_path)
+
+
+def execute_by(branches: Dict[str, Tuple[Callable[[EasyDict], any]]], by='task'):
+    opts = get_argparser().parse_args()
+    if hasattr(opts, by):
+        task = getattr(opts, by)
+        if task in branches:
+            fn = branches[task]
+            if type(fn) == tuple:
+                fn, config = branches[task]
+            opts = merge_opts(opts, config_path=config)
+            return fn(opts)
+        
+        else:
+            raise NotImplementedError(f"Task {by}={task} is not implemented")
+    
+    raise NotImplementedError(f"{by} is not in the opts")
+
