@@ -36,3 +36,24 @@ def get_argparser():
 
     return parser
 
+
+def get_config(args: argparse.Namespace, config_path='configs/config.yaml') -> argparse.Namespace:
+    if config_path.split('.')[-1] != 'yaml':
+        config_path = f'configs/{config_path}.yaml'
+
+    with open(config_path) as f:
+        config = yaml.safe_load(f)
+        config = EasyDict(config)
+
+    # copy parsed arguments
+    for key in args.__dir__():
+        if key[:2] != '__':
+            if getattr(args, key) is not None or not hasattr(config, key):
+                setattr(config, key, getattr(args, key))
+
+    with open('configs/data.yaml') as f:
+        data_conf = yaml.safe_load(f)
+        config.datasets = data_conf['datasets']
+
+    print(f"Config loaded from {config_path}")
+    return config
