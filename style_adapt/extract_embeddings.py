@@ -2,24 +2,21 @@ import os
 import torch
 from .utils import calc_mean_var
 from torch.utils import data
-import numpy as np
 from tqdm import tqdm
+from .config import get_opts
 
-def extract_embeddings(model, dataset):
+def extract_embeddings(model, dataset, save_path='.'):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
     dataloader = data.DataLoader(
         dataset, batch_size=1, shuffle=False, num_workers=0,
         drop_last=False)  # drop_last=True to ignore single-image batches.
     
-    cur_itrs = 0
     model.eval()
 
     """
         Style extraction
     """
-
-
     style_means = [None, None, None, None]
     style_vars = [None, None, None, None]
     embedding = []
@@ -35,10 +32,6 @@ def extract_embeddings(model, dataset):
     for i, s in enumerate(style_vars):
         style_vars[i] = s.sqrt()
 
-    root_dir = os.path.join(os.path.expanduser('~/workspace/CVPR2024'))
-    torch.save({'mean': style_means, 'std': style_vars}, f'{root_dir}/data/embeddings/style.pth')
-    torch.save({'embedding': embedding}, f'{root_dir}/data/embeddings/embedding.pth')
-
-if __name__ == '__main__':
-    with torch.no_grad():
-        extract_embeddings()
+    save_path = os.path.join(os.path.expanduser(save_path)))
+    torch.save({'mean': style_means, 'std': style_vars}, os.path.join(save_path, 'style.pth'))
+    torch.save({'embedding': embedding}, os.path.join(save_path, 'embedding.pth'))
