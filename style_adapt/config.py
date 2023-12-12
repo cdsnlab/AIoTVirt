@@ -57,3 +57,12 @@ def get_config(args: argparse.Namespace, config_path='configs/config.yaml') -> a
 
     print(f"Config loaded from {config_path}")
     return config
+
+
+def get_opts(config_path='configs/config.yaml') -> EasyDict:
+    opts = get_argparser().parse_args()
+    return merge_opts(opts, config_path)
+
+# opts.config is preferred to config_path
+def merge_opts(opts: Dict, config_path='configs/config.yaml') -> argparse.Namespace:
+    return get_config(opts, config_path=opts.config if opts.config else config_path)
