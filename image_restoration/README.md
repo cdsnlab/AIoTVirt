@@ -35,3 +35,33 @@
         ├ metaweather_1shot_case2.pth
         ├ ...
 ```
+
+# Usage
+## Meta-Train
+```bash
+python3 train.py --stage=0 --meta_train=True --exp_name=test
+```
+
+## Meta-Test
+```bash
+python3 train.py --stage=1 --case=<case> --meta_train=True --exp_name=test --checkpoint=<path-to-checkpoint>
+```
+* case: (1-6) BID Task II.A Case 1-6, (7) SPA-Data, (8) RealSnow
+
+## Evaluation
+```bash
+python3 test.py --case=<case> --exp_name=test --checkpoint=<path-to-checkpoint>
+```
+* case: (1-6) BID Task II.A Case 1-6, (7) SPA-Data, (8) RealSnow
+
+Examples
+
+```bash
+python3 test.py --case=1 --checkpoint=./checkpoints/metaweather_1shot_case1.pth
+```
+
+```bash
+python3 test.py --case=3 --checkpoint=./checkpoints/metaweather_1shot_case3.pth
+```
+
+Tested on Ubuntu 20.04, NVIDIA RTX 3090, CUDA 11.7, PyTorch 2.0.1, Python 3.10
