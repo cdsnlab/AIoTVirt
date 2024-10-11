@@ -36,6 +36,26 @@
         ├ ...
 ```
 
+## Datasets
+Download the datasets below:
+* BID Dataset [[Link]](https://github.com/JunlinHan/BID)
+* SPA-Data [[Link]](https://github.com/stevewongv/SPANet)
+* RealSnow [[Link]](https://github.com/zhuyr97/WGWS-Net)
+
+## Pretrained MetaWeather Model
+Download checkpoints [[Link]](https://drive.google.com/drive/folders/1eyeaTLQXeLREhMGYYWb9MfjYTz1K7DHG?usp=sharing)
+* Place them in `./checkpoints/`
+
+## Prerequisite
+Use conda environment: 
+```bash
+conda env create -f env.yaml
+```
+
+## Swin Transformer
+If you want to train the model from the scratch, download `simmim_pretrain__swin_base__img192_window6__800ep.pth` from [[Link]](https://github.com/microsoft/SimMIM)
+* Place the file in `data`.
+
 # Usage
 ## Meta-Train
 ```bash
