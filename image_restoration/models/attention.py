@@ -152,4 +152,49 @@ class TopkLearningModule(nn.Module):
         x = self.relu(self.net2(x) + x)
         x = self.head(x)
         return x.clamp(min=0, max=1) #top-k mask
+
+
+class TrLearnableTopkAttention(TrAttentionBase):
+    def __init__(self, dim: int, num_heads: int, k_dim: int, bias: bool=True, residual: bool=False):
+        super().__init__(dim, num_heads, bias, residual=residual)
+        self.topk_net = TopkLearningModule(k_dim)
+        
+    def topk(self, attn: torch.Tensor) -> torch.Tensor:
+        vals, idxs = attn.sort(dim=-1, descending=False) # B H NqX NsX
+        vals = vals - vals[..., 0, None] #now all >= 0 
+        mask = self.topk_net()
+        vals = vals * mask
+        vals[vals<=0] = float('-inf')
+        attn = attn.fill_(float('-inf')).scatter_(-1, idxs, vals)
+        return attn
+
+    def _attention(self, q: torch.Tensor, k: torch.Tensor, v: torch.Tensor) -> torch.Tensor:
+        attn = (q @ k.transpose(-2, -1)) * self.temperature
+        out = self.topk(attn)
+        attn = attn.softmax(dim=-1)
+        out = attn @ v
+        return out
     
+
+class TrLearnableTopkLayerNormAttention(TrLearnableTopkAttention):
+    def __init__(self, dim: int, num_heads: int, k_dim: int, last_dim: int, bias: bool=True, residual: bool=False):
+        super().__init__(dim, num_heads, k_dim, bias, residual=residual)
+        self.norm1_q = nn.LayerNorm(last_dim)
+        self.norm1_k = nn.LayerNorm(last_dim)
+
+    def attention(self, q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, shape: Tuple[int, int, int, int, int]) -> torch.Tensor:
+        B, _, _, Nq, N = shape
+        H, W = q.shape[-2:]
+
+        q = self.transpose(q, head=self.num_heads, B=B, N=Nq)
+        k = self.transpose(k, head=self.num_heads, B=B, N=N)
+        v = self.transpose(v, head=self.num_heads, B=B, N=N)
+        
+        nq = self.norm1_q(q)
+        nk = self.norm1_k(k)
+
+        out = self._attention(nq, nk, v)
+        out = out + q
+
+        out = self.transpose_out(out, head=self.num_heads, B=B, N=Nq, H=H, W=W)
+        return out
