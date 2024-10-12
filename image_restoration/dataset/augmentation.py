@@ -239,3 +239,27 @@ class Cutmix(BinaryAugmentation):
         mask_mix[:, :, bbx1:bbx2, bby1:bby2] = mask_2[:, :, bbx1:bbx2, bby1:bby2]
 
         return label_mix, mask_mix
+    
+class CutmixMulti(BinaryAugmentation):
+    def __init__(self, alpha=1.0):
+        self.alpha = alpha
+        
+    def __call__(self, X: list, Y: list):
+        """
+            X: list of X [X1, X2, ...]   k x (N, C, H, W)
+            Y: list of Y [Y1, Y2, ...]   k x (N, C, H, W)
+        """
+        assert len(X) == len(Y)
+        
+        label_mix = X[0].clone()
+        mask_mix = Y[0].clone()
+        size = X[0].size()
+
+        for X_, Y_ in zip(X[1:], Y[1:]):
+            lam = np.random.beta(self.alpha, self.alpha)
+            bbx1, bby1, bbx2, bby2 = rand_bbox(size[-2:], lam)
+            
+            label_mix[:, :, bbx1:bbx2, bby1:bby2] = X_[:, :, bbx1:bbx2, bby1:bby2]
+            mask_mix[:, :, bbx1:bbx2, bby1:bby2] = Y_[:, :, bbx1:bbx2, bby1:bby2]
+
+        return label_mix, mask_mix
