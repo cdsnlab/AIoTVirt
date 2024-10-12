@@ -1,0 +1,22 @@
+data_root: data
+
+datasets:
+  rain13k:
+    path: Rain13k
+    train: rain13k-train.txt
+    val: rain13k-val.txt
+  snow100k: 
+    path: snow100k
+    train: snow100k-train.txt
+    val: snow100k-val.txt
+    test: snow100k-test.txt
+  raindrop: 
+    path: raindrop
+    train: raindrop-train.txt
+    val: raindrop-val.txt
+    test: raindrop-test.txt
+  fog:
+    path: cityscape
+    train: cityscape-train.txt
+    val: cityscape-val.txt
+    test: #
