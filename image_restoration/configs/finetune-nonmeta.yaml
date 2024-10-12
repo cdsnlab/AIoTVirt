@@ -1,0 +1,20 @@
+img_size: 224
+num_workers: 4
+precision: fp32
+
+# for sampling 10 images
+shot: 4
+
+# training arguments
+image_augmentation: False
+binary_augmentation: False
+batch_size: 1
+val_batch_size: 1
+n_steps: 20000
+optimizer: adamw
+lr: 0.00005
+scheduler: False
+weight_decay: 0.00001
+
+# logging arguments
+val_iter: 100
