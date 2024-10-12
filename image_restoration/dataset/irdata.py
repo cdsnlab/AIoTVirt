@@ -93,3 +93,72 @@ class IRDataset(torch.utils.data.Dataset):
     
     def __len__(self) -> int:
         return self.dset_size
+    
+    
+class IRFinetuneDataset(torch.utils.data.Dataset):
+    def __init__(self, 
+                 dataset: IRUnitDataset, 
+                 shot: int, 
+                 support_idx: int,
+                 dset_size: int=1,
+                 shuffle_idx: bool = False,
+                 shuffle: bool = True,
+                 precision: str = 'fp32',
+                 meta_info_path: str = 'data/meta_info') -> None:
+        super().__init__()
+        assert shot > 0
+
+        self.dataset = dataset
+        self.shot = shot
+        self.precision = precision
+        self.support_idx = support_idx
+        self.dset_size = dset_size
+        self.shuffle_idx = shuffle_idx
+        self.shuffle = shuffle
+        self.meta_info_path = os.path.join(meta_info_path, dataset.name)
+        self.offset = support_idx * shot
+
+        perm_path = os.path.join(self.meta_info_path, 'idxs_perm_finetune.pth')
+        if not os.path.exists(self.meta_info_path):
+            subprocess.check_output(['mkdir', '-p', self.meta_info_path])
+        
+
+        if not os.path.exists(perm_path):
+            idxs_perm = torch.randperm(len(dataset))
+            torch.save(idxs_perm, perm_path)
+        else:
+            idxs_perm = torch.load(perm_path)
+        self.idxs_perm = idxs_perm
+    
+
+    # (T, N, C, H, W)
+    def __getitem__(self, idx) -> Tuple[Tensor, Tensor, Tensor]:
+        idxs = [((idx+i) % self.shot) + self.offset for i in range(self.shot)]
+        if self.shuffle:
+            random.shuffle(idxs)
+
+        imgs = []
+        gts = []
+        for i in idxs:
+            if self.shuffle_idx:
+                i = self.idxs_perm[i % len(self.dataset)]
+            X_, Y_ = self.dataset[i] # (C, H, W)
+
+            imgs.append(X_)
+            gts.append(Y_)
+
+        X = torch.stack(imgs).unsqueeze(0)
+        Y = torch.stack(gts).unsqueeze(0)
+
+        if self.precision == 'fp16':
+            X = X.half()
+            Y = Y.half()
+        elif self.precision == 'bf16':
+            X = X.bfloat16()
+            Y = Y.bfloat16()
+
+        return X, Y
+
+    
+    def __len__(self) -> int:
+        return self.dset_size
