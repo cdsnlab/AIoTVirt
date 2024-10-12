@@ -58,3 +58,31 @@ class MetaWeatherDecoderBlock(nn.Module):
             x = self.up(x)
         
         return x
+
+class MetaWeatherDecoder(nn.Module):
+    def __init__(self, num_decoders: List=[1, 1, 1, 1], dim=[1024, 1024, 512, 256], mode='swin'):
+        super(MetaWeatherDecoder, self).__init__()
+
+        self.num_decoders = num_decoders
+        self.num_levels = len(self.num_decoders)
+        self.dim = dim
+        
+        if mode == 'swin':
+            upsample_from = 1
+            self.last_up = nn.PixelShuffle(8)
+        elif mode == 'nafnet':
+            upsample_from = 0
+            self.last_up = nn.PixelShuffle(2)
+
+        self.blocks = nn.ModuleList([
+            MetaWeatherDecoderBlock(n, d, upsample=upsample_from <= i < self.num_levels-1) for i, (n, d) in enumerate(zip(num_decoders, dim))
+        ])
+        
+
+    def forward(self, encs: List[torch.Tensor]): #down -> up
+        x = encs[0]
+        for i, (enc, block) in enumerate(zip(encs, self.blocks)):
+            x = block(x, enc if i>0 else None)
+        
+        x = self.last_up(x)
+        return x
