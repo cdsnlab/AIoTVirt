@@ -263,3 +263,13 @@ class CutmixMulti(BinaryAugmentation):
             mask_mix[:, :, bbx1:bbx2, bby1:bby2] = Y_[:, :, bbx1:bbx2, bby1:bby2]
 
         return label_mix, mask_mix
+     
+
+FILTERING_AUGMENTATIONS = {
+    'jitter': (RandomJitter, {"brightness": (-0.5, 0.5), 
+                              "contrast": (-0.5, 0.5)}),
+    'polynomial': (RandomPolynomialTransform, {"degree": (1.0/3, 3.0)}),
+    'sigmoid': (RandomSigmoidTransform, {"temperature": [0.1, 0.2, 0.5, 2e5, 5e5, 1e6, 2e6]}),
+    'gaussianblur': (RandomGaussianBlur, {"kernel_size": [9, 17, 33], 
+                                          "sigma": [0.5, 1.0, 2.0, 5.0, 10.0]}),
+}
