@@ -126,3 +126,30 @@ class TrFixedTopkLayerNormAttention(TrFixedTopkAttention):
 
         out = self.transpose_out(out, head=self.num_heads, B=B, N=Nq, H=H, W=W)
         return out
+
+
+class TopkLearningModule(nn.Module):
+    def __init__(self, num_features, hidden_features=128):
+        super().__init__()
+        self.params = nn.Parameter(torch.rand(hidden_features))
+
+        self.net1 = nn.Sequential(
+            nn.Linear(hidden_features, hidden_features),
+            nn.ReLU(),
+            nn.Linear(hidden_features, hidden_features)
+        )
+        self.net2 = nn.Sequential(
+            nn.Linear(hidden_features, hidden_features//2),
+            nn.ReLU(),
+            nn.Linear(hidden_features//2, hidden_features)
+        )
+        self.head = nn.Linear(hidden_features, num_features)
+        self.relu = nn.ReLU()
+    
+    def forward(self):
+        x = self.net1(self.params)
+        x = self.relu(x + self.params)
+        x = self.relu(self.net2(x) + x)
+        x = self.head(x)
+        return x.clamp(min=0, max=1) #top-k mask
+    
