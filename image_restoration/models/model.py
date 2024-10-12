@@ -86,3 +86,64 @@ class MetaWeatherDecoder(nn.Module):
         
         x = self.last_up(x)
         return x
+
+
+class MetaWeather(nn.Module):
+    def __init__(self, config, swin_config, n_tasks, 
+                 num_decoders=[1, 1, 1, 1], dim=[1024, 1024, 512, 256], 
+                 mm_settings={}):
+        super(MetaWeather, self).__init__()
+        if config.enc == 'swin':
+            self.encoder = build_swin_modularized(swin_config, n_tasks)
+            self.logger = create_logger(output_dir=swin_config.OUTPUT, name=f"{swin_config.MODEL.NAME}")
+            load_pretrained(swin_config, self.encoder, self.logger, n_tasks)
+            self.decoder = MetaWeatherDecoder(num_decoders=num_decoders, dim=dim, mode=config.enc)
+            self.matching_module = SpChMatchingModule(**mm_settings)
+            self.project_out = nn.Conv2d(in_channels=4, out_channels=3, kernel_size=3, padding=1, stride=1, groups=1, bias=True)    
+            
+            self.refine_naf = NAFBlock(4)
+            self.refine_conv = nn.Conv2d(in_channels=3, out_channels=3, kernel_size=3, padding=1, stride=1, groups=1, bias=True)   
+
+        else :
+            raise NotImplementedError(f'Invalid encoder \'{config.enc}\'')
+
+
+        print(f'MetaWeather initialized: encoder={config.enc}, n_tasks={n_tasks}')   
+
+
+
+    def forward(self, Xs: torch.Tensor, Ys: torch.Tensor, Xq: torch.Tensor, t_idx: torch.Tensor = None):
+        Bs, Ts, Ns = Xs.shape[:3]
+        Bq, Tq, Nq = Xq.shape[:3]
+
+        Xs = from_6d_to_4d(Xs, contiguous=True)
+        Ys = from_6d_to_4d(Ys, contiguous=True)
+        Xq = from_6d_to_4d(Xq, contiguous=True)
+        
+        Ys = Xs - Ys # deg pattern
+
+        t_idx_q = repeat(t_idx, 'B T -> (B T N)', N=Nq) if t_idx is not None else None
+        t_idx_s = repeat(t_idx, 'B T -> (B T N)', N=Ns) if t_idx is not None else None
+
+        eXs = self.encoder(Xs, t_idx_s) #down -> up, C=[1024 1024 512 256]
+        eYs = self.encoder(Ys, t_idx_s)
+        eXq = self.encoder(Xq, t_idx_q)
+
+        eXs = map_fn(from_4d_to_6d, *eXs, B=Bs, T=Ts, N=Ns)
+        eYs = map_fn(from_4d_to_6d, *eYs, B=Bs, T=Ts, N=Ns)
+        eXq = map_fn(from_4d_to_6d, *eXq, B=Bq, T=Tq, N=Nq)
+
+        matched = self.matching_module(eXq, eXs, eYs)
+        matched = from_6d_to_4d(matched)
+
+        decoded = self.decoder(matched)
+        # decoded = self.decoder(eXq)
+        output = self.refine_naf(decoded)
+        output = self.project_out(output)
+        # output = self.project_out(decoded)
+
+        output = Xq - output # residual
+        output = self.refine_conv(output)
+        # output = self.refine_final(output)
+        output = from_4d_to_6d(output, B=Bq, T=Tq, N=Nq)        
+        return output
