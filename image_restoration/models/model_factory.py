@@ -13,9 +13,9 @@ def get_model(config, device=None):
             'last_dim_sp': [1024, 1024, 512, 256],
             'last_dim_ch': [7*7, 7*7, 14*14, 28*28],
             'num_shots': config.shot,
-            # 'num_heads': [16, 16, 8, 4],
-            # 'dim': [1024, 1024, 512, 256],
-            # 'topk' : [-1, -1, -1, -1],
+            'num_heads': [16, 16, 8, 4],
+            'dim': [1024, 1024, 512, 256],
+            'topk' : [-1, -1, -1, -1],
             # 'topk' : [1/16, 1/16, 1/32, 1/32],
             'use_residual': True
             # mm_mode=
