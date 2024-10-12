@@ -52,7 +52,7 @@ class IRUnitDataset(torch.utils.data.Dataset):
             assert crop_size is not None
 
         if self.mode == 'random_crop':
-            augs = [albumentations.RandomCrop(width=self.crop_size[1], height=self.crop_size[0])]  # Error: width and height swapped
+            augs = [albumentations.RandomCrop(width=self.crop_size[1], height=self.crop_size[0])]
         elif self.mode == 'center_crop':
             augs = [albumentations.CenterCrop(width=self.crop_size[0], height=self.crop_size[1])]
         elif self.mode == 'resize':
@@ -67,3 +67,18 @@ class IRUnitDataset(torch.utils.data.Dataset):
             self.image_augmentation = albumentations.Compose(augs, additional_targets={'gt': 'image'})
         else:
             self.image_augmentation = None
+            
+        if self.cache_mode is None:
+            self.cache = None
+        elif self.cache_mode == 'mem':
+            self.cache: Dict[int, Tuple[torch.Tensor, torch.Tensor, str]] = dict()
+        else:
+            raise NotImplementedError(f'Specified cache mode {cache} is not implemented')
+        
+    
+    def _get_gt_name(self, input_name: str) -> str:
+        gt_name = input_name.strip().replace('input/', 'gt/')
+        gt_name = self.fn_gt_name(gt_name) if self.fn_gt_name is not None else gt_name
+        if input_name == gt_name:
+            raise NotImplementedError(f'Error: input and gt names are the same. Did you implement the gt name converter function correctly?')
+        return gt_name
