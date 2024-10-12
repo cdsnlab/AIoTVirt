@@ -43,3 +43,20 @@ class SpChMatchingModule(nn.Module):
         else:
             self.matching_chan = nn.ModuleList([TrChanAttention_Base(d, num_heads=n, last_dim=l, residual=use_residual) for d, n, l in zip(dim, num_heads, last_dim_ch)])
             self.matching_sp = nn.ModuleList([TrSpAttention_LearnableTopK(d, num_heads=n, k_dim=k*num_shots, last_dim=d//n, residual=use_residual) for d, n, l, k in zip(dim, num_heads, last_dim_sp, last_dim_ch)])
+
+
+    def forward(self, W_query: List[torch.Tensor], W_sup: List[torch.Tensor], Z_sup: List[torch.Tensor]) -> List[torch.Tensor]:  #List[B T N kC H/k W/k]
+        assert len(W_query) == self.n_levels, f'Expected level {self.n_levels} but len(Wq) = {len(W_query)}'
+            
+        Z_Qs = []
+        for spat, chan, Q, K, V in zip(self.matching_sp, self.matching_chan, W_query, W_sup, Z_sup):
+            Z_Q = spat(Q, K, V)
+            Z_Q += chan(Q, K, V)
+            Z_Qs.append(Z_Q)
+        
+        # for chan, Q, K, V in zip(self.matching_chan, W_query, W_sup, Z_sup):
+        #     Z_Q = chan(Q, K, V)
+        #     Z_Qs.append(Z_Q)
+        
+        return Z_Qs
+    
