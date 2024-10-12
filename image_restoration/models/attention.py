@@ -104,6 +104,7 @@ class TrFixedTopkAttention(TrAttentionBase):
         out = attn @ v
         return out
 
+
 class TrFixedTopkLayerNormAttention(TrFixedTopkAttention):
     def __init__(self, dim: int, num_heads: int, last_dim: int, bias: bool=True, k: float = -1, residual: bool=False):
         super().__init__(dim, num_heads, bias, k, residual=residual)
@@ -152,7 +153,7 @@ class TopkLearningModule(nn.Module):
         x = self.relu(self.net2(x) + x)
         x = self.head(x)
         return x.clamp(min=0, max=1) #top-k mask
-
+    
 
 class TrLearnableTopkAttention(TrAttentionBase):
     def __init__(self, dim: int, num_heads: int, k_dim: int, bias: bool=True, residual: bool=False):
@@ -200,53 +201,6 @@ class TrLearnableTopkLayerNormAttention(TrLearnableTopkAttention):
         return out
 
 
-class TrLearnableTopkLayerNormAttention(TrLearnableTopkAttention):
-    def __init__(self, dim: int, num_heads: int, k_dim: int, last_dim: int, bias: bool=True, residual: bool=False):
-        super().__init__(dim, num_heads, k_dim, bias, residual=residual)
-        self.norm1_q = nn.LayerNorm(last_dim)
-        self.norm1_k = nn.LayerNorm(last_dim)
-
-    def attention(self, q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, shape: Tuple[int, int, int, int, int]) -> torch.Tensor:
-        B, _, _, Nq, N = shape
-        H, W = q.shape[-2:]
-
-        q = self.transpose(q, head=self.num_heads, B=B, N=Nq)
-        k = self.transpose(k, head=self.num_heads, B=B, N=N)
-        v = self.transpose(v, head=self.num_heads, B=B, N=N)
-        
-        nq = self.norm1_q(q)
-        nk = self.norm1_k(k)
-
-        out = self._attention(nq, nk, v)
-        out = out + q
-
-        out = self.transpose_out(out, head=self.num_heads, B=B, N=Nq, H=H, W=W)
-        return out
-
-
-class TrLayerNormAttention(TrAttentionBase):
-    def __init__(self, dim: int, num_heads: int, last_dim: int, bias: bool=True, residual: bool=False):
-        super().__init__(dim, num_heads, bias, residual=residual)
-        self.norm1_q = nn.LayerNorm(last_dim)
-        self.norm1_k = nn.LayerNorm(last_dim)
-
-    def attention(self, q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, shape: Tuple[int, int, int, int, int]) -> torch.Tensor:
-        B, _, _, Nq, N = shape
-        H, W = q.shape[-2:]
-
-        q = self.transpose(q, head=self.num_heads, B=B, N=Nq)
-        k = self.transpose(k, head=self.num_heads, B=B, N=N)
-        v = self.transpose(v, head=self.num_heads, B=B, N=N)
-        
-        nq = self.norm1_q(q)
-        nk = self.norm1_k(k)
-
-        out = self._attention(nq, nk, v)
-        out = out + q
-
-        out = self.transpose_out(out, head=self.num_heads, B=B, N=Nq, H=H, W=W)
-        return out
-    
 class TrLayerNormAttention(TrAttentionBase):
     def __init__(self, dim: int, num_heads: int, last_dim: int, bias: bool=True, residual: bool=False):
         super().__init__(dim, num_heads, bias, residual=residual)
@@ -311,3 +265,30 @@ class TrChanAttention_Base(TrLayerNormAttention): #channel
         self.transpose = get_reshaper('(B T N) (head C) H W -> (B T) head (N C) (H W)')
         self.transpose_out = get_reshaper('(B T) head (N C) (H W) -> (B T N) (head C) H W')
 
+    
+# Deprecated
+class TrReducedSpAttention(TrSpAttention_FixedTopK): #spatial
+    def __init__(self, dim, num_heads, bias=True, k=-1, r=2):
+        raise Exception("This class is deprecated. Please check before use")
+        super(TrReducedSpAttention, self).__init__(dim, num_heads, bias, k)
+        self.conv2_q = nn.Conv2d(dim, dim*2*r, kernel_size=2, stride=r, bias=bias)
+        self.conv2_k = nn.Conv2d(dim, dim*2*r, kernel_size=2, stride=r, bias=bias)
+        self.conv2_v = nn.Conv2d(dim, dim*2*r, kernel_size=2, stride=r, bias=bias)
+        
+        self.upscale = nn.PixelShuffle(2)
+        self.project_out = nn.Conv2d(dim*2*r, dim*2*r, kernel_size=1, bias=bias)
+
+    def forward(self, q: torch.Tensor, k: torch.Tensor, v: torch.Tensor):
+        Bq, Tq, Nq = q.shape[:3]
+
+        q, k, v, shape = self.project_input(q, k, v)
+
+        q = self.conv2_q(q)
+        k = self.conv2_k(k)
+        v = self.conv2_v(v)
+        out = self.attention(q, k, v, shape)
+
+        out = self.project_out(out)
+        out = self.upscale(out)
+        out = from_4d_to_6d(out, B=Bq, T=Tq, N=Nq)
+        return out
