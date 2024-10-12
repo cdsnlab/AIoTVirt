@@ -76,3 +76,30 @@ class TrAttentionBase(nn.Module): #spatial
 
         out = from_4d_to_6d(out, B=Bq, T=Tq, N=Nq)
         return out
+
+
+class TrFixedTopkAttention(TrAttentionBase):
+    def __init__(self, dim: int, num_heads: int, bias: bool=True, k: float = -1, residual: bool=False):
+        super().__init__(dim, num_heads, bias, residual=residual)
+        self.topk_value = k
+    
+    def topk(self, attn: torch.Tensor) -> torch.Tensor:
+        """
+        topk for each image
+        * attn : Bq head NqXq NsXs
+        """
+        if self.topk_value < 0:
+            return attn
+
+        k = int(attn.shape[-1] * self.topk_value) if self.topk_value < 1 else int(self.topk_value)
+
+        vals, idxs = attn.topk(k=k, dim=-1)
+        attn = attn.fill_(float('-inf')).scatter_(-1, idxs, vals)
+        return attn
+
+    def _attention(self, q: torch.Tensor, k: torch.Tensor, v: torch.Tensor) -> torch.Tensor:
+        attn = (q @ k.transpose(-2, -1)) * self.temperature
+        attn = self.topk(attn)
+        attn = attn.softmax(dim=-1)
+        out = attn @ v
+        return out
