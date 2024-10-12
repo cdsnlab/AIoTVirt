@@ -209,3 +209,15 @@ class RandomGaussianBlur(Augmentation):
     
 class BinaryAugmentation(Augmentation):
     pass
+
+
+class Mixup(BinaryAugmentation):
+    def __init__(self, alpha=1.0):
+        self.alpha = alpha
+        
+    def __call__(self, label_1, label_2, mask_1, mask_2):
+        lam = np.random.beta(self.alpha, self.alpha)
+        label_mix = lam*label_1 + (1 - lam)*label_2
+        mask_mix = torch.logical_and(mask_1, mask_2)
+        
+        return label_mix, mask_mix
