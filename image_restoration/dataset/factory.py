@@ -220,3 +220,42 @@ def get_val_dataloaders(config, task: str=None, support_data=None, pin_memory=Tr
         
         return torch.utils.data.DataLoader(dset, shuffle=False, batch_size=len(dset))
     
+# for meta-test validation
+def get_support_data(config, task: str, split: str='shots', support_idx: int=0, pin_memory=True, verbose=True):
+    dset = create_unit_dataset(config, task=task, split=split, mode='resize', dset_size=config.shot, image_augmentation=False, shuffle=False)
+    dataset = IRFinetuneDataset(dset, shot=config.shot, support_idx=support_idx, dset_size=config.shot, precision=config.precision, shuffle=False)
+    loader = DataLoader(dataset, batch_size=1, shuffle=False, drop_last=False)
+    for support_data in loader: break
+    return support_data
+
+# for train
+def generate_support_data(config, data_path: str, split: str='shots', support_idx: int=0, verbose:bool=True):
+    if os.path.exists(data_path):
+        support_data = torch.load(data_path)
+    else:
+        support_data = {}
+
+    modified = False
+    tasks = list(filter(lambda x: split in config.datasets[x], config.datasets.keys()))
+    print(f'Tasks: {tasks}')
+
+    for task in tasks:
+        if task in support_data: continue
+
+        dataset = create_unit_dataset(config, task=task, split=split, mode='center_crop', dset_size=None, image_augmentation=False)
+
+        dloader = DataLoader(dataset, batch_size=config.shot, shuffle=False, num_workers=0)
+        for idx, batch in enumerate(dloader):
+            if idx == support_idx: break
+        
+        X, Y = batch  #N, C, H, W
+        support_data[task] = (X[None, None, :], Y[None, None, :])
+
+        if verbose:
+            print(f'generated support data for task {task}')
+        modified = True
+    
+    if modified:
+        torch.save(support_data, data_path)
+    
+    return support_data
