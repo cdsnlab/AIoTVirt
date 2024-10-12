@@ -113,7 +113,7 @@ class IRUnitDataset(torch.utils.data.Dataset):
         if self.crop_size is not None:
             crop_width, crop_height = self.crop_size
             if width < crop_width or height < crop_height:
-                new_size = (min(width, crop_width), min(height, crop_height))
+                new_size = (max(width, crop_width), max(height, crop_height)) 
                 input_img = input_img.resize(new_size, Image.ANTIALIAS)
                 gt_img = gt_img.resize(new_size, Image.ANTIALIAS)
 
