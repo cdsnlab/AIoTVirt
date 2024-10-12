@@ -135,3 +135,88 @@ def create_dataset(config, split: str, mode: str, tasks: List[str]=None, dset_si
         precision=config.precision,
         binary_augmentation=config.binary_augmentation
     )
+    
+def get_train_tasks(config):
+    tasks = TASK_DATASETS_TRAIN.copy()
+    return tasks
+
+def get_train_dataloader(config, split: str='train', pin_memory=True, verbose=True):
+    # if config.no_eval:
+    dset_size = config.n_steps*config.batch_size
+    # else:
+    # dset_size = config.val_iter*config.batch_size
+    # import pdb; pdb.set_trace()
+    tasks = get_train_tasks(config)
+    dataset = create_dataset(config, split=split, tasks=tasks, mode='random_crop', dset_size=dset_size, verbose=verbose)
+    # --- Distributed Data Parallel initialize --- #
+    if config.ddp is True:    
+        sampler = DistributedSampler(dataset=dataset, shuffle=False)
+        loader = DataLoader(dataset, batch_size=config.batch_size // torch.cuda.device_count(), shuffle=False, pin_memory=pin_memory, drop_last=True, num_workers=config.num_workers, sampler=sampler)
+    else:
+        loader = DataLoader(dataset, batch_size=config.batch_size // torch.cuda.device_count(), shuffle=False, pin_memory=pin_memory, drop_last=True, num_workers=config.num_workers)
+    loader = DataLoader(dataset, batch_size=config.batch_size // torch.cuda.device_count(), shuffle=False, pin_memory=pin_memory, drop_last=True, num_workers=config.num_workers)
+    if verbose:
+        print(f'DataLoader[{len(loader)}] with bs={loader.batch_size}')
+    return loader
+
+
+def get_finetune_dataloader(config, task: str, mode: str='resize', split: str='train', support_idx: int=0, pin_memory=True, cache: str='mem', verbose=True):
+    # if config.no_eval:
+    dset_size = config.n_steps*config.batch_size
+    # else:
+    # dset_size = config.val_iter*config.batch_size
+    dset = create_unit_dataset(config, task=task, split=split, mode=mode, dset_size=config.shot, image_augmentation=False, shuffle=False, cache=cache)
+    dataset = IRFinetuneDataset(dset, shot=config.shot, support_idx=support_idx, dset_size=dset_size, precision=config.precision, shuffle_idx=False)
+    # --- Distributed Data Parallel initialize --- #
+    if config.ddp is True:
+        sampler = DistributedSampler(dataset=dataset, shuffle=False)
+        loader = DataLoader(dataset, batch_size=config.batch_size // torch.cuda.device_count(), shuffle=False, pin_memory=pin_memory, drop_last=True, num_workers=config.num_workers, sampler=sampler)
+    else:
+        loader = DataLoader(dataset, batch_size=config.batch_size // torch.cuda.device_count(), shuffle=False, pin_memory=pin_memory, drop_last=True, num_workers=config.num_workers)
+    return loader
+
+def get_eval_dataloader(config, task: str, mode: str='resize', split: str='val', pin_memory=True, verbose=True):
+    assert task in config.datasets
+
+    dset = create_unit_dataset(config, task=task, split=split, mode=mode, dset_size=None, image_augmentation=False)
+    dataset = IREvalDataset(dset, precision=config.precision)
+    loader = DataLoader(dataset, batch_size=1, shuffle=False, pin_memory=pin_memory, drop_last=True, num_workers=config.num_workers)
+    if verbose:
+        print(f'DataLoader(val, {task})[{len(loader)}]')
+    return loader
+
+def get_val_dataloaders(config, task: str=None, support_data=None, pin_memory=True, verbose=True):
+    tasks = TASK_DATASETS_TRAIN.copy()
+    # tasks = config.datasets.keys() if task is None else [task]
+    tag = 'mtrain_valid' if task is None else 'mtest_valid'
+
+    if config.stage == 0:
+        if config.ddp is True and dist.get_rank() != 0:
+            dataloaders = None
+        else:
+            dataloaders = {
+                        task_name: get_eval_dataloader(config, task_name, split='val', mode='center_crop', pin_memory=pin_memory, verbose=verbose)
+                        for task_name in tasks if 'val' in config.datasets[task_name]
+                }
+        return dataloaders, tag
+    else:
+        class SubQueryDataset:
+            def __init__(self, data):
+                X, Y = data
+                self.X = X #(1, 1, N, C, H, W)
+                self.Y = Y
+                self.n_query = self.X.shape[2] // 2  # N/2
+            
+            def __len__(self):
+                return self.n_query
+            
+            def __getitem__(self, idx):
+                # import pdb; pdb.set_trace()
+                return (self.X[0, 0, self.n_query+idx][None, None, :],
+                        self.Y[0, 0, self.n_query+idx][None, None, :])
+                #(1, 1, C, H, W)
+                
+        dset = SubQueryDataset(support_data) #X, Y
+        
+        return torch.utils.data.DataLoader(dset, shuffle=False, batch_size=len(dset))
+    
