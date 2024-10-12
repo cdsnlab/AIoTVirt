@@ -221,3 +221,21 @@ class Mixup(BinaryAugmentation):
         mask_mix = torch.logical_and(mask_1, mask_2)
         
         return label_mix, mask_mix
+
+
+class Cutmix(BinaryAugmentation):
+    def __init__(self, alpha=1.0):
+        self.alpha = alpha
+        
+    def __call__(self, label_1, label_2, mask_1, mask_2):
+        assert label_1.size() == label_2.size()
+        
+        lam = np.random.beta(self.alpha, self.alpha)
+        bbx1, bby1, bbx2, bby2 = rand_bbox(label_1.size()[-2:], lam)
+        
+        label_mix = label_1.clone()
+        label_mix[:, :, bbx1:bbx2, bby1:bby2] = label_2[:, :, bbx1:bbx2, bby1:bby2]
+        mask_mix = mask_1.clone()
+        mask_mix[:, :, bbx1:bbx2, bby1:bby2] = mask_2[:, :, bbx1:bbx2, bby1:bby2]
+
+        return label_mix, mask_mix
