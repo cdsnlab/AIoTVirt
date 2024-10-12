@@ -43,6 +43,7 @@ class IRUnitDataset(torch.utils.data.Dataset):
         self.mode = mode
         self.cache_mode = cache
 
+        self.transform_input = Compose([ToTensor(), Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))])
         self.transform_gt = Compose([ToTensor()])
 
         assert mode in ['random_crop', 'center_crop', 'resize', 'none']
