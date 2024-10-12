@@ -9,6 +9,7 @@ from typing import Tuple, Callable, Dict
 
 import albumentations
 
+import time
 class IRUnitDataset(torch.utils.data.Dataset):
 
     def __init__(self, 
@@ -23,6 +24,9 @@ class IRUnitDataset(torch.utils.data.Dataset):
                  return_image_id: bool = False,
                  mode: str = 'random_crop',
                  cache: str = None):
+        """
+            * mode: random_crop, center_crop, resize, none
+        """
         super().__init__()
         self.fn_gt_name = fn_gt_name
         self.name = name
@@ -50,9 +54,9 @@ class IRUnitDataset(torch.utils.data.Dataset):
 
         if mode in ['random_crop', 'center_crop', 'resize']:
             assert crop_size is not None
-
+        
         if self.mode == 'random_crop':
-            augs = [albumentations.RandomCrop(width=self.crop_size[1], height=self.crop_size[0])]
+            augs = [albumentations.RandomCrop(width=self.crop_size[0], height=self.crop_size[1])]
         elif self.mode == 'center_crop':
             augs = [albumentations.CenterCrop(width=self.crop_size[0], height=self.crop_size[1])]
         elif self.mode == 'resize':
@@ -60,14 +64,14 @@ class IRUnitDataset(torch.utils.data.Dataset):
         else:
             augs = []
 
-        if image_augmentation:
+        if image_augmentation: # or (self.dset_size > len(input_names)):
             augs += [albumentations.HorizontalFlip(p=0.5)]
 
         if len(augs) > 0:
             self.image_augmentation = albumentations.Compose(augs, additional_targets={'gt': 'image'})
         else:
             self.image_augmentation = None
-            
+
         if self.cache_mode is None:
             self.cache = None
         elif self.cache_mode == 'mem':
