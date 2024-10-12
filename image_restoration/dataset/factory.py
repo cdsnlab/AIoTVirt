@@ -97,3 +97,41 @@ gt_name_functions: Dict[str, Callable[[str], str]] = {
     'spadata': _get_gt_spadata,
     'ohaze': _get_gt_ohaze,
 }
+
+def create_unit_dataset(config, task: str, split: str, mode: str, dset_size: int = None, image_augmentation: bool = True, shuffle: bool=True, cache: str=None) -> IRUnitDataset:
+    if task not in config.datasets:
+        raise Exception(f'task \'{task}\' is not in config')
+
+    dconf = config.datasets[task]
+    name = task.strip().lower()
+    return IRUnitDataset(crop_size=(config.img_size, config.img_size), 
+                         data_dir=os.path.join(config.data_root, dconf.path), 
+                         data_filename=os.path.join(config.data_root, dconf[split]), 
+                         mode=mode,
+                         name=name,
+                         shuffle=shuffle,
+                         dset_size=dset_size,
+                         image_augmentation=image_augmentation,
+                         fn_gt_name=gt_name_functions[name] if name in gt_name_functions else None,
+                         cache=cache)
+    
+
+def create_dataset(config, split: str, mode: str, tasks: List[str]=None, dset_size: int = None, verbose=True) -> IRDataset:
+    """
+        split: train, val, or test
+    """
+    if tasks is None:
+        tasks = config.datasets.keys()
+    datasets = [create_unit_dataset(config, task, split=split, dset_size=None, image_augmentation=config.image_augmentation, mode=mode)
+                for task, dconf in config.datasets.items() if (split in dconf) and (task in tasks)]
+    
+    if verbose:
+        print(f'{len(datasets)} datasets found: ' + ', '.join([f'{ds.name}[{len(ds)}]' for ds in datasets]))
+
+    return IRDataset(
+        datasets=datasets,
+        shot=config.shot,
+        dset_size=dset_size,
+        precision=config.precision,
+        binary_augmentation=config.binary_augmentation
+    )
