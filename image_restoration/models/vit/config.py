@@ -208,6 +208,49 @@ def _update_config_from_file(config, cfg_file):
     config.merge_from_file(cfg_file)
     config.freeze()
 
+def update_config(config, args):
+    _update_config_from_file(config, args.cfg)
+
+    config.defrost()
+    # if args.opts:
+    #     config.merge_from_list(args.opts)
+
+    def _check_args(name):
+        if hasattr(args, name) and eval(f'args.{name}'):
+            return True
+        return False
+
+    # merge from specific arguments
+    if _check_args('batch_size'):
+        config.DATA.BATCH_SIZE = args.batch_size
+    if _check_args('data_path'):
+        config.DATA.DATA_PATH = args.data_path
+    if _check_args('resume'):
+        config.MODEL.RESUME = args.resume
+    if _check_args('pretrained'):
+        config.PRETRAINED = args.pretrained
+    if _check_args('accumulation_steps'):
+        config.TRAIN.ACCUMULATION_STEPS = args.accumulation_steps
+    if _check_args('use_checkpoint'):
+        config.TRAIN.USE_CHECKPOINT = True
+    if _check_args('amp_opt_level'):
+        config.AMP_OPT_LEVEL = args.amp_opt_level
+    if _check_args('output'):
+        config.OUTPUT = args.output
+    if _check_args('tag'):
+        config.TAG = args.tag
+    if _check_args('eval'):
+        config.EVAL_MODE = True
+    if _check_args('throughput'):
+        config.THROUGHPUT_MODE = True
+
+    # set local rank for distributed training
+    # config.LOCAL_RANK = args.local_rank
+
+    # output folder
+    config.OUTPUT = os.path.join(config.OUTPUT, config.MODEL.NAME, config.TAG)
+
+    config.freeze()
 
 def get_config(args):
     """Get a yacs CfgNode object with default values."""
