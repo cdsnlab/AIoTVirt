@@ -49,3 +49,20 @@ class IRUnitDataset(torch.utils.data.Dataset):
 
         if mode in ['random_crop', 'center_crop', 'resize']:
             assert crop_size is not None
+
+        if self.mode == 'random_crop':
+            augs = [albumentations.RandomCrop(width=self.crop_size[1], height=self.crop_size[0])]  # Error: width and height swapped
+        elif self.mode == 'center_crop':
+            augs = [albumentations.CenterCrop(width=self.crop_size[0], height=self.crop_size[1])]
+        elif self.mode == 'resize':
+            augs = [albumentations.Resize(height=self.crop_size[1], width=self.crop_size[0])]
+        else:
+            augs = []
+
+        if image_augmentation:
+            augs += [albumentations.HorizontalFlip(p=0.5)]
+
+        if len(augs) > 0:
+            self.image_augmentation = albumentations.Compose(augs, additional_targets={'gt': 'image'})
+        else:
+            self.image_augmentation = None
