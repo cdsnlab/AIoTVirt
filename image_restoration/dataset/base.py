@@ -87,58 +87,44 @@ class IRUnitDataset(torch.utils.data.Dataset):
         return gt_name
 
     def get_images(self, index: int) -> Tuple[torch.Tensor, torch.Tensor, str]:
-        if index > len(self.input_names):
+        if index >= len(self.input_names):
             index = np.random.choice(len(self.input_names))
 
+        if self.cache is not None and index in self.cache:
+            return self.cache[index]
+
+        input_name, gt_name = self.input_names[index], self.gt_names[index]
+        img_id = os.path.splitext(os.path.basename(input_name))[0]
+
+        input_img = Image.open(os.path.join(self.train_data_dir, input_name)).convert("RGB")
+        gt_img = Image.open(os.path.join(self.train_data_dir, gt_name)).convert("RGB")
+
+        input_img, gt_img = self._resize_if_needed(input_img, gt_img)
+        input_im, gt = self._apply_augmentation(input_img, gt_img)
+
         if self.cache is not None:
-            if index in self.cache:
-                return self.cache[index]
+            self.cache[index] = (input_im, gt, img_id)
 
-        input_name = self.input_names[index]
-        gt_name = self.gt_names[index]
-        # gt_name = self._get_gt_name(input_name)
+        return input_im, gt, img_id if self.return_image_id else (input_im, gt)
 
-        img_id = re.split('/',input_name)[-1][:-4]
-
-        input_img = Image.open(os.path.join(self.train_data_dir, input_name))
-        gt_img = Image.open(os.path.join(self.train_data_dir, gt_name))
-
-        if input_img.mode != "RGB":
-            input_img = input_img.convert("RGB")
-        if gt_img.mode != "RGB":
-            gt_img = gt_img.convert("RGB")
-
+    # Add helper methods for resizing and augmentation
+    def _resize_if_needed(self, input_img, gt_img):
         width, height = input_img.size
-        
-        if self.crop_size is not None:
-            crop_width, crop_height = self.crop_size
-            if width < crop_width or height < crop_height :
-                new_size = (max(width, crop_width), max(height, crop_height))
-                input_img = input_img.resize(new_size, Image.ANTIALIAS)
-                gt_img = gt_img.resize(new_size, Image.ANTIALIAS)
+        if self.crop_size and (width < self.crop_size[0] or height < self.crop_size[1]):
+            new_size = (max(width, self.crop_size[0]), max(height, self.crop_size[1]))
+            input_img = input_img.resize(new_size, Image.ANTIALIAS)
+            gt_img = gt_img.resize(new_size, Image.ANTIALIAS)
+        return input_img, gt_img
 
-        # random crop + additional augmentations
+    def _apply_augmentation(self, input_img, gt_img):
         if self.image_augmentation is not None:
-            augmented = self.image_augmentation(image=np.array(input_img), 
-                                            gt=np.array(gt_img))
-            # --- Transform to tensor --- #
+            augmented = self.image_augmentation(image=np.array(input_img), gt=np.array(gt_img))
             input_im = self.transform_input(augmented['image'])
             gt = self.transform_gt(augmented['gt'])
         else:
             input_im = self.transform_input(input_img)
             gt = self.transform_gt(gt_img)
-
-        if self.return_image_id:
-            results = (input_im, gt, img_id)
-        else:
-            results = (input_im, gt)
-
-        if self.cache is not None:
-            if len(self.cache) > 100:
-                self.cache.clear()
-            self.cache[index] = results
-        
-        return results
+        return input_im, gt
 
 
 
