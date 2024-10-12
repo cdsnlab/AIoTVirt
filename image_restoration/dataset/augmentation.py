@@ -34,7 +34,7 @@ def categorical_sample(p_range):
 
 def rand_bbox(size, lam):
     H, W = size
-    cut_rat = np.sqrt(lam)
+    cut_rat = np.sqrt(1. - lam)
     cut_w = int(W * cut_rat)
     cut_h = int(H * cut_rat)
 
