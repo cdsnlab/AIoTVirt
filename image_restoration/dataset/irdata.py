@@ -162,3 +162,33 @@ class IRFinetuneDataset(torch.utils.data.Dataset):
     
     def __len__(self) -> int:
         return self.dset_size
+    
+    
+class IREvalDataset(torch.utils.data.Dataset):
+    def __init__(self, 
+                 dataset: IRUnitDataset, 
+                 precision: str = 'fp32') -> None:
+        super().__init__()
+
+        self.dataset = dataset
+        self.precision = precision
+
+    # (T, N, C, H, W)
+    def __getitem__(self, idx) -> Tuple[Tensor, Tensor]:
+        X_, Y_ = self.dataset[idx] # (C, H, W)
+        
+        X = X_[None,None,:]
+        Y = Y_[None,None,:]
+
+        if self.precision == 'fp16':
+            X = X.half()
+            Y = Y.half()
+        elif self.precision == 'bf16':
+            X = X.bfloat16()
+            Y = Y.bfloat16()
+
+        return X, Y
+
+    
+    def __len__(self) -> int:
+        return len(self.dataset)
