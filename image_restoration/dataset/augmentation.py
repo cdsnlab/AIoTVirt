@@ -89,3 +89,30 @@ class RandomHorizontalFlip(Augmentation):
                 else:
                     return arrays
     
+    
+class RandomCompose(Augmentation):
+    def __init__(self, augmentations, n_aug=2, p=0.5, verbose=False):
+        assert len(augmentations) >= n_aug
+        self.augmentations = augmentations
+        self.n_aug = n_aug
+        self.p = p
+        self.verbose = verbose # for debugging
+    
+    def __call__(self, label, mask, get_augs=False):
+        augmentations = [
+            self.augmentations[i] 
+            for i in np.random.choice(len(self.augmentations), size=self.n_aug, replace=False)
+        ]
+        
+        for augmentation in augmentations:
+            if random.random() < self.p:
+                label, mask = augmentation(label, mask)
+                if self.verbose:
+                    print(augmentation)
+            elif self.verbose:
+                print('skipped')
+            
+        if get_augs:
+            return label, mask, augmentations
+        else:
+            return label, mask
