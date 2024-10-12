@@ -138,3 +138,18 @@ class RandomJitter(Augmentation):
         label = normalize(label)
         
         return label, mask
+    
+    
+class RandomPolynomialTransform(Augmentation):
+    def __init__(self, degree):
+        self.degree = degree
+        
+    def __str__(self):
+        return f'RandomPolynomialTransform Augmentation (degree = {self.degree})'
+        
+    def __call__(self, label, mask):
+        degree = log_sample(self.degree)
+        
+        label = label.pow(degree)
+        label = normalize(label)
+        return label, mask
