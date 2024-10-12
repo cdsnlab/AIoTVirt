@@ -153,3 +153,28 @@ class RandomPolynomialTransform(Augmentation):
         label = label.pow(degree)
         label = normalize(label)
         return label, mask
+
+
+class RandomSigmoidTransform(Augmentation):
+    def __init__(self, temperature):
+        self.temperature = temperature
+        
+    def __str__(self):
+        return f'RandomSigmoidTransform Augmentation (temperature = {self.temperature})'
+    
+    def __call__(self, label, mask):
+        cast = False
+        if label.dtype != torch.float32:
+            dtype = label.dtype
+            cast = True
+            label = label.float()
+        
+        temperature = categorical_sample(self.temperature)
+        
+        label = torch.sigmoid(label / temperature)
+        label = normalize(label)
+        
+        if cast:
+            label = label.to(dtype)
+        
+        return label, mask
