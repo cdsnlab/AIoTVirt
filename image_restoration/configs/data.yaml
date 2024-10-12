@@ -20,3 +20,31 @@ datasets:
     train: cityscape-train.txt
     val: cityscape-val.txt
     test: #
+  case1:
+    path: BID
+    shots: BID-case1-train.txt
+    test: BID-case1-test.txt
+  case2:
+    path: BID
+    shots: BID-case2-train.txt
+    test: BID-case2-test.txt
+  case3:
+    path: BID
+    shots: BID-case3-train.txt
+    test: BID-case3-test.txt
+  case4:
+    path: BID
+    shots: BID-case4-train.txt
+    test: BID-case4-test.txt
+  case5:
+    path: BID
+    shots: BID-case5-train.txt
+    test: BID-case5-test.txt
+  case6:
+    path: BID
+    shots: BID-case6-train.txt
+    test: BID-case6-test.txt
+  gtrain:
+    path: GT-Rain
+    shots: GT-Rain-train.txt
+    test: GT-Rain-test.txt
