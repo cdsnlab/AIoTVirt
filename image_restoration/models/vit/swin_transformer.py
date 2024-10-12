@@ -1,3 +1,11 @@
+# --------------------------------------------------------
+# SimMIM
+# Copyright (c) 2021 Microsoft
+# Licensed under The MIT License [see LICENSE for details]
+# Written by Ze Liu
+# Modified by Zhenda Xie
+# --------------------------------------------------------
+
 import torch
 import torch.nn as nn
 import torch.utils.checkpoint as checkpoint
@@ -53,6 +61,7 @@ def window_reverse(windows, window_size, H, W):
     x = windows.view(B, H // window_size, W // window_size, window_size, window_size, -1)
     x = x.permute(0, 1, 3, 2, 4, 5).contiguous().view(B, H, W, -1)
     return x
+
 
 class WindowAttention(nn.Module):
     r""" Window based multi-head self attention (W-MSA) module with relative position bias.
@@ -150,6 +159,8 @@ class WindowAttention(nn.Module):
         # x = self.proj(x)
         flops += N * self.dim * self.dim
         return flops
+
+
 class SwinTransformerBlock(nn.Module):
     r""" Swin Transformer Block.
 
@@ -325,6 +336,8 @@ class PatchMerging(nn.Module):
         flops = H * W * self.dim
         flops += (H // 2) * (W // 2) * 4 * self.dim * 2 * self.dim
         return flops
+
+
 class BasicLayer(nn.Module):
     """ A basic Swin Transformer layer for one stage.
 
@@ -393,6 +406,8 @@ class BasicLayer(nn.Module):
         if self.downsample is not None:
             flops += self.downsample.flops()
         return flops
+
+
 class PatchEmbed(nn.Module):
     r""" Image to Patch Embedding
 
