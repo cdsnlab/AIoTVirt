@@ -88,7 +88,7 @@ class IRUnitDataset(torch.utils.data.Dataset):
         return gt_name
 
     def get_images(self, index: int) -> Tuple[torch.Tensor, torch.Tensor, str]:
-        if index > len(self.input_names):  
+        if index >= len(self.input_names):  
             index = np.random.choice(len(self.input_names))
 
         if self.cache is not None:
