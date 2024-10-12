@@ -116,3 +116,25 @@ class RandomCompose(Augmentation):
             return label, mask, augmentations
         else:
             return label, mask
+    
+
+class RandomJitter(Augmentation):
+    def __init__(self, brightness, contrast):
+        self.brightness = brightness
+        self.contrast = contrast
+        
+    def __str__(self):
+        return f'RandomJitter Augmentation (brightness = {self.brightness}, contrast = {self.contrast})'
+        
+    def __call__(self, label, mask):
+        brightness = linear_sample(self.brightness)
+        contrast = linear_sample(self.contrast)
+        
+        alpha = 1 + contrast
+        beta = brightness
+        
+        label = alpha * label + beta
+        label = torch.clip(label, 0, 1)
+        label = normalize(label)
+        
+        return label, mask
