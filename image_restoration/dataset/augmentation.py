@@ -178,3 +178,34 @@ class RandomSigmoidTransform(Augmentation):
             label = label.to(dtype)
         
         return label, mask
+
+
+class RandomGaussianBlur(Augmentation):
+    def __init__(self, kernel_size, sigma):
+        self.kernel_size = kernel_size
+        self.sigma = sigma
+        
+    def __str__(self):
+        return f'RandomGaussianBlur Augmentation (kernel_size = {self.kernel_size}, sigma = {self.sigma})'
+    
+    def __call__(self, label, mask):
+        cast = False
+        if label.dtype != torch.float32:
+            dtype = label.dtype
+            cast = True
+            label = label.float()
+        
+        kernel_size = [categorical_sample(self.kernel_size)]*2
+        sigma = categorical_sample(self.sigma)
+        
+        label = gaussian_blur(label, kernel_size, sigma)
+        label = normalize(label)
+        
+        if cast:
+            label = label.to(dtype)
+        
+        return label, mask
+    
+    
+class BinaryAugmentation(Augmentation):
+    pass
