@@ -209,11 +209,11 @@ def _update_config_from_file(config, cfg_file):
     config.freeze()
 
 
-# def get_config(args):
-#     """Get a yacs CfgNode object with default values."""
-#     # Return a clone so that the defaults will not be altered
-#     # This is for the "local variable" use pattern
-#     config = _C.clone()
-#     update_config(config, args)
+def get_config(args):
+    """Get a yacs CfgNode object with default values."""
+    # Return a clone so that the defaults will not be altered
+    # This is for the "local variable" use pattern
+    config = _C.clone()
+    update_config(config, args)
 
-#     return config
+    return config
