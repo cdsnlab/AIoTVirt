@@ -48,3 +48,31 @@ datasets:
     path: GT-Rain
     shots: GT-Rain-train.txt
     test: GT-Rain-test.txt
+  spadata:
+    path: SPAData
+    shots: spadata-train.txt
+    test: spadata-test.txt
+  realsnow:
+    path: realsnow
+    shots: realsnow-train.txt
+    test: realsnow-test.txt
+  rainds_raindrop:
+    path: rainds
+    shots: rainds_raindrop-train.txt
+    test: rainds_raindrop-test.txt
+  rainds_rainstreak:
+    path: rainds
+    shots: rainds_rainstreak-train.txt
+    test: rainds_rainstreak-test.txt
+  rainds_rainstreak_drop:
+    path: rainds
+    shots: rainds_rainstreak_drop-train.txt
+    test: rainds_rainstreak_drop-test.txt
+  ohaze:
+    path: O-HAZE
+    shots: O-HAZE-train.txt
+    test: O-HAZE-test.txt
+  reside_urhi:
+    path: RESIDE
+    shots: RESIDE_URHI-train.txt
+    test: RESIDE_URHI-test.txt
