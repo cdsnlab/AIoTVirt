@@ -55,22 +55,21 @@ class IRUnitDataset(torch.utils.data.Dataset):
         if mode in ['random_crop', 'center_crop', 'resize']:
             assert crop_size is not None
         
-        if self.mode == 'random_crop':
-            augs = [albumentations.RandomCrop(width=self.crop_size[0], height=self.crop_size[1])]
-        elif self.mode == 'center_crop':
-            augs = [albumentations.CenterCrop(width=self.crop_size[0], height=self.crop_size[1])]
-        elif self.mode == 'resize':
-            augs = [albumentations.Resize(height=self.crop_size[1], width=self.crop_size[0])]
+        if self.mode in ['random_crop', 'center_crop', 'resize']:
+            assert crop_size is not None
+            augmentations_map = {
+                'random_crop': albumentations.RandomCrop,
+                'center_crop': albumentations.CenterCrop,
+                'resize': albumentations.Resize
+            }
+            augs = [augmentations_map[self.mode](width=self.crop_size[0], height=self.crop_size[1])]
         else:
             augs = []
 
-        if image_augmentation: # or (self.dset_size > len(input_names)):
-            augs += [albumentations.HorizontalFlip(p=0.5)]
+        if image_augmentation:
+            augs.append(albumentations.HorizontalFlip(p=0.5))
 
-        if len(augs) > 0:
-            self.image_augmentation = albumentations.Compose(augs, additional_targets={'gt': 'image'})
-        else:
-            self.image_augmentation = None
+        self.image_augmentation = albumentations.Compose(augs, additional_targets={'gt': 'image'}) if augs else None
 
         if self.cache_mode is None:
             self.cache = None
