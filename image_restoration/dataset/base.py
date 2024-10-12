@@ -88,7 +88,7 @@ class IRUnitDataset(torch.utils.data.Dataset):
         return gt_name
 
     def get_images(self, index: int) -> Tuple[torch.Tensor, torch.Tensor, str]:
-        if index >= len(self.input_names):  
+        if index > len(self.input_names):
             index = np.random.choice(len(self.input_names))
 
         if self.cache is not None:
@@ -97,8 +97,9 @@ class IRUnitDataset(torch.utils.data.Dataset):
 
         input_name = self.input_names[index]
         gt_name = self.gt_names[index]
-        
-        img_id = re.split('/', input_name)[-1][:-4]
+        # gt_name = self._get_gt_name(input_name)
+
+        img_id = re.split('/',input_name)[-1][:-4]
 
         input_img = Image.open(os.path.join(self.train_data_dir, input_name))
         gt_img = Image.open(os.path.join(self.train_data_dir, gt_name))
@@ -106,25 +107,27 @@ class IRUnitDataset(torch.utils.data.Dataset):
         if input_img.mode != "RGB":
             input_img = input_img.convert("RGB")
         if gt_img.mode != "RGB":
-            gt_img = gt_img.convert("RGB") 
+            gt_img = gt_img.convert("RGB")
 
         width, height = input_img.size
         
         if self.crop_size is not None:
             crop_width, crop_height = self.crop_size
-            if width < crop_width or height < crop_height:
-                new_size = (max(width, crop_width), max(height, crop_height)) 
+            if width < crop_width or height < crop_height :
+                new_size = (max(width, crop_width), max(height, crop_height))
                 input_img = input_img.resize(new_size, Image.ANTIALIAS)
                 gt_img = gt_img.resize(new_size, Image.ANTIALIAS)
 
+        # random crop + additional augmentations
         if self.image_augmentation is not None:
             augmented = self.image_augmentation(image=np.array(input_img), 
-                                                gt=np.array(gt_img))
+                                            gt=np.array(gt_img))
+            # --- Transform to tensor --- #
             input_im = self.transform_input(augmented['image'])
-            gt = self.transform_input(augmented['gt'])  
+            gt = self.transform_gt(augmented['gt'])
         else:
             input_im = self.transform_input(input_img)
-            gt = self.transform_input(gt_img)  
+            gt = self.transform_gt(gt_img)
 
         if self.return_image_id:
             results = (input_im, gt, img_id)
@@ -132,11 +135,13 @@ class IRUnitDataset(torch.utils.data.Dataset):
             results = (input_im, gt)
 
         if self.cache is not None:
-            if len(self.cache) > 50:
+            if len(self.cache) > 100:
                 self.cache.clear()
             self.cache[index] = results
         
         return results
+
+
 
     def __getitem__(self, index):
         res = self.get_images(index)
@@ -144,3 +149,4 @@ class IRUnitDataset(torch.utils.data.Dataset):
 
     def __len__(self) -> int:
         return self.dset_size
+    
