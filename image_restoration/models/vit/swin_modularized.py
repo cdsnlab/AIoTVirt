@@ -533,3 +533,195 @@ class PatchEmbed(nn.Module):
         if self.norm is not None:
             flops += Ho * Wo * self.embed_dim
         return flops
+
+class SwinTransformerModularized(nn.Module):
+    r""" Swin Transformer
+        A PyTorch impl of : `Swin Transformer: Hierarchical Vision Transformer using Shifted Windows`  -
+          https://arxiv.org/pdf/2103.14030
+
+    Args:
+        img_size (int | tuple(int)): Input image size. Default 224
+        patch_size (int | tuple(int)): Patch size. Default: 4
+        in_chans (int): Number of input image channels. Default: 3
+        num_classes (int): Number of classes for classification head. Default: 1000
+        embed_dim (int): Patch embedding dimension. Default: 96
+        depths (tuple(int)): Depth of each Swin Transformer layer.
+        num_heads (tuple(int)): Number of attention heads in different layers.
+        window_size (int): Window size. Default: 7
+        mlp_ratio (float): Ratio of mlp hidden dim to embedding dim. Default: 4
+        qkv_bias (bool): If True, add a learnable bias to query, key, value. Default: True
+        qk_scale (float): Override default qk scale of head_dim ** -0.5 if set. Default: None
+        drop_rate (float): Dropout rate. Default: 0
+        attn_drop_rate (float): Attention dropout rate. Default: 0
+        drop_path_rate (float): Stochastic depth rate. Default: 0.1
+        norm_layer (nn.Module): Normalization layer. Default: nn.LayerNorm.
+        ape (bool): If True, add absolute position embedding to the patch embedding. Default: False
+        patch_norm (bool): If True, add normalization after patch embedding. Default: True
+        use_checkpoint (bool): Whether to use checkpointing to save memory. Default: False
+    """
+
+    def __init__(self, img_size=224, patch_size=4, in_chans=3, num_classes=1000,
+                 embed_dim=96, depths=[2, 2, 6, 2], num_heads=[3, 6, 12, 24],
+                 window_size=7, mlp_ratio=4., qkv_bias=True, qk_scale=None,
+                 drop_rate=0., attn_drop_rate=0., drop_path_rate=0.1,
+                 norm_layer=LayerNormModularized, ape=False, patch_norm=True,
+                 use_checkpoint=False, n_tasks=0, **kwargs):
+        super().__init__()
+
+        self.img_size = img_size
+        self.patch_size = patch_size
+        self.in_chans = in_chans
+
+        self.num_classes = num_classes
+        self.num_layers = len(depths)
+        self.embed_dim = embed_dim
+        self.ape = ape
+        self.patch_norm = patch_norm
+        self.num_features = int(embed_dim * 2 ** (self.num_layers - 1))
+        self.mlp_ratio = mlp_ratio
+
+        # split image into non-overlapping patches
+        self.patch_embed = PatchEmbed(
+            img_size=img_size, patch_size=patch_size, in_chans=in_chans, embed_dim=embed_dim,
+            norm_layer=nn.LayerNorm if self.patch_norm else None)
+        num_patches = self.patch_embed.num_patches
+        patches_resolution = self.patch_embed.patches_resolution
+        self.patches_resolution = patches_resolution
+
+        # absolute position embedding
+        if self.ape:
+            self.absolute_pos_embed = nn.Parameter(torch.zeros(1, num_patches, embed_dim))
+            trunc_normal_(self.absolute_pos_embed, std=.02)
+
+        self.pos_drop = nn.Dropout(p=drop_rate)
+
+        # stochastic depth
+        dpr = [x.item() for x in torch.linspace(0, drop_path_rate, sum(depths))]  # stochastic depth decay rule
+
+        # build layers
+        self.layers = nn.ModuleList()
+        for i_layer in range(self.num_layers):
+            layer = BasicLayerModularized(dim=int(embed_dim * 2 ** i_layer),
+                               input_resolution=(patches_resolution[0] // (2 ** i_layer),
+                                                 patches_resolution[1] // (2 ** i_layer)),
+                               depth=depths[i_layer],
+                               num_heads=num_heads[i_layer],
+                               window_size=window_size,
+                               mlp_ratio=self.mlp_ratio,
+                               qkv_bias=qkv_bias, qk_scale=qk_scale,
+                               drop=drop_rate, attn_drop=attn_drop_rate,
+                               drop_path=dpr[sum(depths[:i_layer]):sum(depths[:i_layer + 1])],
+                               norm_layer=norm_layer,
+                               downsample=PatchMerging if (i_layer < self.num_layers - 1) else None,
+                               use_checkpoint=use_checkpoint,
+                               n_tasks=n_tasks)
+            self.layers.append(layer)
+
+        self.norm = norm_layer(n_tasks, self.num_features)
+        #self.avgpool = nn.AdaptiveAvgPool1d(1)
+        #self.head = nn.Linear(self.num_features, num_classes) if num_classes > 0 else nn.Identity()
+
+        self.apply(self._init_weights)
+
+    def _init_weights(self, m):
+        if isinstance(m, nn.Linear):
+            trunc_normal_(m.weight, std=.02)
+            if isinstance(m, nn.Linear) and m.bias is not None:
+                nn.init.constant_(m.bias, 0)
+        elif isinstance(m, nn.LayerNorm):
+            nn.init.constant_(m.bias, 0)
+            nn.init.constant_(m.weight, 1.0)
+
+    @torch.jit.ignore
+    def no_weight_decay(self):
+        return {'absolute_pos_embed'}
+
+    @torch.jit.ignore
+    def no_weight_decay_keywords(self):
+        return {'relative_position_bias_table'}
+
+    def forward_features(self, x, t_idx=None):
+        # import pdb; pdb.set_trace()
+        xlist = []
+        x = self.patch_embed(x)
+        if self.ape:
+            x = x + self.absolute_pos_embed
+        x = self.pos_drop(x)
+
+        for layer in self.layers:
+            x2 = layer(x, t_idx=t_idx)
+            x1 = x2.transpose(1, 2)
+            B, C, L = x1.shape
+            H = W = int(L ** 0.5)
+            x1 = x1.reshape(B, C, H, W)
+            xlist.append(x1)
+            x = x2
+
+        # import pdb; pdb.set_trace()
+        x = self.norm(x, t_idx=t_idx)  # B L C
+        # x = self.avgpool(x.transpose(1, 2))  # B C 1
+        # x = torch.flatten(x, 1)
+        # return x    
+        x = x.transpose(1, 2)
+        B, C, L = x.shape
+        H = W = int(L ** 0.5)
+        x = x.reshape(B, C, H, W)
+        return x, xlist
+
+    def forward(self, x, t_idx=None):
+        x, xlist = self.forward_features(x, t_idx=t_idx)
+        # x = self.head(x)
+        # return x, xlist
+        # return xlist[:-1] + [x]
+        return [x] + xlist[:-1][::-1] #down -> up
+
+    def flops(self):
+        flops = 0
+        flops += self.patch_embed.flops()
+        for i, layer in enumerate(self.layers):
+            flops += layer.flops()
+        flops += self.num_features * self.patches_resolution[0] * self.patches_resolution[1] // (2 ** self.num_layers)
+        flops += self.num_features * self.num_classes
+        return flops
+    
+    def bias_parameters(self):
+        for key, param in self.named_parameters():
+            tokens = key.split('.')
+            if len(tokens) > 2 and tokens[2] == 'blocks' and tokens[-1] == 'bias' and tokens[-3] != 'patch_embed' and tokens[-2] != 'qkv':
+                yield param
+            elif key == 'norm.bias':
+                yield param
+
+    def bias_parameter_names(self):
+        names = []
+        for key, _ in self.named_parameters(): 
+            tokens = key.split('.')
+            if len(tokens) > 2 and tokens[2] == 'blocks' and tokens[-1] == 'bias' and tokens[-3] != 'patch_embed' and tokens[-2] != 'qkv':
+                names.append(key)
+            elif key == 'norm.bias':
+                names.append(key)
+        return names
+
+
+def build_swin_modularized(config, n_tasks=0):
+    model = SwinTransformerModularized(
+        img_size=config.DATA.IMG_SIZE,
+        patch_size=config.MODEL.SWIN.PATCH_SIZE,
+        in_chans=config.MODEL.SWIN.IN_CHANS,
+        num_classes=config.MODEL.NUM_CLASSES,
+        embed_dim=config.MODEL.SWIN.EMBED_DIM,
+        depths=config.MODEL.SWIN.DEPTHS,
+        num_heads=config.MODEL.SWIN.NUM_HEADS,
+        window_size=config.MODEL.SWIN.WINDOW_SIZE,
+        mlp_ratio=config.MODEL.SWIN.MLP_RATIO,
+        qkv_bias=config.MODEL.SWIN.QKV_BIAS,
+        qk_scale=config.MODEL.SWIN.QK_SCALE,
+        drop_rate=config.MODEL.DROP_RATE,
+        drop_path_rate=config.MODEL.DROP_PATH_RATE,
+        ape=config.MODEL.SWIN.APE,
+        patch_norm=config.MODEL.SWIN.PATCH_NORM,
+        use_checkpoint=config.TRAIN.USE_CHECKPOINT,
+        norm_layer=partial(LayerNormModularized, eps=1e-6),
+        n_tasks=n_tasks)
+
+    return model
