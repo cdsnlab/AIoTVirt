@@ -422,3 +422,29 @@ class NAFNetLocal(Local_Base, NAFNet):
         self.eval()
         with torch.no_grad():
             self.convert(base_size=base_size, train_size=train_size, fast_imp=fast_imp)
+
+class NAFNetEnc(nn.Module):
+    
+    def __init__(self, img_channel=3, width=16, enc_blk_nums=[]):
+        super().__init__()
+
+        self.intro = nn.Conv2d(in_channels=img_channel, out_channels=width, kernel_size=3, padding=1, stride=1, groups=1,
+                              bias=True)
+
+        self.encoders = nn.ModuleList()
+        self.downs = nn.ModuleList()
+        
+
+        chan = width
+        for num in enc_blk_nums:
+            self.encoders.append(
+                nn.Sequential(
+                    *[NAFBlock(chan) for _ in range(num)]
+                )
+            )
+            self.downs.append(
+                nn.Conv2d(chan, 2*chan, 2, 2)
+            )
+            chan = chan * 2
+
+        self.padder_size = 2 ** len(self.encoders)
