@@ -493,8 +493,6 @@ if __name__ == '__main__':
     from ptflops import get_model_complexity_info
 
     macs, params = get_model_complexity_info(net, inp_shape, verbose=False, print_per_layer_stat=False)
-
     params = float(params[:-3])
     macs = float(macs[:-4])
-
     print(macs, params)
