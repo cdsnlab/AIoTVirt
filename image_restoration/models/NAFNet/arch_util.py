@@ -155,3 +155,48 @@ def flow_warp(x,
 
     # TODO, what if align_corners=False
     return output
+
+def resize_flow(flow,
+                size_type,
+                sizes,
+                interp_mode='bilinear',
+                align_corners=False):
+    """Resize a flow according to ratio or shape.
+
+    Args:
+        flow (Tensor): Precomputed flow. shape [N, 2, H, W].
+        size_type (str): 'ratio' or 'shape'.
+        sizes (list[int | float]): the ratio for resizing or the final output
+            shape.
+            1) The order of ratio should be [ratio_h, ratio_w]. For
+            downsampling, the ratio should be smaller than 1.0 (i.e., ratio
+            < 1.0). For upsampling, the ratio should be larger than 1.0 (i.e.,
+            ratio > 1.0).
+            2) The order of output_size should be [out_h, out_w].
+        interp_mode (str): The mode of interpolation for resizing.
+            Default: 'bilinear'.
+        align_corners (bool): Whether align corners. Default: False.
+
+    Returns:
+        Tensor: Resized flow.
+    """
+    _, _, flow_h, flow_w = flow.size()
+    if size_type == 'ratio':
+        output_h, output_w = int(flow_h * sizes[0]), int(flow_w * sizes[1])
+    elif size_type == 'shape':
+        output_h, output_w = sizes[0], sizes[1]
+    else:
+        raise ValueError(
+            f'Size type should be ratio or shape, but got type {size_type}.')
+
+    input_flow = flow.clone()
+    ratio_h = output_h / flow_h
+    ratio_w = output_w / flow_w
+    input_flow[:, 0, :, :] *= ratio_w
+    input_flow[:, 1, :, :] *= ratio_h
+    resized_flow = F.interpolate(
+        input=input_flow,
+        size=(output_h, output_w),
+        mode=interp_mode,
+        align_corners=align_corners)
+    return resized_flow
