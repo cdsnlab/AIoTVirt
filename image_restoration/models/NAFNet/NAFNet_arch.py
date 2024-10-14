@@ -150,3 +150,10 @@ class NAFNet(nn.Module):
         x = x + inp
 
         return x[:, :, :H, :W]
+    
+    def check_image_size(self, x):
+        _, _, h, w = x.size()
+        mod_pad_h = (self.padder_size - h % self.padder_size) % self.padder_size
+        mod_pad_w = (self.padder_size - w % self.padder_size) % self.padder_size
+        x = F.pad(x, (0, mod_pad_w, 0, mod_pad_h))
+        return x
