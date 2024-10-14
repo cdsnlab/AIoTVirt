@@ -475,10 +475,6 @@ if __name__ == '__main__':
     img_channel = 3
     width = 32
 
-    # enc_blks = [2, 2, 4, 8]
-    # middle_blk_num = 12
-    # dec_blks = [2, 2, 2, 2]
-
     enc_blks = [1, 1, 1, 28]
     middle_blk_num = 1
     dec_blks = [1, 1, 1, 1]
