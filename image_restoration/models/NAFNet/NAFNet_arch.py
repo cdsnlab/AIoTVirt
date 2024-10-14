@@ -73,7 +73,6 @@ class NAFBlock(nn.Module):
         x = self.conv4(self.norm2(y))
         x = self.sg(x)
         x = self.conv5(x)
-
         x = self.dropout2(x)
 
         return y + x * self.gamma
@@ -95,6 +94,7 @@ class NAFNet(nn.Module):
         self.downs = nn.ModuleList()
 
         chan = width
+
         for num in enc_blk_nums:
             self.encoders.append(
                 nn.Sequential(
