@@ -242,3 +242,44 @@ class NAFNet_IB(nn.Module):
             )
 
         self.padder_size = 2 ** len(self.encoders)
+
+    def forward(self, inp):
+        B, C, H, W = inp.shape
+        inp = self.check_image_size(inp)
+
+        x = self.intro(inp)
+
+        encs = []
+
+        for encoder, down in zip(self.encoders, self.downs):
+            x = encoder(x)
+            encs.append(x)
+            x = down(x)
+
+        x = self.middle_blks(x)
+        
+        for idx, (decoder, up, enc_skip) in enumerate(zip(self.decoders_deg, self.ups_deg, encs[::-1])):
+            if idx == 0:
+                x1 = up(grad_reverse(x))
+                x1 = x1 + grad_reverse(enc_skip)
+                x1 = decoder(x1)
+            else:
+                x1 = up(x1)
+                x1 = x1 + grad_reverse(enc_skip)
+                x1 = decoder(x1)
+                
+        x1 = self.ending_deg(x1)
+        x1 = x1 + inp
+
+        for idx, (decoder, up, enc_skip) in enumerate(zip(self.decoders, self.ups, encs[::-1])):
+            if idx == 0:
+                x2 = up(x)
+            else:
+                x2 = up(x2)
+            x2 = x2 + enc_skip
+            x2 = decoder(x2)
+
+        x2 = self.ending(x2)
+        x2 = x2 + inp
+
+        return x2[:, :, :H, :W], x1[:, :, :H, :W] # restored, degradation
