@@ -201,7 +201,6 @@ def resize_flow(flow,
         align_corners=align_corners)
     return resized_flow
 
-# TODO: may write a cpp file
 def pixel_unshuffle(x, scale):
     """ Pixel unshuffle.
 
@@ -219,24 +218,6 @@ def pixel_unshuffle(x, scale):
     w = hw // scale
     x_view = x.view(b, c, h, scale, w, scale)
     return x_view.permute(0, 1, 3, 5, 2, 4).reshape(b, out_channel, h, w)
-
-# class DCNv2Pack(ModulatedDeformConvPack):
-#     """Modulated deformable conv for deformable alignment.
-#
-#     Different from the official DCNv2Pack, which generates offsets and masks
-#     from the preceding features, this DCNv2Pack takes another different
-#     features to generate offsets and masks.
-#
-#     Ref:
-#         Delving Deep into Deformable Alignment in Video Super-Resolution.
-#     """
-#
-#     def forward(self, x, feat):
-#         out = self.conv_offset(feat)
-#         o1, o2, mask = torch.chunk(out, 3, dim=1)
-#         offset = torch.cat((o1, o2), dim=1)
-#         mask = torch.sigmoid(mask)
-#
 
 class LayerNormFunction(torch.autograd.Function):
 
