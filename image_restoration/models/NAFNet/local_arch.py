@@ -69,7 +69,6 @@ class AvgPool2d(nn.Module):
         if self.auto_pad:
             n, c, h, w = x.shape
             _h, _w = out.shape[2:]
-            # print(x.shape, self.kernel_size)
             pad2d = ((w - _w) // 2, (w - _w + 1) // 2, (h - _h) // 2, (h - _h + 1) // 2)
             out = torch.nn.functional.pad(out, pad2d, mode='replicate')
 
