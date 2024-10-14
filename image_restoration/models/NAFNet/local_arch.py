@@ -75,3 +75,14 @@ class AvgPool2d(nn.Module):
 
         return out
     
+def replace_layers(model, base_size, train_size, fast_imp, **kwargs):
+    for n, m in model.named_children():
+        if len(list(m.children())) > 0:
+            ## compound module, go inside it
+            replace_layers(m, base_size, train_size, fast_imp, **kwargs)
+
+        if isinstance(m, nn.AdaptiveAvgPool2d):
+            pool = AvgPool2d(base_size=base_size, fast_imp=fast_imp, train_size=train_size)
+            assert m.output_size == 1
+            setattr(model, n, pool)
+
