@@ -86,3 +86,18 @@ def replace_layers(model, base_size, train_size, fast_imp, **kwargs):
             assert m.output_size == 1
             setattr(model, n, pool)
 
+'''
+ref. 
+@article{chu2021tlsc,
+  title={Revisiting Global Statistics Aggregation for Improving Image Restoration},
+  author={Chu, Xiaojie and Chen, Liangyu and and Chen, Chengpeng and Lu, Xin},
+  journal={arXiv preprint arXiv:2112.04491},
+  year={2021}
+}
+'''
+class Local_Base():
+    def convert(self, *args, train_size, **kwargs):
+        replace_layers(self, *args, train_size=train_size, **kwargs)
+        imgs = torch.rand(train_size)
+        with torch.no_grad():
+            self.forward(imgs)
