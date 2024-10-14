@@ -448,3 +448,19 @@ class NAFNetEnc(nn.Module):
             chan = chan * 2
 
         self.padder_size = 2 ** len(self.encoders)
+
+    def forward(self, inp):
+        B, C, H, W = inp.shape
+        inp = self.check_image_size(inp)
+        x = self.intro(inp)
+
+        encs = []
+
+        for encoder, down in zip(self.encoders, self.downs):
+            x = encoder(x)
+            x = down(x)
+            encs.append(x)
+
+
+        # return x[:, :, :H, :W]
+        return encs[::-1]
