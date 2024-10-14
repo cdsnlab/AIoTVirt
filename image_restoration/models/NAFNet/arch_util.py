@@ -237,15 +237,6 @@ def pixel_unshuffle(x, scale):
 #         offset = torch.cat((o1, o2), dim=1)
 #         mask = torch.sigmoid(mask)
 #
-#         offset_absmean = torch.mean(torch.abs(offset))
-#         if offset_absmean > 50:
-#             logger = get_root_logger()
-#             logger.warning(
-#                 f'Offset abs mean is {offset_absmean}, larger than 50.')
-#
-#         return modulated_deform_conv(x, offset, mask, self.weight, self.bias,
-#                                      self.stride, self.padding, self.dilation,
-#                                      self.groups, self.deformable_groups)
 
 class LayerNormFunction(torch.autograd.Function):
 
