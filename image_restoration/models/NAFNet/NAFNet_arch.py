@@ -434,7 +434,6 @@ class NAFNetEnc(nn.Module):
         self.encoders = nn.ModuleList()
         self.downs = nn.ModuleList()
         
-
         chan = width
         for num in enc_blk_nums:
             self.encoders.append(
@@ -461,8 +460,6 @@ class NAFNetEnc(nn.Module):
             x = down(x)
             encs.append(x)
 
-
-        # return x[:, :, :H, :W]
         return encs[::-1]
     
     def check_image_size(self, x):
