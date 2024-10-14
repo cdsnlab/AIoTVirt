@@ -290,3 +290,75 @@ class NAFNet_IB(nn.Module):
         mod_pad_w = (self.padder_size - w % self.padder_size) % self.padder_size
         x = F.pad(x, (0, mod_pad_w, 0, mod_pad_h))
         return x
+
+'''
+Gradient Reversal layers were inserted in every encoder skip outputs and middle block
+'''
+class NAFNet_IB_2(nn.Module):
+    
+    def __init__(self, img_channel=3, width=16, middle_blk_num=1, enc_blk_nums=[], dec_blk_nums=[]):
+        super().__init__()
+
+        self.intro = nn.Conv2d(in_channels=img_channel, out_channels=width, kernel_size=3, padding=1, stride=1, groups=1,
+                              bias=True)
+        self.ending = nn.Conv2d(in_channels=width, out_channels=img_channel, kernel_size=3, padding=1, stride=1, groups=1,
+                              bias=True)
+        self.ending_deg = nn.Conv2d(in_channels=width, out_channels=img_channel, kernel_size=3, padding=1, stride=1, groups=1,
+                              bias=True)
+
+        self.encoders = nn.ModuleList()
+        self.decoders = nn.ModuleList()
+        self.decoders_deg = nn.ModuleList()
+        self.middle_blks = nn.ModuleList()
+        self.ups = nn.ModuleList()
+        self.ups_deg = nn.ModuleList()
+        self.downs = nn.ModuleList()
+
+        chan = width
+        for num in enc_blk_nums:
+            self.encoders.append(
+                nn.Sequential(
+                    *[NAFBlock(chan) for _ in range(num)]
+                )
+            )
+            self.downs.append(
+                nn.Conv2d(chan, 2*chan, 2, 2)
+            )
+            chan = chan * 2
+
+        self.middle_blks = \
+            nn.Sequential(
+                *[NAFBlock(chan) for _ in range(middle_blk_num)]
+            )
+
+        origin_chan = chan
+        for num in dec_blk_nums:
+            self.ups.append(
+                nn.Sequential(
+                    nn.Conv2d(chan, chan * 2, 1, bias=False),
+                    nn.PixelShuffle(2)
+                )
+            )
+            chan = chan // 2
+            self.decoders.append(
+                nn.Sequential(
+                    *[NAFBlock(chan) for _ in range(num)]
+                )
+            )
+        
+        chan = origin_chan
+        for num in dec_blk_nums:
+            self.ups_deg.append(
+                nn.Sequential(
+                    nn.Conv2d(chan, chan * 2, 1, bias=False),
+                    nn.PixelShuffle(2)
+                )
+            )
+            chan = chan // 2
+            self.decoders_deg.append(
+                nn.Sequential(
+                    *[NAFBlock(chan) for _ in range(num)]
+                )
+            )
+
+        self.padder_size = 2 ** len(self.encoders)
