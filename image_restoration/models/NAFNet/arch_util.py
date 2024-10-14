@@ -7,14 +7,6 @@ from torch.nn.modules.batchnorm import _BatchNorm
 
 from basicsr.utils import get_root_logger
 
-# try:
-#     from basicsr.models.ops.dcn import (ModulatedDeformConvPack,
-#                                         modulated_deform_conv)
-# except ImportError:
-#     # print('Cannot import dcn. Ignore this warning if dcn is not used. '
-#     #       'Otherwise install BasicSR with compiling dcn.')
-#
-
 @torch.no_grad()
 def default_init_weights(module_list, scale=1, bias_fill=0, **kwargs):
     """Initialize network weights.
@@ -153,7 +145,6 @@ def flow_warp(x,
         padding_mode=padding_mode,
         align_corners=align_corners)
 
-    # TODO, what if align_corners=False
     return output
 
 def resize_flow(flow,
