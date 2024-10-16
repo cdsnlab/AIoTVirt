@@ -12,6 +12,18 @@ from dataset.utils import TASK_DATASETS_TEST
 from dataset.factory import get_support_data, get_eval_dataloader
 from models.model_factory import get_model
 
+
+def str2bool(v):
+    if v == 'True' or v == 'true':
+        return True
+    elif v == 'False' or v == 'false':
+        return False
+    else:
+        raise argparse.ArgumentTypeError('Boolean value expected.')
+
+
+plt.switch_backend('agg')
+
 # --- Parse hyper-parameters  --- #
 parser = argparse.ArgumentParser(description='Hyper-parameters for network')
 parser.add_argument('--meta_train', default=True, type=str2bool)
