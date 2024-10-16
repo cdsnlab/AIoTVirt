@@ -7,6 +7,7 @@ from torch.nn.modules.batchnorm import _BatchNorm
 
 from basicsr.utils import get_root_logger
 
+
 @torch.no_grad()
 def default_init_weights(module_list, scale=1, bias_fill=0, **kwargs):
     """Initialize network weights.
@@ -37,6 +38,7 @@ def default_init_weights(module_list, scale=1, bias_fill=0, **kwargs):
                 if m.bias is not None:
                     m.bias.data.fill_(bias_fill)
 
+
 def make_layer(basic_block, num_basic_block, **kwarg):
     """Make layers by stacking the same blocks.
 
@@ -51,6 +53,7 @@ def make_layer(basic_block, num_basic_block, **kwarg):
     for _ in range(num_basic_block):
         layers.append(basic_block(**kwarg))
     return nn.Sequential(*layers)
+
 
 class ResidualBlockNoBN(nn.Module):
     """Residual block without BN.
@@ -81,7 +84,8 @@ class ResidualBlockNoBN(nn.Module):
         identity = x
         out = self.conv2(self.relu(self.conv1(x)))
         return identity + out * self.res_scale
-    
+
+
 class Upsample(nn.Sequential):
     """Upsample module.
 
@@ -103,6 +107,7 @@ class Upsample(nn.Sequential):
             raise ValueError(f'scale {scale} is not supported. '
                              'Supported scales: 2^n and 3.')
         super(Upsample, self).__init__(*m)
+
 
 def flow_warp(x,
               flow,
@@ -146,6 +151,7 @@ def flow_warp(x,
         align_corners=align_corners)
 
     return output
+
 
 def resize_flow(flow,
                 size_type,
@@ -192,6 +198,7 @@ def resize_flow(flow,
         align_corners=align_corners)
     return resized_flow
 
+
 def pixel_unshuffle(x, scale):
     """ Pixel unshuffle.
 
@@ -203,12 +210,13 @@ def pixel_unshuffle(x, scale):
         Tensor: the pixel unshuffled feature.
     """
     b, c, hh, hw = x.size()
-    out_channel = c * (scale**2)
+    out_channel = c * (scale ** 2)
     assert hh % scale == 0 and hw % scale == 0
     h = hh // scale
     w = hw // scale
     x_view = x.view(b, c, h, scale, w, scale)
     return x_view.permute(0, 1, 3, 5, 2, 4).reshape(b, out_channel, h, w)
+
 
 class LayerNormFunction(torch.autograd.Function):
 
@@ -237,6 +245,7 @@ class LayerNormFunction(torch.autograd.Function):
         return gx, (grad_output * y).sum(dim=3).sum(dim=2).sum(dim=0), grad_output.sum(dim=3).sum(dim=2).sum(
             dim=0), None
 
+
 class LayerNorm2d(nn.Module):
 
     def __init__(self, channels, eps=1e-6):
@@ -247,7 +256,8 @@ class LayerNorm2d(nn.Module):
 
     def forward(self, x):
         return LayerNormFunction.apply(x, self.weight, self.bias, self.eps)
-    
+
+
 # handle multiple input
 class MySequential(nn.Sequential):
     def forward(self, *inputs):
@@ -258,7 +268,10 @@ class MySequential(nn.Sequential):
                 inputs = module(inputs)
         return inputs
 
+
 import time
+
+
 def measure_inference_speed(model, data, max_iter=200, log_interval=50):
     model.eval()
 

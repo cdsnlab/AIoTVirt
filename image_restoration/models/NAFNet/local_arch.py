@@ -7,6 +7,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+
 class AvgPool2d(nn.Module):
     def __init__(self, kernel_size=None, base_size=None, auto_pad=True, fast_imp=False, train_size=None):
         super().__init__()
@@ -73,7 +74,8 @@ class AvgPool2d(nn.Module):
             out = torch.nn.functional.pad(out, pad2d, mode='replicate')
 
         return out
-    
+
+
 def replace_layers(model, base_size, train_size, fast_imp, **kwargs):
     for n, m in model.named_children():
         if len(list(m.children())) > 0:
@@ -85,6 +87,7 @@ def replace_layers(model, base_size, train_size, fast_imp, **kwargs):
             assert m.output_size == 1
             setattr(model, n, pool)
 
+
 '''
 ref. 
 @article{chu2021tlsc,
@@ -94,6 +97,8 @@ ref.
   year={2021}
 }
 '''
+
+
 class Local_Base():
     def convert(self, *args, train_size, **kwargs):
         replace_layers(self, *args, train_size=train_size, **kwargs)
