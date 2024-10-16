@@ -1,0 +1,8 @@
+experiments/
+training_log/
+output/
+results/
+data
+__pycache__/
+*.pt
+*.pth

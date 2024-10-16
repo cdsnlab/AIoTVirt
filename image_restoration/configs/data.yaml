@@ -1,0 +1,78 @@
+data_root: data
+
+datasets:
+  rain13k:
+    path: Rain13k
+    train: rain13k-train.txt
+    val: rain13k-val.txt
+  snow100k: 
+    path: snow100k
+    train: snow100k-train.txt
+    val: snow100k-val.txt
+    test: snow100k-test.txt
+  raindrop: 
+    path: raindrop
+    train: raindrop-train.txt
+    val: raindrop-val.txt
+    test: raindrop-test.txt
+  fog:
+    path: cityscape
+    train: cityscape-train.txt
+    val: cityscape-val.txt
+    test: #
+  case1:
+    path: BID
+    shots: BID-case1-train.txt
+    test: BID-case1-test.txt
+  case2:
+    path: BID
+    shots: BID-case2-train.txt
+    test: BID-case2-test.txt
+  case3:
+    path: BID
+    shots: BID-case3-train.txt
+    test: BID-case3-test.txt
+  case4:
+    path: BID
+    shots: BID-case4-train.txt
+    test: BID-case4-test.txt
+  case5:
+    path: BID
+    shots: BID-case5-train.txt
+    test: BID-case5-test.txt
+  case6:
+    path: BID
+    shots: BID-case6-train.txt
+    test: BID-case6-test.txt
+  gtrain:
+    path: GT-Rain
+    shots: GT-Rain-train.txt
+    test: GT-Rain-test.txt
+  spadata:
+    path: SPAData
+    shots: spadata-train.txt
+    test: spadata-test.txt
+  realsnow:
+    path: realsnow
+    shots: realsnow-train.txt
+    test: realsnow-test.txt
+  rainds_raindrop:
+    path: rainds
+    shots: rainds_raindrop-train.txt
+    test: rainds_raindrop-test.txt
+  rainds_rainstreak:
+    path: rainds
+    shots: rainds_rainstreak-train.txt
+    test: rainds_rainstreak-test.txt
+  rainds_rainstreak_drop:
+    path: rainds
+    shots: rainds_rainstreak_drop-train.txt
+    test: rainds_rainstreak_drop-test.txt
+  ohaze:
+    path: O-HAZE
+    shots: O-HAZE-train.txt
+    test: O-HAZE-test.txt
+  reside_urhi:
+    path: RESIDE
+    shots: RESIDE_URHI-train.txt
+    test: RESIDE_URHI-test.txt

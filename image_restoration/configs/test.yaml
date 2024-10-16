@@ -1,0 +1,10 @@
+# environment settings
+precision: fp32
+enc: swin
+
+# data arguments
+num_workers: 4
+shot: 4
+eval_batch_size: 1
+img_size: 224
+support_idx: 0
