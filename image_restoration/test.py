@@ -52,3 +52,24 @@ net = nn.DataParallel(net, device_ids=device_ids)
 # --- Load & record --- #
 logdir = f'./experiments/{config.exp_name}/finetune/bias_1shot/{TASK_DATASETS_TEST[config.case]}/log'
 savedir = f'./experiments/{config.exp_name}/finetune/bias_1shot/{TASK_DATASETS_TEST[config.case]}'
+
+try:
+    if config.checkpoint is not None:
+        net.load_state_dict(torch.load(config.checkpoint))
+        print('--- weight loaded ---')
+    else:
+        net.load_state_dict(torch.load(f'{savedir}/latest_finetune'))
+        print('--- weight loaded for testing---')
+except:
+    print('--- no weight loaded ---')
+    sys.exit(0)
+
+test_loader = get_eval_dataloader(config, task=TASK_DATASETS_TEST[config.case], split='test', mode='resize')
+if config.meta_train:
+    support_data = get_support_data(config, TASK_DATASETS_TEST[config.case], split='shots')
+    support_data[0], support_data[1] = support_data[0].to(device), support_data[1].to(device)
+else:
+    support_data = None
+
+# # --- Previous PSNR and SSIM in testing --- #
+net.eval()
