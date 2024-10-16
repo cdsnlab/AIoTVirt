@@ -87,3 +87,10 @@ python3 test.py --case=3 --checkpoint=./checkpoints/metaweather_1shot_case3.pth
 ```
 
 Tested on Ubuntu 20.04, NVIDIA RTX 3090, CUDA 11.7, PyTorch 2.0.1, Python 3.10
+
+# References
+Our code is built upon the following works:
+* [Visual Token Matching](https://github.com/GitGyun/visual_token_matching)
+* [Transweather](https://github.com/jeya-maria-jose/TransWeather)
+* [NAFNet](https://github.com/megvii-research/NAFNet)
+* [Swin Transformer](https://github.com/microsoft/Swin-Transformer)
