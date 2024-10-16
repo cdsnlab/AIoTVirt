@@ -87,3 +87,41 @@ if config.stage == 1:
     logdir = f'./experiments/{config.exp_name}/finetune/{config.specific_param}/{TASK_DATASETS_TEST[config.case]}/log'
     savedir = f'./experiments/{config.exp_name}/finetune/{config.specific_param}/{TASK_DATASETS_TEST[config.case]}'
 
+# --- Build optimizer --- #
+if config.optimizer == 'adam':
+    optimizer = torch.optim.Adam(net.parameters(), betas=(0.9, 0.999), lr=config.lr, weight_decay=config.weight_decay)
+elif config.optimizer == 'adamw':
+    # ! comment these lines !!!!!
+    if config.specific_param is not None:
+        config.specific_param = 'bias'
+        parameters = get_specific_param(config, net)
+        params = [{'params': parameters, 'lr': config.lr}]
+        optimizer = torch.optim.AdamW(params, betas=(0.9, 0.999), lr=config.lr, weight_decay=config.weight_decay)
+    # ! comment these lines !!!!!
+    else:
+        config.specific_param = 'except_enc'
+        parameters = get_specific_param(config, net)
+        params = [{'params': parameters, 'lr': config.lr}]
+        optimizer = torch.optim.AdamW(params, betas=(0.9, 0.999), lr=config.lr, weight_decay=config.weight_decay)
+        optimizer_enc = torch.optim.AdamW(net.module.encoder.parameters(), betas=(0.9, 0.999), lr=1e-5,
+                                          weight_decay=config.weight_decay)
+
+net = net.to(device)
+
+# --- Logging --- #
+writer = SummaryWriter(logdir)
+
+# --- DataLoader --- #
+if config.stage == 0:
+    if config.meta_train:
+        support_data = generate_support_data(config, data_path='support_data1.pth', split='train')
+    else:
+        support_data = None
+    lbl_train_data_loader = get_train_dataloader(config)
+    val_data_loader = get_val_dataloaders(config)
+else:
+    support_data = get_support_data(config, TASK_DATASETS_TEST[config.case], split='shots')
+    support_data[0], support_data[1] = support_data[0].to(device), support_data[1].to(device)
+    lbl_train_data_loader = get_finetune_dataloader(config, TASK_DATASETS_TEST[config.case], split='shots')
+    # val_data_loader = get_val_dataloaders(config, support_data=support_data)
+    test_loader = get_eval_dataloader(config, task=TASK_DATASETS_TEST[config.case], split='test', mode='resize')
