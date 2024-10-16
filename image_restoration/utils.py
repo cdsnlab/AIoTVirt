@@ -200,6 +200,19 @@ def print_log(epoch, num_epochs, train_psnr, val_psnr, val_ssim, exp_name):
                       epoch, num_epochs, train_psnr, val_psnr, val_ssim), file=f)
 
 
+def adjust_learning_rate(optimizer, epoch, lr_decay=0.5):
+    # --- Decay learning rate --- #
+    step = 100
+
+    if not epoch % step and epoch > 0:
+        for param_group in optimizer.param_groups:
+            param_group['lr'] *= lr_decay
+            print('Learning rate sets to {}.'.format(param_group['lr']))
+    else:
+        for param_group in optimizer.param_groups:
+            print('Learning rate sets to {}.'.format(param_group['lr']))
+
+
 def load_model(config, savedir, net):
     if config.stage == 0:
         try:
@@ -255,3 +268,149 @@ def model_save(config, net, savedir):
     else:
         torch.save(net.state_dict(), '{}/{}'.format(savedir, last_name))
         print('model saved')
+
+
+def get_specific_param(config, model):
+    def isLN(m: nn.Module):
+        return isinstance(m, LayerNorm2d) or isinstance(m, nn.LayerNorm)
+        # return isinstance(m, LayerNorm2d) or isinstance(m, LayerNorm) or isinstance(m, nn.LayerNorm)
+
+    # import pdb; pdb.set_trace()
+    if config.specific_param == 'LN':
+        params = []
+        for nm, m in model.named_modules():
+            if isLN(m):
+                for np, p in m.named_parameters():
+                    if np in ['body.weight', 'body.bias', 'weight', 'bias']:  # weight is scale, bias is shift
+                        yield p  # params.append(p)
+        # return params
+    elif config.specific_param == 'bias':
+        params = []
+        for nm, m in model.named_modules():
+            for np, p in m.named_parameters():
+                if 'bias' in np:  # weight is scale, bias is shift
+                    yield p  # params.append(p)
+
+        # return params
+    elif config.specific_param == 'full':
+        params = []
+        for nm, m in model.named_modules():
+            for np, p in m.named_parameters():
+                yield p  # params.append(p)
+
+    elif config.specific_param == 'LN_enc':
+        params = []
+        for nm, m in model.named_modules():
+            try:
+                if nm.split('.')[1] == 'encoder':
+                    if isLN(m):
+                        for np, p in m.named_parameters():
+                            if np in ['body.weight', 'body.bias', 'weight', 'bias']:  # weight is scale, bias is shift
+                                yield p  # params.append(p)
+            except:
+                pass
+            elif config.specific_param == 'LN_others':
+            params = []
+            for nm, m in model.named_modules():
+                try:
+                    if nm.split('.')[1] != 'encoder':
+                        if isLN(m):
+                            for np, p in m.named_parameters():
+                                if np in ['body.weight', 'body.bias', 'weight',
+                                          'bias']:  # weight is scale, bias is shift
+                                    yield p  # params.append(p)
+                except:
+                    pass
+
+            # return params
+        elif config.specific_param == 'bias_enc':
+        params = []
+        for nm, m in model.named_modules():
+            try:
+                if nm.split('.')[1] == 'encoder':
+                    for np, p in m.named_parameters():
+                        if 'bias' in np:  # weight is scale, bias is shift
+                            yield p  # params.append(p)
+            except:
+                pass
+
+    elif config.specific_param == 'bias_others':
+        params = []
+        for nm, m in model.named_modules():
+            try:
+                if nm.split('.')[1] != 'encoder':
+                    for np, p in m.named_parameters():
+                        if 'bias' in np:  # weight is scale, bias is shift
+                            yield p  # params.append(p)
+            except:
+                pass
+
+    # return params
+    elif config.specific_param == 'vanilla_enc':
+        params = []
+        for nm, m in model.named_modules():
+            if nm.split('.')[0] == 'encoder':
+                for np, p in m.named_parameters():
+                    yield p  # params.append(p)
+
+    elif config.specific_param == 'LN_enc_others':
+        params = []
+        for nm, m in model.named_modules():
+            try:
+                if nm.split('.')[1] == 'encoder':
+                    if isLN(m):
+                        for np, p in m.named_parameters():
+                            if np in ['body.weight', 'body.bias', 'weight', 'bias']:  # weight is scale, bias is shift
+                                yield p  # params.append(p)
+                else:
+                    for np, p in m.named_parameters():
+                        yield p
+            except:
+                pass
+
+    elif config.specific_param == 'Bias_in_LN_enc_others':
+        params = []
+        for nm, m in model.named_modules():
+            try:
+                if nm.split('.')[1] == 'encoder':
+                    if isLN(m):
+                        for np, p in m.named_parameters():
+                            if np in ['body.bias', 'bias']:  # weight is scale, bias is shift
+                                yield p  # params.append(p)
+                else:
+                    for np, p in m.named_parameters():
+                        yield p
+            except:
+                pass
+    elif config.specific_param == 'except_enc':
+        params = []
+        for nm, m in model.named_modules():
+            try:
+                if nm.split('.')[1] == 'encoder':
+                    pass
+                else:
+                    for np, p in m.named_parameters():
+                        yield p
+            except:
+                pass
+    elif config.specific_param == 'except_mm_bias':
+        params = []
+        for nm, m in model.named_modules():
+            try:
+                if nm.split('.')[1] == 'matching_module':
+                    pass
+                else:
+                    for np, p in m.named_parameters():
+                        if np in ['body.bias', 'bias']:  # weight is scale, bias is shift
+                            yield p  # params.append(p)
+            except:
+                pass
+    elif config.specific_param == 'mm':
+        params = []
+        for nm, m in model.named_modules():
+            try:
+                if nm.split('.')[1] == 'matching_module':
+                    for np, p in m.named_parameters():
+                        yield p
+            except:
+                pass
