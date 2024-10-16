@@ -198,3 +198,60 @@ def print_log(epoch, num_epochs, train_psnr, val_psnr, val_ssim, exp_name):
         print('Date: {0}s, Epoch: [{1}/{2}], Train_PSNR: {3:.2f}, Val_PSNR: {4:.2f}, Val_SSIM: {5:.4f}'
               .format(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()),
                       epoch, num_epochs, train_psnr, val_psnr, val_ssim), file=f)
+
+
+def load_model(config, savedir, net):
+    if config.stage == 0:
+        try:
+            if config.checkpoint is not None:
+                net.load_state_dict(torch.load(config.checkpoint))
+                print('--- weight loaded for continuing pretrain ---')
+            elif config.exp_name is not None:
+                net.load_state_dict(torch.load('{}/best'.format(savedir)))
+                print('--- weight loaded for continuing pretrain ---')
+            else:
+                print('--- no weight loaded ---')
+        except:
+            print('--- no weight loaded ---')
+    elif config.stage == 1:
+        try:
+            # net.load_state_dict(torch.load('{}/best'.format(savedir)))
+            load_model_finetune(config, savedir, net)
+            print('--- weight loaded for finetuning---')
+        except:
+            print('--- no weight loaded ---')
+            if config.model_name != 'metaweather':
+                sys.exit(0)
+    return net
+
+
+def load_model_finetune(config, savedir, net):
+    if config.checkpoint is not None:
+        state_dict = torch.load(config.checkpoint)
+    elif config.exp_name is not None:
+        state_dict = torch.load('{}/best'.format(savedir))
+
+    try:
+        net.load_state_dict(state_dict, strict=True)
+    except:
+        bias_parameters = [f'model.{name}' for name in net.model.bias_parameter_names()]
+        for key in state_dict.keys():
+            if key in bias_parameters:
+                state_dict[key] = torch.zeros_like(state_dict[key][0])
+
+                if config.n_tasks is not None and config.n_tasks > 0:
+                    state_dict[key] = repeat(state_dict[key], '... -> T ...', T=config.n_tasks)
+
+        net.load_state_dict(state_dict)
+
+
+def model_save(config, net, savedir):
+    last_name = 'best' if config.stage == 0 else 'best_finetune'
+
+    if config.ddp is True:
+        if dist.get_rank() == 0:
+            torch.save(net.state_dict(), '{}/{}'.format(savedir, last_name))
+            print('model saved')
+    else:
+        torch.save(net.state_dict(), '{}/{}'.format(savedir, last_name))
+        print('model saved')
