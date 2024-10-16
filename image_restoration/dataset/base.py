@@ -10,15 +10,17 @@ from typing import Tuple, Callable, Dict
 import albumentations
 
 import time
+
+
 class IRUnitDataset(torch.utils.data.Dataset):
 
-    def __init__(self, 
-                 crop_size: Tuple[int, int], 
-                 data_dir: str, 
-                 data_filename: str, 
-                 name: str=None, 
-                 fn_gt_name: Callable[[str], str] = None, 
-                 shuffle: bool = True, 
+    def __init__(self,
+                 crop_size: Tuple[int, int],
+                 data_dir: str,
+                 data_filename: str,
+                 name: str = None,
+                 fn_gt_name: Callable[[str], str] = None,
+                 shuffle: bool = True,
                  dset_size: int = None,
                  image_augmentation: bool = False,
                  return_image_id: bool = False,
@@ -54,7 +56,7 @@ class IRUnitDataset(torch.utils.data.Dataset):
 
         if mode in ['random_crop', 'center_crop', 'resize']:
             assert crop_size is not None
-        
+
         if self.mode in ['random_crop', 'center_crop', 'resize']:
             assert crop_size is not None
             augmentations_map = {
@@ -77,13 +79,13 @@ class IRUnitDataset(torch.utils.data.Dataset):
             self.cache: Dict[int, Tuple[torch.Tensor, torch.Tensor, str]] = dict()
         else:
             raise NotImplementedError(f'Specified cache mode {cache} is not implemented')
-        
-    
+
     def _get_gt_name(self, input_name: str) -> str:
         gt_name = input_name.strip().replace('input/', 'gt/')
         gt_name = self.fn_gt_name(gt_name) if self.fn_gt_name is not None else gt_name
         if input_name == gt_name:
-            raise NotImplementedError(f'Error: input and gt names are the same. Did you implement the gt name converter function correctly?')
+            raise NotImplementedError(
+                f'Error: input and gt names are the same. Did you implement the gt name converter function correctly?')
         return gt_name
 
     def get_images(self, index: int) -> Tuple[torch.Tensor, torch.Tensor, str]:
@@ -126,12 +128,9 @@ class IRUnitDataset(torch.utils.data.Dataset):
             gt = self.transform_gt(gt_img)
         return input_im, gt
 
-
-
     def __getitem__(self, index):
         res = self.get_images(index)
         return res
 
     def __len__(self) -> int:
         return self.dset_size
-    
