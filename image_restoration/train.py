@@ -67,3 +67,23 @@ print('--- Hyper-parameters for training ---')
 print('learning_rate: {}\ncrop_size: {}\ntrain_batch_size: {}\nval_batch_size: {}\n'.format(config.lr, config.img_size,
                                                                                             config.batch_size,
                                                                                             config.val_batch_size))
+# --- Gpu device --- #
+device_ids = [Id for Id in range(torch.cuda.device_count())]
+# device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+device = torch.device('cuda:0')
+
+# --- Define & Load the network --- #
+net = get_model(config)
+
+# if you face the error saying 'module.~' when u try to load, then uncomment this line.
+net = nn.DataParallel(net, device_ids=device_ids)
+
+config.specific_param = None
+logdir = f'./experiments/{config.exp_name}/log'
+savedir = f'./experiments/{config.exp_name}'
+net = load_model(config, savedir, net)
+if config.stage == 1:
+    config.specific_param = 'bias_1shot'
+    logdir = f'./experiments/{config.exp_name}/finetune/{config.specific_param}/{TASK_DATASETS_TEST[config.case]}/log'
+    savedir = f'./experiments/{config.exp_name}/finetune/{config.specific_param}/{TASK_DATASETS_TEST[config.case]}'
+
