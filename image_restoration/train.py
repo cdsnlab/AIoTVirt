@@ -15,8 +15,19 @@ from utils import to_psnr, print_log, validation, load_model, tb_logging, model_
 from config import get_config
 from models.reshape import *
 from dataset.utils import TASK_DATASETS_TRAIN, TASK_DATASETS_TEST
-from dataset.factory import get_train_dataloader, get_support_data, get_val_dataloaders, get_eval_dataloader, get_finetune_dataloader, generate_support_data
+from dataset.factory import get_train_dataloader, get_support_data, get_val_dataloaders, get_eval_dataloader, \
+    get_finetune_dataloader, generate_support_data
 from models.model_factory import get_model
+
+
+def str2bool(v):
+    if v == 'True' or v == 'true':
+        return True
+    elif v == 'False' or v == 'false':
+        return False
+    else:
+        raise argparse.ArgumentTypeError('Boolean value expected.')
+
 
 warnings.filterwarnings(action='ignore')
 plt.switch_backend('agg')
@@ -54,4 +65,5 @@ if seed is not None:
 
 print('--- Hyper-parameters for training ---')
 print('learning_rate: {}\ncrop_size: {}\ntrain_batch_size: {}\nval_batch_size: {}\n'.format(config.lr, config.img_size,
-        config.batch_size, config.val_batch_size))
+                                                                                            config.batch_size,
+                                                                                            config.val_batch_size))
