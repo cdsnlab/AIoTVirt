@@ -37,3 +37,18 @@ if seed is not None:
 
 print('--- Hyper-parameters for training ---')
 print('crop_size: {}\nval_batch_size: {}\n'.format(config.img_size, config.eval_batch_size))
+
+# --- Gpu device --- #
+device_ids = [Id for Id in range(torch.cuda.device_count())]
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+
+# --- Define the network --- #
+net = get_model(config)
+
+# --- Multi-GPU --- #
+net = net.to(device)
+net = nn.DataParallel(net, device_ids=device_ids)
+
+# --- Load & record --- #
+logdir = f'./experiments/{config.exp_name}/finetune/bias_1shot/{TASK_DATASETS_TEST[config.case]}/log'
+savedir = f'./experiments/{config.exp_name}/finetune/bias_1shot/{TASK_DATASETS_TEST[config.case]}'
