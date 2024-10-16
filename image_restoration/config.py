@@ -16,3 +16,12 @@ def get_config(args: argparse.Namespace, meta=True) -> EasyDict:
             config_path = 'configs/finetune-nonmeta.yaml'
     elif args.stage == 2:
         config_path = 'configs/test.yaml'
+
+    with open(config_path) as f:
+        config = yaml.safe_load(f)
+        config = EasyDict(config)
+
+    # copy parsed arguments
+    for key in args.__dir__():
+        if key[:2] != '__' and getattr(args, key) is not None:
+            setattr(config, key, getattr(args, key))
