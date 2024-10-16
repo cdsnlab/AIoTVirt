@@ -208,10 +208,12 @@ def _update_config_from_file(config, cfg_file):
     config.merge_from_file(cfg_file)
     config.freeze()
 
+
 def update_config(config, args):
     _update_config_from_file(config, args.cfg)
 
     config.defrost()
+
     # if args.opts:
     #     config.merge_from_list(args.opts)
 
@@ -251,6 +253,7 @@ def update_config(config, args):
     config.OUTPUT = os.path.join(config.OUTPUT, config.MODEL.NAME, config.TAG)
 
     config.freeze()
+
 
 def get_config(args):
     """Get a yacs CfgNode object with default values."""

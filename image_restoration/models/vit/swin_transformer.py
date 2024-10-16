@@ -539,8 +539,8 @@ class SwinTransformer(nn.Module):
             self.layers.append(layer)
 
         self.norm = norm_layer(self.num_features)
-        #self.avgpool = nn.AdaptiveAvgPool1d(1)
-        #self.head = nn.Linear(self.num_features, num_classes) if num_classes > 0 else nn.Identity()
+        # self.avgpool = nn.AdaptiveAvgPool1d(1)
+        # self.head = nn.Linear(self.num_features, num_classes) if num_classes > 0 else nn.Identity()
 
         self.apply(self._init_weights)
 
@@ -594,7 +594,7 @@ class SwinTransformer(nn.Module):
         # x = self.head(x)
         # return x, xlist
         # return xlist[:-1] + [x]
-        return [x] + xlist[:-1][::-1] #down -> up
+        return [x] + xlist[:-1][::-1]  # down -> up
 
     def flops(self):
         flops = 0

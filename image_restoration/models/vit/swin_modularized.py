@@ -14,10 +14,11 @@ from timm.models.layers import DropPath, to_2tuple, trunc_normal_
 from einops import repeat, rearrange
 from functools import partial
 
+
 class LinearModularized(nn.Linear):
     def __init__(self, n_tasks=0, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        
+
         self.n_tasks = n_tasks
         if self.n_tasks > 0:
             assert self.bias is not None
@@ -54,7 +55,7 @@ class MlpModularized(nn.Module):
 class LayerNormModularized(nn.LayerNorm):
     def __init__(self, n_tasks=0, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        
+
         self.n_tasks = n_tasks
         if self.n_tasks > 0:
             assert self.elementwise_affine
@@ -68,6 +69,7 @@ class LayerNormModularized(nn.LayerNorm):
         else:
             return F.layer_norm(
                 input, self.normalized_shape, self.weight, self.bias, self.eps)
+
 
 def window_partition(x, window_size):
     """
@@ -115,7 +117,8 @@ class WindowAttention(nn.Module):
         proj_drop (float, optional): Dropout ratio of output. Default: 0.0
     """
 
-    def __init__(self, dim, window_size, num_heads, qkv_bias=True, qk_scale=None, attn_drop=0., proj_drop=0., n_tasks=0):
+    def __init__(self, dim, window_size, num_heads, qkv_bias=True, qk_scale=None, attn_drop=0., proj_drop=0.,
+                 n_tasks=0):
 
         super().__init__()
         self.dim = dim
@@ -243,7 +246,8 @@ class SwinTransformerBlockModularized(nn.Module):
         self.drop_path = DropPath(drop_path) if drop_path > 0. else nn.Identity()
         self.norm2 = norm_layer(n_tasks, dim)
         mlp_hidden_dim = int(dim * mlp_ratio)
-        self.mlp = MlpModularized(n_tasks=n_tasks, in_features=dim, hidden_features=mlp_hidden_dim, act_layer=act_layer, drop=drop)
+        self.mlp = MlpModularized(n_tasks=n_tasks, in_features=dim, hidden_features=mlp_hidden_dim, act_layer=act_layer,
+                                  drop=drop)
 
         if self.shift_size > 0:
             # calculate attention mask for SW-MSA
@@ -289,7 +293,7 @@ class SwinTransformerBlockModularized(nn.Module):
         x_windows = window_partition(shifted_x, self.window_size)  # nW*B, window_size, window_size, C
         x_windows = x_windows.view(-1, self.window_size * self.window_size, C)  # nW*B, window_size*window_size, C
 
-        t_idx_attn = repeat(t_idx, 'X -> (X nW)', nW=x_windows.shape[0]//B) if t_idx is not None else None
+        t_idx_attn = repeat(t_idx, 'X -> (X nW)', nW=x_windows.shape[0] // B) if t_idx is not None else None
         # W-MSA/SW-MSA
         attn_windows = self.attn(x_windows, mask=self.attn_mask, t_idx=t_idx_attn)  # nW*B, window_size*window_size, C
 
@@ -327,7 +331,6 @@ class SwinTransformerBlockModularized(nn.Module):
         # norm2
         flops += self.dim * H * W
         return flops
-
 
 
 class PatchMerging(nn.Module):
@@ -412,13 +415,13 @@ class BasicLayerModularized(nn.Module):
         # build blocks
         self.blocks = nn.ModuleList([
             SwinTransformerBlockModularized(dim=dim, input_resolution=input_resolution,
-                                 num_heads=num_heads, window_size=window_size,
-                                 shift_size=0 if (i % 2 == 0) else window_size // 2,
-                                 mlp_ratio=mlp_ratio,
-                                 qkv_bias=qkv_bias, qk_scale=qk_scale,
-                                 drop=drop, attn_drop=attn_drop,
-                                 drop_path=drop_path[i] if isinstance(drop_path, list) else drop_path,
-                                 norm_layer=norm_layer, n_tasks=n_tasks)
+                                            num_heads=num_heads, window_size=window_size,
+                                            shift_size=0 if (i % 2 == 0) else window_size // 2,
+                                            mlp_ratio=mlp_ratio,
+                                            qkv_bias=qkv_bias, qk_scale=qk_scale,
+                                            drop=drop, attn_drop=attn_drop,
+                                            drop_path=drop_path[i] if isinstance(drop_path, list) else drop_path,
+                                            norm_layer=norm_layer, n_tasks=n_tasks)
             for i in range(depth)])
 
         # patch merging layer
@@ -565,24 +568,24 @@ class SwinTransformerModularized(nn.Module):
         self.layers = nn.ModuleList()
         for i_layer in range(self.num_layers):
             layer = BasicLayerModularized(dim=int(embed_dim * 2 ** i_layer),
-                               input_resolution=(patches_resolution[0] // (2 ** i_layer),
-                                                 patches_resolution[1] // (2 ** i_layer)),
-                               depth=depths[i_layer],
-                               num_heads=num_heads[i_layer],
-                               window_size=window_size,
-                               mlp_ratio=self.mlp_ratio,
-                               qkv_bias=qkv_bias, qk_scale=qk_scale,
-                               drop=drop_rate, attn_drop=attn_drop_rate,
-                               drop_path=dpr[sum(depths[:i_layer]):sum(depths[:i_layer + 1])],
-                               norm_layer=norm_layer,
-                               downsample=PatchMerging if (i_layer < self.num_layers - 1) else None,
-                               use_checkpoint=use_checkpoint,
-                               n_tasks=n_tasks)
+                                          input_resolution=(patches_resolution[0] // (2 ** i_layer),
+                                                            patches_resolution[1] // (2 ** i_layer)),
+                                          depth=depths[i_layer],
+                                          num_heads=num_heads[i_layer],
+                                          window_size=window_size,
+                                          mlp_ratio=self.mlp_ratio,
+                                          qkv_bias=qkv_bias, qk_scale=qk_scale,
+                                          drop=drop_rate, attn_drop=attn_drop_rate,
+                                          drop_path=dpr[sum(depths[:i_layer]):sum(depths[:i_layer + 1])],
+                                          norm_layer=norm_layer,
+                                          downsample=PatchMerging if (i_layer < self.num_layers - 1) else None,
+                                          use_checkpoint=use_checkpoint,
+                                          n_tasks=n_tasks)
             self.layers.append(layer)
 
         self.norm = norm_layer(n_tasks, self.num_features)
-        #self.avgpool = nn.AdaptiveAvgPool1d(1)
-        #self.head = nn.Linear(self.num_features, num_classes) if num_classes > 0 else nn.Identity()
+        # self.avgpool = nn.AdaptiveAvgPool1d(1)
+        # self.head = nn.Linear(self.num_features, num_classes) if num_classes > 0 else nn.Identity()
 
         self.apply(self._init_weights)
 
@@ -636,7 +639,7 @@ class SwinTransformerModularized(nn.Module):
         # x = self.head(x)
         # return x, xlist
         # return xlist[:-1] + [x]
-        return [x] + xlist[:-1][::-1] #down -> up
+        return [x] + xlist[:-1][::-1]  # down -> up
 
     def flops(self):
         flops = 0
@@ -646,20 +649,22 @@ class SwinTransformerModularized(nn.Module):
         flops += self.num_features * self.patches_resolution[0] * self.patches_resolution[1] // (2 ** self.num_layers)
         flops += self.num_features * self.num_classes
         return flops
-    
+
     def bias_parameters(self):
         for key, param in self.named_parameters():
             tokens = key.split('.')
-            if len(tokens) > 2 and tokens[2] == 'blocks' and tokens[-1] == 'bias' and tokens[-3] != 'patch_embed' and tokens[-2] != 'qkv':
+            if len(tokens) > 2 and tokens[2] == 'blocks' and tokens[-1] == 'bias' and tokens[-3] != 'patch_embed' and \
+                    tokens[-2] != 'qkv':
                 yield param
             elif key == 'norm.bias':
                 yield param
 
     def bias_parameter_names(self):
         names = []
-        for key, _ in self.named_parameters(): 
+        for key, _ in self.named_parameters():
             tokens = key.split('.')
-            if len(tokens) > 2 and tokens[2] == 'blocks' and tokens[-1] == 'bias' and tokens[-3] != 'patch_embed' and tokens[-2] != 'qkv':
+            if len(tokens) > 2 and tokens[2] == 'blocks' and tokens[-1] == 'bias' and tokens[-3] != 'patch_embed' and \
+                    tokens[-2] != 'qkv':
                 names.append(key)
             elif key == 'norm.bias':
                 names.append(key)

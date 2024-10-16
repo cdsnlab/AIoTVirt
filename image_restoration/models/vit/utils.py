@@ -102,9 +102,10 @@ def load_pretrained(config, model: SwinTransformerModularized, logger, n_tasks=0
     logger.info(f">>>>>>>>>> Fine-tuned from {config.PRETRAINED} ..........")
     checkpoint = torch.load(config.PRETRAINED, map_location='cpu')
     checkpoint_model = checkpoint['model']
-    
+
     if any([True if 'encoder.' in k else False for k in checkpoint_model.keys()]):
-        checkpoint_model = {k.replace('encoder.', ''): v for k, v in checkpoint_model.items() if k.startswith('encoder.')}
+        checkpoint_model = {k.replace('encoder.', ''): v for k, v in checkpoint_model.items() if
+                            k.startswith('encoder.')}
         logger.info('Detect pre-trained model, remove [encoder.] prefix.')
     else:
         logger.info('Detect non-pre-trained model, pass without doing anything.')
@@ -117,7 +118,7 @@ def load_pretrained(config, model: SwinTransformerModularized, logger, n_tasks=0
         checkpoint = remap_pretrained_keys_vit(model, checkpoint_model, logger)
     else:
         raise NotImplementedError
-    
+
     if n_tasks > 0:
         params = model.bias_parameter_names()
         for p in params:
@@ -125,15 +126,15 @@ def load_pretrained(config, model: SwinTransformerModularized, logger, n_tasks=0
 
     msg = model.load_state_dict(checkpoint_model, strict=False)
     logger.info(msg)
-    
+
     del checkpoint
     torch.cuda.empty_cache()
     logger.info(f">>>>>>>>>> loaded successfully '{config.PRETRAINED}'")
-    
+
 
 def remap_pretrained_keys_swin(model, checkpoint_model, logger):
     state_dict = model.state_dict()
-    
+
     # Geometric interpolation when pre-trained patch size mismatch with fine-tuned patch size
     all_keys = list(checkpoint_model.keys())
     for key in all_keys:
@@ -221,7 +222,7 @@ def remap_pretrained_keys_vit(model, checkpoint_model, logger):
     for i in range(num_layers):
         checkpoint_model["blocks.%d.attn.relative_position_bias_table" % i] = rel_pos_bias.clone()
     checkpoint_model.pop("rel_pos_bias.relative_position_bias_table")
-    
+
     # Geometric interpolation when pre-trained patch size mismatch with fine-tuned patch size
     all_keys = list(checkpoint_model.keys())
     for key in all_keys:
@@ -239,7 +240,8 @@ def remap_pretrained_keys_vit(model, checkpoint_model, logger):
             src_size = int((src_num_pos - num_extra_tokens) ** 0.5)
             dst_size = int((dst_num_pos - num_extra_tokens) ** 0.5)
             if src_size != dst_size:
-                logger.info("Position interpolate for %s from %dx%d to %dx%d" % (key, src_size, src_size, dst_size, dst_size))
+                logger.info(
+                    "Position interpolate for %s from %dx%d to %dx%d" % (key, src_size, src_size, dst_size, dst_size))
                 extra_tokens = rel_pos_bias[-num_extra_tokens:, :]
                 rel_pos_bias = rel_pos_bias[:-num_extra_tokens, :]
 
@@ -288,5 +290,5 @@ def remap_pretrained_keys_vit(model, checkpoint_model, logger):
 
                 new_rel_pos_bias = torch.cat((rel_pos_bias, extra_tokens), dim=0)
                 checkpoint_model[key] = new_rel_pos_bias
-    
+
     return checkpoint_model
