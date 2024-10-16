@@ -258,6 +258,28 @@ def load_model_finetune(config, savedir, net):
         net.load_state_dict(state_dict)
 
 
+def tb_logging(config, writer, psnr_list, ssim_list, eval_psnr, eval_ssim, global_step, lr_scheduler=None):
+    val_psnr = sum(psnr_list) / len(psnr_list)
+    val_ssim = sum(ssim_list) / len(ssim_list)
+    if config.stage == 0:
+        writer.add_scalar(TASK_DATASETS_TRAIN[0] + 'val_psnr', psnr_list[0], global_step=global_step)
+        writer.add_scalar(TASK_DATASETS_TRAIN[1] + 'val_psnr', psnr_list[1], global_step=global_step)
+        writer.add_scalar(TASK_DATASETS_TRAIN[2] + 'val_psnr', psnr_list[2], global_step=global_step)
+        writer.add_scalar(TASK_DATASETS_TRAIN[3] + 'val_psnr', psnr_list[3], global_step=global_step)
+        writer.add_scalar('val_psnr', val_psnr, global_step=global_step)
+        writer.add_scalar('val_ssim', val_ssim, global_step=global_step)
+        print('val_psnr: {0:.2f}, val_ssim: {1:.4f}'.format(val_psnr, val_ssim))
+    elif config.stage == 1:
+        writer.add_scalar('adapt' + '_val_psnr', psnr_list[0], global_step=global_step)
+        writer.add_scalar('adapt' + '_val_ssim', ssim_list[0], global_step=global_step)
+        writer.add_scalar('adapt' + '_eval_psnr', eval_psnr, global_step=global_step)
+        writer.add_scalar('adapt' + '_eval_ssim', eval_ssim, global_step=global_step)
+        print('val_psnr: {0:.2f}, val_ssim: {1:.4f}'.format(val_psnr, val_ssim))
+        print('eval_psnr: {0:.2f}, val_ssim: {1:.4f}'.format(eval_psnr, eval_ssim))
+    if lr_scheduler is not None:
+        writer.add_scalar('lr', lr_scheduler.get_lr()[0], global_step=global_step)
+
+
 def model_save(config, net, savedir):
     last_name = 'best' if config.stage == 0 else 'best_finetune'
 
