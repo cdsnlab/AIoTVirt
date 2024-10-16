@@ -136,3 +136,90 @@ old_val_psnr, old_val_ssim = 0., 0.
 
 net.train()
 
+# -------------------------------------------------------------------------------------------------------------
+psnr_list = []
+for batch_id, train_data in enumerate(tqdm(lbl_train_data_loader)):
+    if config.stage == 0:
+        input_image, gt, t_idx = train_data
+    else:
+        input_image, gt = train_data
+
+    X = input_image.to(device)
+    Y = gt.to(device)
+
+    # --- Zero the parameter gradients --- #
+    optimizer.zero_grad()
+
+    # --- Forward + Backward + Optimize --- #
+    net.train()
+
+    if config.meta_train:
+        # compute loss for query images
+        X = repeat(X, 'B T N ... -> B T (2 N) ...')
+        Y = repeat(Y, 'B T N ... -> B T (2 N) ...')
+        X_S, X_Q = X.split(math.ceil(X.size(2) / 2), dim=2)
+        Y_S, Y_Q = Y.split(math.ceil(Y.size(2) / 2), dim=2)
+        del X, Y
+
+        Y_pred = net(X_S, Y_S, X_Q)
+        l1_loss = F.l1_loss(Y_pred, Y_Q)
+        psnr_list.extend(to_psnr(Y_pred, Y_Q))
+    else:
+        Y_pred = net(from_6d_to_4d(X))
+        l1_loss = F.l1_loss(Y_pred, from_6d_to_4d(Y))
+        psnr_list.extend(to_psnr(Y_pred, from_6d_to_4d(Y)))
+
+    loss = l1_loss
+    loss.backward()
+    optimizer.step()
+
+    writer.add_scalar('train_loss', loss.item(), global_step=batch_id)
+
+    if batch_id % config.val_iter == config.val_iter - 1:
+        torch.save(net.state_dict(), '{}/latest_finetune'.format(savedir))
+        # --- Calculate the average training PSNR in one epoch --- #
+        train_psnr = sum(psnr_list) / len(psnr_list)
+        psnr_list = []
+
+        # --- Use the evaluation model in testing --- #
+        net.eval()
+
+        # --- Log the validation results --- #
+        if config.ddp is True:
+            if dist.get_rank() == 0:
+                psnr_list, ssim_list = validation(config, net, val_data_loader, device, config.exp_name, support_data)
+                val_psnr = sum(psnr_list) / len(psnr_list)
+                val_ssim = sum(ssim_list) / len(ssim_list)
+                tb_logging(config, writer, psnr_list, ssim_list, batch_id)
+        else:
+            if config.stage == 0:
+                tb_logging(config, writer, psnr_list, ssim_list, None, None, batch_id)
+            if config.stage == 1:
+                if config.meta_train is True:
+                    eval_psnr, eval_ssim = validation_val(config, net, test_loader, device, savedir, support_data, True)
+                if config.meta_train is False:
+                    eval_psnr, eval_ssim = validation_val(config, net, test_loader, device, savedir, None, True)
+                print('eval_psnr: {0:.2f}, eval_ssim: {1:.4f}'.format(eval_psnr, eval_ssim))
+
+        # --- Save the network params --- #
+        if config.ddp is True:
+            if dist.get_rank() == 0:
+                # --- Save the network parameters --- #
+                if config.stage == 0:
+                    torch.save(net.state_dict(), '{}/latest'.format(savedir))
+                else:
+                    torch.save(net.state_dict(), '{}/latest_finetune'.format(savedir))
+                # --- Save the best params --- #
+                if val_psnr >= old_val_psnr:
+                    old_val_psnr = val_psnr
+                    model_save(config, net, savedir)
+        else:
+            # --- Save the best params --- #
+            # --- Save the network parameters --- #
+            if config.stage == 0:
+                torch.save(net.state_dict(), '{}/latest'.format(savedir))
+            else:
+                torch.save(net.state_dict(), '{}/latest_finetune'.format(savedir))
+            # if val_psnr >= old_val_psnr:
+            #     old_val_psnr = val_psnr
+            #     model_save(config, net, savedir)
