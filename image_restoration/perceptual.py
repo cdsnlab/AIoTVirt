@@ -22,3 +22,13 @@ class LossNetwork(torch.nn.Module):
             if name in self.layer_name_mapping:
                 output[self.layer_name_mapping[name]] = x
         return list(output.values())
+
+
+    def forward(self, pred_im, gt):
+        loss = []
+        pred_im_features = self.output_features(pred_im)
+        gt_features = self.output_features(gt)
+        for pred_im_feature, gt_feature in zip(pred_im_features, gt_features):
+            loss.append(F.mse_loss(pred_im_feature, gt_feature))
+
+        return sum(loss)/len(loss)
