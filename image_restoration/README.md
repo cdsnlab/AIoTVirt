@@ -1,3 +1,5 @@
+The code associated to [MetaWeather: Few-shot Weather-Degraded Image Restoration](https://arxiv.org/abs/2308.14334) (ECCV 2024).
+
 # Setup
 ```
     image_restoration
