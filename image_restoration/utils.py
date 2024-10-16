@@ -54,6 +54,7 @@ def calc_ssim(im1, im2):
     ans = [compare_ssim(im1_y, im2_y, data_range=1.)]
     return ans
 
+
 def to_psnr(pred_image, gt):
     mse = F.mse_loss(pred_image, gt, reduction='none')
     mse_split = torch.split(mse, 1, dim=0)
@@ -68,8 +69,111 @@ def to_ssim_skimage(pred_image, gt):
     pred_image_list = torch.split(pred_image, 1, dim=0)
     gt_list = torch.split(gt, 1, dim=0)
 
-    pred_image_list_np = [pred_image_list[ind].permute(0, 2, 3, 1).data.cpu().numpy().squeeze() for ind in range(len(pred_image_list))]
+    pred_image_list_np = [pred_image_list[ind].permute(0, 2, 3, 1).data.cpu().numpy().squeeze() for ind in
+                          range(len(pred_image_list))]
     gt_list_np = [gt_list[ind].permute(0, 2, 3, 1).data.cpu().numpy().squeeze() for ind in range(len(pred_image_list))]
-    ssim_list = [measure.compare_ssim(pred_image_list_np[ind],  gt_list_np[ind], data_range=1, multichannel=True) for ind in range(len(pred_image_list))]
+    ssim_list = [measure.compare_ssim(pred_image_list_np[ind], gt_list_np[ind], data_range=1, multichannel=True) for ind
+                 in range(len(pred_image_list))]
 
     return ssim_list
+
+
+def validation(config, net, val_data_loader, device, exp_name, support_data=None, save_tag=False):
+    psnr_list = []
+    ssim_list = []
+    if config.stage == 0:
+        for task_id, task in enumerate(TASK_DATASETS_TRAIN):
+            sub_psnr_list, sub_ssim_list = [], []
+            one_val_dataloader = val_data_loader[0][task]
+            if config.meta_train:
+                X_S, Y_S = support_data[task]
+                X_S, Y_S = X_S.to(device), Y_S.to(device)
+            for batch_id, val_data in enumerate(tqdm(one_val_dataloader)):
+                X, Y = val_data
+
+                with torch.no_grad():
+                    if config.meta_train:
+                        Y_pred = net(X_S, Y_S, X)
+                    else:
+                        X = from_6d_to_4d(X.to(device))
+                        Y = from_6d_to_4d(Y.to(device))
+                        Y_pred = net(X)
+
+                # --- Calculate the average PSNR --- #
+                sub_psnr_list.extend(calc_psnr(Y_pred, Y))
+
+                # --- Calculate the average SSIM --- #
+                sub_ssim_list.extend(calc_ssim(Y_pred, Y))
+
+                # --- Save image --- #
+                # if save_tag:
+                #     save_image(Y_pred, exp_name)
+            psnr_list.append(sum(sub_psnr_list) / len(sub_psnr_list))
+            ssim_list.append(sum(sub_ssim_list) / len(sub_ssim_list))
+
+    else:
+        sub_psnr_list, sub_ssim_list = [], []
+        if config.meta_train:
+            X_S, Y_S = support_data
+            X_S, Y_S = X_S.to(device), Y_S.to(device)
+        for batch_id, val_data in enumerate(tqdm(val_data_loader)):
+            X, Y = val_data
+            X = X.to(device)
+            Y = Y.to(device)
+
+            with torch.no_grad():
+                if config.meta_train:
+                    Y_pred = net(X_S, Y_S, X)
+                else:
+                    X = from_6d_to_4d(X)
+                    Y = from_6d_to_4d(Y)
+                    Y_pred = net(X)
+
+            # --- Calculate the average PSNR --- #
+            sub_psnr_list.extend(calc_psnr(Y_pred, Y))
+
+            # --- Calculate the average SSIM --- #
+            sub_ssim_list.extend(calc_ssim(Y_pred, Y))
+            break
+
+            # --- Save image --- #
+            # if save_tag:
+            #     save_image(Y_pred, exp_name)
+        psnr_list.append(sum(sub_psnr_list) / len(sub_psnr_list))
+        ssim_list.append(sum(sub_ssim_list) / len(sub_ssim_list))
+
+    return psnr_list, ssim_list
+
+
+def validation_val(config, net, val_data_loader, device, savedir, support_data=None, save_tag=False):
+    psnr_list = []
+    ssim_list = []
+
+    if config.meta_train:
+        X_S, Y_S = support_data
+        # print(X_S.shape, Y_S.shape)
+        X_S, Y_S = X_S.to(device), Y_S.to(device)
+    for batch_id, val_data in enumerate(tqdm(val_data_loader)):
+        X, Y = val_data
+
+        with torch.no_grad():
+            if config.meta_train:
+                Y_pred = net(X_S, Y_S, X)
+            else:
+                X = from_6d_to_4d(X.to(device))
+                Y = from_6d_to_4d(Y.to(device))
+                Y_pred = net(X)
+        # --- Calculate the average PSNR --- #
+        psnr_list.extend(calc_psnr(Y_pred, Y))
+
+        # --- Calculate the average SSIM --- #
+        ssim_list.extend(calc_ssim(Y_pred, Y))
+
+        # --- Save image --- #
+        if save_tag:
+            # print()
+            save_image(Y_pred, str(batch_id), savedir, batch_id)
+
+    avr_psnr = sum(psnr_list) / len(psnr_list)
+    avr_ssim = sum(ssim_list) / len(ssim_list)
+    return avr_psnr, avr_ssim
