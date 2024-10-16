@@ -177,3 +177,24 @@ def validation_val(config, net, val_data_loader, device, savedir, support_data=N
     avr_psnr = sum(psnr_list) / len(psnr_list)
     avr_ssim = sum(ssim_list) / len(ssim_list)
     return avr_psnr, avr_ssim
+
+
+def save_image(pred_image, image_name, savedir, batch_id):
+    if os.path.isdir(os.path.join(savedir, 'outputs')) is False:
+        os.makedirs(os.path.join(savedir, 'outputs'))
+        # import pdb; pdb.set_trace()
+    if len(pred_image.shape) == 6:
+        pred_image = from_6d_to_4d(pred_image)
+
+    utils.save_image(pred_image[0], '{}/outputs/{}.png'.format(savedir, batch_id))
+
+
+def print_log(epoch, num_epochs, train_psnr, val_psnr, val_ssim, exp_name):
+    print('Epoch [{0}/{1}], Train_PSNR:{2:.2f}, Val_PSNR:{3:.2f}, Val_SSIM:{4:.4f}'
+          .format(epoch, num_epochs, train_psnr, val_psnr, val_ssim))
+
+    # --- Write the training log --- #
+    with open('./training_log/{}_log.txt'.format(exp_name), 'a') as f:
+        print('Date: {0}s, Epoch: [{1}/{2}], Train_PSNR: {3:.2f}, Val_PSNR: {4:.2f}, Val_SSIM: {5:.4f}'
+              .format(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()),
+                      epoch, num_epochs, train_psnr, val_psnr, val_ssim), file=f)
