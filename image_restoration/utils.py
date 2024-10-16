@@ -53,3 +53,23 @@ def calc_ssim(im1, im2):
     im2_y = cv2.cvtColor(im2, cv2.COLOR_BGR2YCR_CB)[:, :, 0]
     ans = [compare_ssim(im1_y, im2_y, data_range=1.)]
     return ans
+
+def to_psnr(pred_image, gt):
+    mse = F.mse_loss(pred_image, gt, reduction='none')
+    mse_split = torch.split(mse, 1, dim=0)
+    mse_list = [torch.mean(torch.squeeze(mse_split[ind])).item() for ind in range(len(mse_split))]
+
+    intensity_max = 1.0
+    psnr_list = [10.0 * log10(intensity_max / mse) for mse in mse_list]
+    return psnr_list
+
+
+def to_ssim_skimage(pred_image, gt):
+    pred_image_list = torch.split(pred_image, 1, dim=0)
+    gt_list = torch.split(gt, 1, dim=0)
+
+    pred_image_list_np = [pred_image_list[ind].permute(0, 2, 3, 1).data.cpu().numpy().squeeze() for ind in range(len(pred_image_list))]
+    gt_list_np = [gt_list[ind].permute(0, 2, 3, 1).data.cpu().numpy().squeeze() for ind in range(len(pred_image_list))]
+    ssim_list = [measure.compare_ssim(pred_image_list_np[ind],  gt_list_np[ind], data_range=1, multichannel=True) for ind in range(len(pred_image_list))]
+
+    return ssim_list
