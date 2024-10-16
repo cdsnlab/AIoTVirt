@@ -125,3 +125,14 @@ else:
     lbl_train_data_loader = get_finetune_dataloader(config, TASK_DATASETS_TEST[config.case], split='shots')
     # val_data_loader = get_val_dataloaders(config, support_data=support_data)
     test_loader = get_eval_dataloader(config, task=TASK_DATASETS_TEST[config.case], split='test', mode='resize')
+
+# # --- Previous PSNR and SSIM in testing --- #
+net.eval()
+# eval_psnr, eval_ssim = validation_val(config, net, test_loader, device, savedir, support_data, False)
+# print(eval_psnr, eval_ssim)
+################ Note########################
+
+old_val_psnr, old_val_ssim = 0., 0.
+
+net.train()
+
