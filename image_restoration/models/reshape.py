@@ -17,7 +17,7 @@ def get_reshaper(pattern):
             return [reshaper(x_, contiguous=contiguous, **kwargs) for x_ in x]
         else:
             return x
-    
+
     return reshaper
 
 
@@ -46,15 +46,15 @@ def parse_BTN(x):
 
 def forward_6d_as_4d(func, x, t_idx=None, **kwargs):
     B, T, N = parse_BTN(x)
-        
+
     x = from_6d_to_4d(x, contiguous=True)
-    
+
     if t_idx is not None:
         t_idx = repeat(t_idx, 'B T -> (B T N)', N=N)
         x = func(x, t_idx=t_idx, **kwargs)
     else:
         x = func(x, **kwargs)
-    
+
     x = from_4d_to_6d(x, B=B, T=T)
 
     return x
