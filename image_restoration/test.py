@@ -25,8 +25,7 @@ args = parser.parse_args()
 
 config = get_config(args, meta=args.meta_train)
 
-
-#set seed
+# set seed
 seed = 19
 if seed is not None:
     np.random.seed(seed)
@@ -73,3 +72,10 @@ else:
 
 # # --- Previous PSNR and SSIM in testing --- #
 net.eval()
+
+# -------------------------------------------------------------------------------------------------------------
+eval_psnr, eval_ssim = validation_val(config, net, test_loader, device, savedir, support_data, True)
+
+print(f'Eval_PSNR: {eval_psnr:.4f}, Eval_SSIM: {eval_ssim:.5f}')
+# with open( os.path.join(logdir,'test_{}.txt'.format(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()))), 'a') as f:
+#     print(f'Eval_PSNR: {eval_psnr:.4f}, Eval_SSIM: {eval_ssim:.5f}', file=f)
